@@ -162,6 +162,7 @@ function buildGenPrompt(
   profile: BrandProfile,
   intents: QueryIntent[],
   perIntent: number,
+  year: string,
 ): string {
   const facts = [`Brand: ${profile.brand}`];
   if (profile.category) facts.push(`Category: ${profile.category}`);
@@ -187,9 +188,9 @@ function buildGenPrompt(
     '- No dangling back-references: never write "this brand", "these products",',
     '  "this kind of product", "such products" (or their equivalents in the',
     "  buyer's language) - there is nothing for them to refer to.",
-    '- Keep questions evergreen: do NOT put a specific year or date in them',
-    '  ("best phones in 2023", "top laptops of 2024") - a hardcoded year goes',
-    '  stale. Ask timelessly instead ("best phones for photography").',
+    '- Prefer timeless phrasing. If a question does reference a year or time',
+    `  period, use the current year (${year}) and NEVER a past year - a stale`,
+    '  year ("best phones in 2023") reads as out of date.',
     '- For every intent EXCEPT "trust": write as a shopper who does not yet know',
     `  this brand - do NOT name ${profile.brand}. Never name a competitor.`,
     `- For "trust": name the brand explicitly ("${profile.brand}"), never as`,
@@ -241,7 +242,10 @@ export async function generateQueries(
   };
 
   const perIntent = Math.ceil(target / intents.length);
-  const prompt = buildGenPrompt(profile, intents, perIntent);
+  // Current year from the injected clock (deterministic in tests), so any year
+  // the model reaches for is the current one, not its training-cutoff default.
+  const year = opts.generatedAt.slice(0, 4);
+  const prompt = buildGenPrompt(profile, intents, perIntent, year);
   const maxTokens = 900;
   const projected =
     deps.projectedCostUsd ??
