@@ -33,6 +33,13 @@ export interface Finding {
 /** Where a profile field came from; user edits are never overwritten (M4). */
 export type FieldSource = 'extracted' | 'llm' | 'user';
 
+/** The editable fields of a {@link BrandProfile} that carry a source. */
+export type ProfileField =
+  'brand' | 'aliases' | 'category' | 'offerings' | 'locale' | 'competitors';
+
+/** Per-field provenance so `--refresh` can preserve user edits (M4). */
+export type ProfileSources = Partial<Record<ProfileField, FieldSource>>;
+
 /** Editable brand profile produced by discovery (M4). Lean initial shape. */
 export interface BrandProfile {
   schema_version: string;
@@ -45,6 +52,8 @@ export interface BrandProfile {
   competitors: string[];
   degraded?: boolean;
   generatedAt?: string;
+  /** Provenance per field; `user` fields survive `--refresh` (M4). */
+  sources?: ProfileSources;
 }
 
 /** One judge call abstracted so M4/M5 depend on this, not on M6 (the seam). */

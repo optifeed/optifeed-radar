@@ -118,6 +118,33 @@ export function estimateRun(
   return { totalUsd: askUsd + judgeUsd, askUsd, judgeUsd, assumptions };
 }
 
+/**
+ * Estimate the USD cost of a single judge-model call (discovery/query-gen).
+ * Priced by the configured judge model. Unknown models fall back to the
+ * priciest entry so the setup-budget authorization never under-estimates.
+ */
+export function estimateJudgeCallUsd(
+  model: string,
+  assumptions: EstimateAssumptions = ESTIMATE_ASSUMPTIONS,
+): number {
+  const pricing = MODEL_PRICING.models[model] ?? priciestPricing();
+  return costOfCall(
+    pricing,
+    assumptions.judgeInputTokens,
+    assumptions.judgeOutputTokens,
+  );
+}
+
+/** The most expensive pricing in the table - a conservative unknown-model default. */
+function priciestPricing(): ModelPricing {
+  return Object.values(MODEL_PRICING.models).reduce((max, p) =>
+    p.inputPerMTokens + p.outputPerMTokens >
+    max.inputPerMTokens + max.outputPerMTokens
+      ? p
+      : max,
+  );
+}
+
 /** Spend phase: pre-ASK setup (discovery + query-gen) vs the main run. */
 export type CostPhase = 'setup' | 'main';
 

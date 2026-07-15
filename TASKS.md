@@ -115,14 +115,15 @@ Owner: ___ · PR: ___ · needs M2 + M13
 
 ## Wave 3 - pipeline (need M6's JudgeClient)
 
-### [ ] M4 - Discovery (domain → BrandProfile)
+### [x] M4 - Discovery (domain → BrandProfile)
 
-Owner: ___ · PR: ___ · needs M2 + M1 JudgeClient
+Owner: setup · PR: (M4) · needs M2 + M1 JudgeClient
 
-- [ ] extract brand/aliases/category/offerings/locale; ONE competitor call via injected JudgeClient (setup budget)
-- [ ] persist `profile.json` (source per field); `--refresh`; user edits win
-- [ ] `--brand`/`--category` fallback (mark `degraded`)
-- [ ] Acceptance: schema-rich / meta-only / JS-shell fixtures; merge rules
+- [x] extract brand/aliases/category/offerings/locale; ONE competitor call via injected JudgeClient (setup budget)
+- [x] persist `profile.json` (source per field); `--refresh`; user edits win
+- [x] `--brand`/`--category` fallback (mark `degraded`)
+- [x] Acceptance: schema-rich / meta-only / JS-shell fixtures; merge rules
+- Module report: split into pure + I/O. Pure: `extractSignals` (deterministic brand/aliases/category/offerings/locale from M2 `ExtractedPage[]`, JSON-LD walked for objects/arrays/`@graph` per lesson #4) and `profile.ts` (`buildProfile`, `buildProfileFromFlags`, `mergeProfile`). I/O: `discoverCompetitors` (the one judge call, `estimateJudgeCallUsd`→`guard.authorize('setup')`→`record`; cap or judge error degrades to `[]` with a reason, never throws - lessons #3/#5), `persist.ts` (injected `ProfileFs`; corrupt file throws `ProfileParseError` rather than clobbering), and the `discover` orchestrator (fetcher/judge/guard/fs/clock all injected). Depends only on the M1 `JudgeClient` interface - no M6 import (carried-risk item cleared). Decisions: brand priority og:site_name > JSON-LD Organization/WebSite name > domain stem; domain stem skips common second-levels (`acme.co.uk`→`acme`). `--brand`/`--category` take the no-fetch degraded path outright (also how a JS-shell site "falls back to flags"). `degraded` reserved for the flags path only; a cost-capped competitor call leaves `competitors: []` and surfaces via the guard's `costCapped`, not `degraded`. Backward-compatible M1 additions: `ProfileField`/`ProfileSources` types + `BrandProfile.sources`; `estimateJudgeCallUsd` in `costs.ts` (unknown model → priciest-entry fallback, lesson #2). 20 new tests (104 total); verified end-to-end through the real M2 fetcher.
 
 ### [ ] M5 - Query generation
 
