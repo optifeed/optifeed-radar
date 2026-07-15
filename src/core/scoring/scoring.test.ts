@@ -38,7 +38,69 @@ function ans(
   };
 }
 
+/** Like {@link ans} but with an explicit prompt (for intent partitioning). */
+function ansP(
+  engine: EngineId,
+  kind: EngineKind,
+  prompt: string,
+  text: string,
+): EngineAnswer {
+  return { engine, kind, prompt, text, model: 'm', costUsd: 0, ts: AT };
+}
+
 describe('scoreAnswers (orchestration)', () => {
+  it('excludes branded prompts from the score and reports them as reputation', async () => {
+    const answers = [
+      // Discovery: unbranded, mentions the brand.
+      ansP(
+        'openai',
+        'parametric',
+        'best rockets?',
+        'I recommend Acme, then Estes.',
+      ),
+      // Branded ("trust"): named the brand, positive sentiment.
+      ansP(
+        'openai',
+        'parametric',
+        'Is Acme reliable?',
+        'Yes, Acme is very reliable and highly trusted.',
+      ),
+    ];
+
+    const report = await scoreAnswers(
+      answers,
+      profile,
+      {},
+      { generatedAt: AT, brandedPrompts: ['Is Acme reliable?'] },
+    );
+
+    // Score and per-engine aggregation see ONLY the discovery answer.
+    expect(report.engines).toHaveLength(1);
+    expect(report.engines[0]!.answers).toBe(1);
+    expect(report.mentions).toHaveLength(1);
+    expect(report.mentions[0]!.prompt).toBe('best rockets?');
+    expect(report.sampling.answers).toBe(1);
+
+    // The branded answer surfaces separately as reputation (sentiment).
+    expect(report.reputation).toEqual({
+      prompts: 1,
+      answers: 1,
+      positive: 1,
+      neutral: 0,
+      negative: 0,
+    });
+  });
+
+  it('reports no reputation block when no prompts are branded', async () => {
+    const report = await scoreAnswers(
+      [ans('openai', 'parametric', 'Acme is great.')],
+      profile,
+      {},
+      { generatedAt: AT },
+    );
+    expect(report.reputation).toBeUndefined();
+  });
+
   it('produces a deterministic report across engines with no judge needed', async () => {
     const answers = [
       ans('openai', 'parametric', 'I recommend Acme, then Estes.'),

@@ -129,6 +129,20 @@ export function renderCheckText(
     lines.push('');
   }
 
+  // Reputation from branded prompts, shown apart from the score (it names the
+  // brand, so it measures sentiment, not whether the AI surfaced you unprompted).
+  if (env.reputation && env.reputation.answers > 0) {
+    const r = env.reputation;
+    lines.push('Reputation (you asked about the brand by name):');
+    lines.push(
+      `  ${plural(r.prompts, 'branded question')}: ${r.positive} positive, ${r.neutral} neutral, ${r.negative} negative`,
+    );
+    lines.push(
+      '  Not part of the score above - branded prompts always mention you.',
+    );
+    lines.push('');
+  }
+
   // Landing output shows warnings and misses, not info-level notes.
   const notable = env.findings.filter((f) => f.severity !== 'info');
   if (notable.length > 0) {

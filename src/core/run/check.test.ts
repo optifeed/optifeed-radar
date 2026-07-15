@@ -243,6 +243,51 @@ describe('runCheck end to end (all mocked)', () => {
     expect(result.envelope).toBeDefined();
   });
 
+  it('keeps branded (trust) prompts out of the score and reports reputation', async () => {
+    // Pack with one unbranded (best-of) and one branded (trust) prompt.
+    const pack: QueryPack = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      queries: [
+        { id: 'q1', intent: 'best-of', prompt: 'best widgets brand?' },
+        { id: 'q2', intent: 'trust', prompt: 'Is Acme reliable?' },
+      ],
+    };
+    const fs = memFs({
+      [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE),
+      [queriesPath(STATE)]: toYaml(pack),
+    });
+    // One engine that vouches for Acme on the branded prompt.
+    const adapters = [
+      fakeAdapter('openai', 'parametric', {
+        text: (p) =>
+          p === 'Is Acme reliable?'
+            ? 'Yes, Acme is very reliable and trusted.'
+            : 'Acme is a great widget brand.',
+      }),
+    ];
+    const result = await runCheck(
+      'acme.example',
+      { ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })), adapters },
+      { stateDir: STATE, yes: true },
+    );
+
+    const env = result.envelope!;
+    // Score sees only the 1 unbranded prompt (1 engine x 1 discovery prompt).
+    expect(env.engines[0]!.answers).toBe(1);
+    expect(env.sampling.nPrompts).toBe(1);
+    // The branded prompt surfaces as reputation, not in the score.
+    expect(env.reputation).toEqual({
+      prompts: 1,
+      answers: 1,
+      positive: 1,
+      neutral: 0,
+      negative: 0,
+    });
+    // Both answers remain as evidence (nothing discarded).
+    expect(env.answers).toHaveLength(2);
+  });
+
   it('aborts without asking any engine when confirmation is declined', async () => {
     const fs = seededFs();
     const adapters = [fakeAdapter('openai', 'parametric')];

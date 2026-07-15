@@ -122,6 +122,32 @@ describe('renderCheckText', () => {
     expect(out.toLowerCase()).toContain('degraded');
   });
 
+  it('reports reputation (branded prompts) apart from the score, honestly', () => {
+    const out = renderCheckText(
+      envelope({
+        reputation: {
+          prompts: 2,
+          answers: 2,
+          positive: 1,
+          neutral: 1,
+          negative: 0,
+        },
+      }),
+      { color: false },
+    );
+    expect(out.toLowerCase()).toContain('reputation');
+    // Sentiment breakdown is shown.
+    expect(out).toContain('1 positive');
+    expect(out).toContain('1 neutral');
+    // The headline score is still the discovery number, unchanged.
+    expect(out).toContain('61/100');
+  });
+
+  it('shows no reputation section when there are no branded prompts', () => {
+    const out = renderCheckText(envelope(), { color: false });
+    expect(out.toLowerCase()).not.toContain('reputation');
+  });
+
   it('includes the report path when given', () => {
     const out = renderCheckText(envelope(), {
       color: false,
@@ -188,6 +214,22 @@ describe('renderCheckHtml', () => {
     );
     expect(html.toLowerCase()).toContain('cap');
     expect(html).toContain('gemini');
+  });
+
+  it('renders a reputation section when branded prompts were asked', () => {
+    const html = renderCheckHtml(
+      envelope({
+        reputation: {
+          prompts: 2,
+          answers: 2,
+          positive: 1,
+          neutral: 1,
+          negative: 0,
+        },
+      }),
+    );
+    expect(html.toLowerCase()).toContain('reputation');
+    expect(html).toContain('positive');
   });
 
   it('never uses an em-dash', () => {

@@ -99,6 +99,19 @@ function evidence(answers: EngineAnswer[]): string {
   return `<section><h2>Evidence: raw answers</h2>${blocks}</section>`;
 }
 
+function reputationSection(env: VisibilityEnvelope): string {
+  const r = env.reputation;
+  if (!r || r.answers === 0) return '';
+  return `<section><h2>Reputation</h2>
+    <p class="muted">From ${r.prompts} branded question${r.prompts === 1 ? '' : 's'} that named the brand. Sentiment only - not part of the score above, since naming the brand always yields a mention.</p>
+    <table><tbody>
+      <tr><td>positive</td><td>${r.positive}</td></tr>
+      <tr><td>neutral</td><td>${r.neutral}</td></tr>
+      <tr><td>negative</td><td>${r.negative}</td></tr>
+    </tbody></table>
+  </section>`;
+}
+
 function notesSection(env: VisibilityEnvelope): string {
   const notes = honestyNotes(env);
   if (notes.length === 0) return '';
@@ -140,6 +153,7 @@ export function renderCheckHtml(env: VisibilityEnvelope): string {
 
   <section><h2>Per engine</h2>${enginesTable(env.engines)}</section>
   ${shareOfVoice(env)}
+  ${reputationSection(env)}
   ${findingsList(env.findings)}
   ${notesSection(env)}
   ${evidence(env.answers)}

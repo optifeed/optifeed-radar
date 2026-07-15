@@ -16,6 +16,7 @@ import {
   type EngineScore,
   type JudgeClient,
   type MentionResult,
+  type Reputation,
   type ScoreReport,
 } from '../types.js';
 import { analyzeAnswer } from './detect.js';
@@ -37,6 +38,13 @@ export interface ScoreOptions {
   /** Max share of answers judged in pass 2 (default {@link JUDGE_RATE_CAP}). */
   judgeRateCap?: number;
   generatedAt?: string;
+  /**
+   * Prompts that named the brand (M5's "trust" intent). Their answers are kept
+   * OUT of the visibility score - naming the brand guarantees a mention - and
+   * summarized separately as {@link Reputation}. Empty/omitted = score every
+   * answer as before.
+   */
+  brandedPrompts?: string[];
 }
 
 /** Score a run's engine answers against the brand profile. */
@@ -52,7 +60,6 @@ export async function scoreAnswers(
   let results = answers.map((a) => analyzeAnswer(a, profile));
 
   // Pass 2: judge only the ambiguous ones, within the rate + cost budgets.
-  let judged = 0;
   if (deps.judge) {
     const refined = await refineAmbiguous(
       results,
@@ -62,24 +69,62 @@ export async function scoreAnswers(
       { judgeRateCap: cap },
     );
     results = refined.results;
-    judged = refined.judged;
   }
 
-  // Per-engine aggregation (kind taken from the engine's own answers).
-  const engines = scorePerEngine(answers, results);
+  // Partition answers by whether their prompt named the brand. Branded prompts
+  // are scored apart (reputation), never folded into the visibility score.
+  const branded = new Set(opts.brandedPrompts ?? []);
+  const discovery: { answer: EngineAnswer; result: MentionResult }[] = [];
+  const reputationResults: MentionResult[] = [];
+  answers.forEach((answer, i) => {
+    const result = results[i];
+    if (!result) return;
+    if (branded.has(answer.prompt)) reputationResults.push(result);
+    else discovery.push({ answer, result });
+  });
+
+  // The score, per-engine aggregation, share of voice, and sources all read the
+  // DISCOVERY answers only (the honest "surfaced unprompted" signal).
+  const discoveryAnswers = discovery.map((d) => d.answer);
+  const discoveryResults = discovery.map((d) => d.result);
+  const engines = scorePerEngine(discoveryAnswers, discoveryResults);
   const score = compositeScore(engines);
+  const judged = discoveryResults.filter((r) => r.judged).length;
 
   return {
     schema_version: SCHEMA_VERSION,
     domain: profile.domain,
     score,
     engines,
-    mentions: results,
-    shareOfVoice: shareOfVoice(results, profile),
-    sources: aggregateSources(results),
-    sampling: { answers: results.length, judged, judgeRateCap: cap },
+    mentions: discoveryResults,
+    shareOfVoice: shareOfVoice(discoveryResults, profile),
+    sources: aggregateSources(discoveryResults),
+    ...(reputationResults.length > 0
+      ? { reputation: summarizeReputation(answers, branded, reputationResults) }
+      : {}),
+    sampling: { answers: discoveryResults.length, judged, judgeRateCap: cap },
     ...(opts.generatedAt ? { generatedAt: opts.generatedAt } : {}),
   };
+}
+
+/** Count sentiment across branded answers into a {@link Reputation} block. */
+function summarizeReputation(
+  answers: EngineAnswer[],
+  branded: Set<string>,
+  results: MentionResult[],
+): Reputation {
+  const prompts = new Set(
+    answers.filter((a) => branded.has(a.prompt)).map((a) => a.prompt),
+  ).size;
+  let positive = 0;
+  let neutral = 0;
+  let negative = 0;
+  for (const r of results) {
+    if (r.sentiment === 'positive') positive++;
+    else if (r.sentiment === 'negative') negative++;
+    else neutral++;
+  }
+  return { prompts, answers: results.length, positive, neutral, negative };
 }
 
 /** Group results by engine (in first-seen order) and score each. */

@@ -21,6 +21,7 @@ import {
   type EngineId,
   type Finding,
   type MentionResult,
+  type Reputation,
   type RunHonesty,
   type ScoreReport,
   type ShareOfVoiceRow,
@@ -61,6 +62,8 @@ export interface VisibilityEnvelope {
   shareOfVoice: ShareOfVoiceRow[];
   /** Cited-source aggregation across grounded answers (M7). */
   sources: SourceRow[];
+  /** Sentiment from branded prompts, reported apart from the score. Absent if none. */
+  reputation?: Reputation;
   /** Per-answer mention detail; the prompt identity that {@link diffEnvelopes} reads. */
   mentions: MentionResult[];
   /** Raw engine answers - the evidence M9 renders behind expandable sections. */
@@ -108,7 +111,10 @@ export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
   const { profile, score, answers, auditFindings, honesty, generatedAt } =
     input;
 
-  const nPrompts = new Set(answers.map((a) => a.prompt)).size;
+  // Sampling describes the SCORE's sample, so count the discovery prompts that
+  // fed it (branded prompts are summarized in `reputation`, not the score). For
+  // a run with no branded prompts this equals every prompt asked.
+  const nPrompts = new Set(score.mentions.map((m) => m.prompt)).size;
 
   const envelope: VisibilityEnvelope = {
     schema_version: SCHEMA_VERSION,
@@ -122,6 +128,7 @@ export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
     mentions: score.mentions,
     answers,
     findings: auditFindings ?? [],
+    ...(score.reputation ? { reputation: score.reputation } : {}),
     sampling: {
       nPrompts,
       nAnswers: score.sampling.answers,

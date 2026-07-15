@@ -147,6 +147,22 @@ export interface SourceRow {
   count: number;
 }
 
+/**
+ * Reputation from branded prompts that named the brand (M7). Scored apart from
+ * the visibility score: naming the brand guarantees a mention, so those answers
+ * measure sentiment, not whether the AI surfaced the brand unprompted. Keeping
+ * them out of the headline score preserves its meaning (hard rule #6).
+ */
+export interface Reputation {
+  /** Distinct branded prompts asked. */
+  prompts: number;
+  /** Engine answers to those prompts. */
+  answers: number;
+  positive: number;
+  neutral: number;
+  negative: number;
+}
+
 /** The scoring output for a run (M7). M8 wraps this into the public envelope. */
 export interface ScoreReport {
   schema_version: string;
@@ -157,6 +173,8 @@ export interface ScoreReport {
   mentions: MentionResult[];
   shareOfVoice: ShareOfVoiceRow[];
   sources: SourceRow[];
+  /** Sentiment from branded prompts, scored apart from the score. Absent if none. */
+  reputation?: Reputation;
   /** Judge-pass usage, surfaced for honesty. */
   sampling: { answers: number; judged: number; judgeRateCap: number };
   generatedAt?: string;

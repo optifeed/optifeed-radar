@@ -113,17 +113,50 @@ describe('buildEnvelope', () => {
     expect(env).not.toHaveProperty('auditScore');
   });
 
-  it('derives honest sampling from distinct prompts and the judge pass', () => {
+  it('derives honest sampling from distinct scored prompts and the judge pass', () => {
+    // nPrompts counts the distinct DISCOVERY prompts that fed the score (from
+    // score.mentions), not branded prompts summarized under reputation.
+    const twoMentions = [
+      { ...score().mentions[0]!, prompt: 'best fast-casual mexican?' },
+      { ...score().mentions[0]!, prompt: 'where to eat cheap burritos?' },
+    ];
     const env = buildEnvelope({
       profile: PROFILE,
-      score: score({ sampling: { answers: 6, judged: 2, judgeRateCap: 0.3 } }),
+      score: score({
+        mentions: twoMentions,
+        sampling: { answers: 6, judged: 2, judgeRateCap: 0.3 },
+      }),
       answers: answers(),
       generatedAt: '2026-07-15T12:00:00.000Z',
     });
-    expect(env.sampling.nPrompts).toBe(2); // two distinct prompts
+    expect(env.sampling.nPrompts).toBe(2); // two distinct scored prompts
     expect(env.sampling.nAnswers).toBe(6);
     expect(env.sampling.judged).toBe(2);
     expect(env.sampling.varianceNote).toBe(VARIANCE_NOTE);
+  });
+
+  it('passes a reputation block through when the score has one', () => {
+    const env = buildEnvelope({
+      profile: PROFILE,
+      score: score({
+        reputation: {
+          prompts: 2,
+          answers: 2,
+          positive: 1,
+          neutral: 1,
+          negative: 0,
+        },
+      }),
+      answers: answers(),
+      generatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(env.reputation).toEqual({
+      prompts: 2,
+      answers: 2,
+      positive: 1,
+      neutral: 1,
+      negative: 0,
+    });
   });
 
   it('embeds raw answers as evidence for the renderers (no re-derive)', () => {

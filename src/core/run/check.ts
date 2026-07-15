@@ -187,6 +187,11 @@ export async function runCheck(
   );
   if (queries.note) notes.push(queries.note);
   const prompts = queries.pack.queries.map((q) => q.prompt);
+  // Branded prompts (M5's "trust" intent) named the brand; scoring keeps them
+  // out of the visibility score and reports them as reputation instead.
+  const brandedPrompts = queries.pack.queries
+    .filter((q) => q.intent === 'trust')
+    .map((q) => q.prompt);
   report({ kind: 'queries-done', prompts });
 
   // Gate the main ASK spend (bypassable with --yes, hard rule #8). Spending is
@@ -236,7 +241,7 @@ export async function runCheck(
     asked.answers,
     profile,
     { judge: deps.judge, guard },
-    { judgeRateCap: opts.judgeRateCap, generatedAt },
+    { judgeRateCap: opts.judgeRateCap, generatedAt, brandedPrompts },
   );
   report({ kind: 'scoring-done' });
 
