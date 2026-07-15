@@ -10,6 +10,7 @@
  * sortable in chronological order.
  */
 import { join } from 'node:path';
+import { SCHEMA_VERSION } from '../types.js';
 import type { VisibilityEnvelope } from './envelope.js';
 
 /** The minimal fs surface snapshot persistence needs, injectable for tests. */
@@ -73,7 +74,18 @@ function isNotFound(err: unknown): boolean {
   return (err as NodeJS.ErrnoException)?.code === 'ENOENT';
 }
 
-/** Persist an envelope as pretty JSON, ensuring the snapshots dir exists. */
+function isObject(v: unknown): boolean {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Persist an envelope as pretty JSON, ensuring the snapshots dir exists.
+ *
+ * Files are keyed by `generatedAt` (the plan's `<ISO>.json`), so a re-save at
+ * the identical millisecond overwrites - idempotent by design. A real `check`
+ * run spends seconds querying engines, so two runs never share a millisecond
+ * timestamp; the collision only arises under a deliberately fixed clock.
+ */
 export async function saveSnapshot(
   envelope: VisibilityEnvelope,
   stateDir: string,
@@ -112,11 +124,24 @@ function validateEnvelope(raw: unknown, path: string): VisibilityEnvelope {
   if (!raw || typeof raw !== 'object') fail('expected an object');
   const obj = raw as Record<string, unknown>;
   if (typeof obj.schema_version !== 'string') fail('missing schema_version');
+  // Reject an incompatible schema outright rather than diff mismatched shapes
+  // (hard rule #2: a breaking change bumps the version).
+  if (obj.schema_version !== SCHEMA_VERSION) {
+    fail(
+      `schema_version ${String(obj.schema_version)} is not supported (expected ${SCHEMA_VERSION})`,
+    );
+  }
   if (typeof obj.domain !== 'string') fail('missing domain');
   if (typeof obj.generatedAt !== 'string') fail('missing generatedAt');
   if (typeof obj.score !== 'number') fail('missing score');
+  if (!isObject(obj.profile)) fail('missing profile');
   if (!Array.isArray(obj.engines)) fail('engines must be an array');
+  if (!Array.isArray(obj.shareOfVoice)) fail('shareOfVoice must be an array');
+  if (!Array.isArray(obj.sources)) fail('sources must be an array');
   if (!Array.isArray(obj.mentions)) fail('mentions must be an array');
+  if (!Array.isArray(obj.answers)) fail('answers must be an array');
+  if (!Array.isArray(obj.findings)) fail('findings must be an array');
+  if (!isObject(obj.sampling)) fail('missing sampling');
   return obj as unknown as VisibilityEnvelope;
 }
 

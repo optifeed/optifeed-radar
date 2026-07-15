@@ -2,12 +2,12 @@
  * The `--fail-under <n>` CI gate (M8): a pure predicate turning a run's
  * headline score into an exit code.
  *
- * Honest: a cost-capped or degraded run produces a partial score, so the
- * result is flagged {@link FailUnderResult.partial} and the reason says so -
+ * Honest: a cost-capped, degraded, or engine-skipping run produces a partial
+ * score, so the result is flagged {@link FailUnderResult.partial} and says so -
  * the caller (M11 CLI) decides how loudly to surface it, but the number is
  * never presented as a full-confidence measurement.
  */
-import type { VisibilityEnvelope } from './envelope.js';
+import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
 
 /** Outcome of a `--fail-under` check. */
 export interface FailUnderResult {
@@ -15,7 +15,7 @@ export interface FailUnderResult {
   passed: boolean;
   /** Process exit code: 0 pass, 1 fail (CI convention). */
   exitCode: number;
-  /** The run was cost-capped or degraded, so the score is an incomplete sample. */
+  /** The run was partial (cost-capped, degraded, or skipped engines); the score is an incomplete sample. */
   partial: boolean;
   /** Human-readable one-liner explaining the outcome. */
   reason: string;
@@ -28,9 +28,9 @@ export function failUnder(
   envelope: VisibilityEnvelope,
   threshold?: number,
 ): FailUnderResult {
-  const partial = envelope.costCapped === true || envelope.degraded === true;
+  const partial = isPartialRun(envelope);
   const partialNote = partial
-    ? ' Note: this run was partial (cost-capped or degraded), so the score is an incomplete sample.'
+    ? ' Note: this run was partial (cost-capped, degraded, or missing engines), so the score is an incomplete sample.'
     : '';
 
   if (threshold === undefined) {

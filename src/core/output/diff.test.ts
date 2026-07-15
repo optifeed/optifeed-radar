@@ -130,6 +130,12 @@ describe('diffEnvelopes', () => {
     expect(diffEnvelopes(A, B).promptSetChanged).toBe(false);
   });
 
+  it('reports engineSetChanged=false and partial=false for two clean full runs', () => {
+    const diff = diffEnvelopes(A, B);
+    expect(diff.engineSetChanged).toBe(false);
+    expect(diff.partial).toBe(false);
+  });
+
   it('treats a prompt mentioned in ANY answer as mentioned for that prompt', () => {
     const a = envelope(
       't1',
@@ -181,5 +187,42 @@ describe('diffEnvelopes with a changed prompt set', () => {
     const openai = diff.engines.find((e) => e.engine === 'openai');
     expect(openai?.wonPrompts).toEqual(['p2']); // p4 excluded (new)
     expect(openai?.lostPrompts).toEqual([]); // p3 excluded (removed)
+  });
+});
+
+describe('diffEnvelopes surfaces honesty gaps (rule #6)', () => {
+  it('flags engineSetChanged when an engine drops out of the later run', () => {
+    // B lost perplexity (key expired); its contribution silently left the score.
+    const bOpenaiOnly = envelope(
+      '2026-07-15T00:00:00.000Z',
+      45,
+      [engineScore('openai', 70)],
+      [mention('openai', 'p1', true), mention('openai', 'p2', true)],
+    );
+    const diff = diffEnvelopes(A, bOpenaiOnly);
+    expect(diff.engineSetChanged).toBe(true);
+    // Only the shared engine gets a per-engine row.
+    expect(diff.engines.map((e) => e.engine)).toEqual(['openai']);
+  });
+
+  it('flags partial when either compared run was cost-capped or degraded', () => {
+    const partialB: VisibilityEnvelope = { ...B, costCapped: true };
+    expect(diffEnvelopes(A, partialB).partial).toBe(true);
+    expect(diffEnvelopes({ ...A, degraded: true }, B).partial).toBe(true);
+  });
+
+  it('flags partial when either run had skipped engines', () => {
+    const skippedA: VisibilityEnvelope = {
+      ...A,
+      skippedEngines: [{ engine: 'gemini', reason: 'no key' }],
+    };
+    expect(diffEnvelopes(skippedA, B).partial).toBe(true);
+  });
+});
+
+describe('diffEnvelopes guards against comparing different brands', () => {
+  it('throws when the two snapshots are for different domains', () => {
+    const other: VisibilityEnvelope = { ...B, domain: 'chipotle.example' };
+    expect(() => diffEnvelopes(A, other)).toThrow(/domain/i);
   });
 });

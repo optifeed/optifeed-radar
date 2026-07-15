@@ -24,5 +24,7 @@
       "lostPrompts": []
     }
   ],
-  "promptSetChanged": false
+  "promptSetChanged": false,
+  "engineSetChanged": false,
+  "partial": false
 }

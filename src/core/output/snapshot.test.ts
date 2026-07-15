@@ -138,6 +138,33 @@ describe('loadSnapshot failure modes', () => {
       SnapshotParseError,
     );
   });
+
+  it('throws on an incompatible schema_version, not just a missing one (rule #2)', async () => {
+    const fs = fakeFs();
+    await fs.mkdir(snapshotsDir('/state'));
+    const path = `${snapshotsDir('/state')}/future.json`;
+    const future = {
+      ...envelope('2026-07-15T00:00:00.000Z'),
+      schema_version: '0.2',
+    };
+    await fs.writeFile(path, JSON.stringify(future));
+    await expect(loadSnapshot(path, fs)).rejects.toBeInstanceOf(
+      SnapshotParseError,
+    );
+  });
+
+  it('throws when a required object like sampling is missing', async () => {
+    const fs = fakeFs();
+    await fs.mkdir(snapshotsDir('/state'));
+    const path = `${snapshotsDir('/state')}/nosampling.json`;
+    const { sampling: _sampling, ...rest } = envelope(
+      '2026-07-15T00:00:00.000Z',
+    );
+    await fs.writeFile(path, JSON.stringify(rest));
+    await expect(loadSnapshot(path, fs)).rejects.toBeInstanceOf(
+      SnapshotParseError,
+    );
+  });
 });
 
 describe('listSnapshots', () => {

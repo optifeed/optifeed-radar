@@ -13,7 +13,9 @@ const PROFILE: BrandProfile = {
 
 function envelope(
   score: number,
-  honesty: Partial<Pick<VisibilityEnvelope, 'costCapped' | 'degraded'>> = {},
+  honesty: Partial<
+    Pick<VisibilityEnvelope, 'costCapped' | 'degraded' | 'skippedEngines'>
+  > = {},
 ): VisibilityEnvelope {
   return {
     schema_version: SCHEMA_VERSION,
@@ -69,6 +71,24 @@ describe('failUnder', () => {
     const r = failUnder(envelope(90, { degraded: true }), 70);
     expect(r.passed).toBe(true);
     expect(r.partial).toBe(true);
+  });
+
+  it('flags a run with skipped engines as partial (rule #6)', () => {
+    // Only one engine had a key; the other three were skipped. Score is a
+    // sliver of the full picture and must not read as full-confidence.
+    const r = failUnder(
+      envelope(72, {
+        skippedEngines: [
+          { engine: 'gemini', reason: 'no key' },
+          { engine: 'perplexity', reason: 'no key' },
+          { engine: 'anthropic', reason: 'no key' },
+        ],
+      }),
+      70,
+    );
+    expect(r.passed).toBe(true);
+    expect(r.partial).toBe(true);
+    expect(r.reason.toLowerCase()).toContain('partial');
   });
 
   it('is not partial on a clean run', () => {

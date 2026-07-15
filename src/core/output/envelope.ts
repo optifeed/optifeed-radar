@@ -73,6 +73,22 @@ export interface VisibilityEnvelope {
   degraded?: boolean;
 }
 
+/**
+ * Whether a run's score is a partial sample rather than a full-confidence
+ * measurement: cost-capped, degraded, or missing whole engines. The single
+ * source of truth for {@link failUnder} and {@link diffEnvelopes} so they never
+ * present a partial run as complete (hard rule #6).
+ */
+export function isPartialRun(
+  run: Pick<VisibilityEnvelope, 'costCapped' | 'degraded' | 'skippedEngines'>,
+): boolean {
+  return (
+    run.costCapped === true ||
+    run.degraded === true ||
+    (run.skippedEngines?.length ?? 0) > 0
+  );
+}
+
 /** Inputs to {@link buildEnvelope}. */
 export interface BuildEnvelopeInput {
   profile: BrandProfile;

@@ -6,7 +6,7 @@ import {
   type Finding,
   type ScoreReport,
 } from '../types.js';
-import { VARIANCE_NOTE, buildEnvelope } from './envelope.js';
+import { VARIANCE_NOTE, buildEnvelope, isPartialRun } from './envelope.js';
 
 const PROFILE: BrandProfile = {
   schema_version: SCHEMA_VERSION,
@@ -173,5 +173,25 @@ describe('buildEnvelope', () => {
       generatedAt: '2026-07-15T12:00:00.000Z',
     });
     expect(env.findings).toEqual([]);
+  });
+});
+
+describe('isPartialRun', () => {
+  it('is false for a clean run', () => {
+    expect(isPartialRun({})).toBe(false);
+  });
+
+  it('is true for any single honesty flag (cost-capped, degraded, or skipped)', () => {
+    expect(isPartialRun({ costCapped: true })).toBe(true);
+    expect(isPartialRun({ degraded: true })).toBe(true);
+    expect(
+      isPartialRun({
+        skippedEngines: [{ engine: 'gemini', reason: 'no key' }],
+      }),
+    ).toBe(true);
+  });
+
+  it('is false when skippedEngines is present but empty', () => {
+    expect(isPartialRun({ skippedEngines: [] })).toBe(false);
   });
 });

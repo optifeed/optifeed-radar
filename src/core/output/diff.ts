@@ -11,9 +11,13 @@
  * A prompt counts as "mentioned" for an engine when the brand appears in ANY of
  * that engine's answers to it - the presence signal a won/lost flip tracks.
  * Pure and deterministic (results sorted).
+ *
+ * Direction is explicit: `a` is the earlier baseline, `b` the later run, and the
+ * result labels `from: a.generatedAt` / `to: b.generatedAt`. Passing them
+ * reversed yields a valid backwards-in-time diff (from > to), not a wrong one.
  */
 import type { EngineId, MentionResult } from '../types.js';
-import type { VisibilityEnvelope } from './envelope.js';
+import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
 import { SCHEMA_VERSION } from '../types.js';
 
 /** Per-engine change between two snapshots. */
@@ -37,12 +41,24 @@ export interface SnapshotDiff {
   to: string;
   /** Headline AI Visibility Score delta (`b.score - a.score`). */
   scoreDelta: number;
+  /** Per-engine changes, for engines present in BOTH runs (sorted by id). */
   engines: EngineDiff[];
   /**
    * True when the two runs asked different prompt sets; deltas are then not
    * apples-to-apples and won/lost cover only the shared prompts.
    */
   promptSetChanged: boolean;
+  /**
+   * True when an engine appeared in only one run (e.g. a key expired). The
+   * headline `scoreDelta` then partly reflects an engine leaving the sample,
+   * not a visibility change - and `engines` has no row for the missing one.
+   */
+  engineSetChanged: boolean;
+  /**
+   * True when either compared run was partial (cost-capped, degraded, or
+   * skipped engines). The delta is then not a full-confidence change (rule #6).
+   */
+  partial: boolean;
 }
 
 /** All distinct prompts an engine answered, prompt -> mentioned-in-any-answer. */
@@ -66,18 +82,29 @@ function enginesIn(env: VisibilityEnvelope): Set<EngineId> {
   return new Set(env.engines.map((e) => e.engine));
 }
 
-/** Compute the diff of snapshot `a` (baseline) against `b` (later). */
+/**
+ * Compute the diff of snapshot `a` (baseline) against `b` (later). Throws when
+ * the two snapshots are for different domains - a shared state directory can
+ * hold snapshots for more than one brand, and a cross-brand diff would be
+ * silently meaningless.
+ */
 export function diffEnvelopes(
   a: VisibilityEnvelope,
   b: VisibilityEnvelope,
 ): SnapshotDiff {
+  if (a.domain !== b.domain) {
+    throw new Error(
+      `Cannot diff snapshots for different domains: "${a.domain}" vs "${b.domain}".`,
+    );
+  }
+
   const aScores = new Map(a.engines.map((e) => [e.engine, e.score]));
   const bScores = new Map(b.engines.map((e) => [e.engine, e.score]));
 
   // Only engines present in BOTH runs can be diffed prompt-for-prompt.
-  const sharedEngines = [...enginesIn(a)]
-    .filter((e) => enginesIn(b).has(e))
-    .sort();
+  const aEngines = enginesIn(a);
+  const bEngines = enginesIn(b);
+  const sharedEngines = [...aEngines].filter((e) => bEngines.has(e)).sort();
 
   const engines: EngineDiff[] = sharedEngines.map((engine) => {
     const aMentions = promptMentions(a.mentions, engine);
@@ -105,6 +132,10 @@ export function diffEnvelopes(
     aPrompts.size !== bPrompts.size ||
     [...aPrompts].some((p) => !bPrompts.has(p));
 
+  const engineSetChanged =
+    aEngines.size !== bEngines.size ||
+    [...aEngines].some((e) => !bEngines.has(e));
+
   return {
     schema_version: SCHEMA_VERSION,
     domain: b.domain,
@@ -113,5 +144,7 @@ export function diffEnvelopes(
     scoreDelta: b.score - a.score,
     engines,
     promptSetChanged,
+    engineSetChanged,
+    partial: isPartialRun(a) || isPartialRun(b),
   };
 }
