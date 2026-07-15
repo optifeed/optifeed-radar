@@ -254,6 +254,15 @@ Owner: ___ · PR: ___
     preserves user `geo`; `ScoreReport` tagged with the scoring schema_version;
     sentiment handles negation; SoV dedupes brand==competitor; cost
     authorization estimates the real token budget (setup + judge phases).
+- 2026-07-15: high-effort workflow review of M8 (output contract), 18 agents
+  (4 finder lenses + adversarial verify). 10 findings; 7 fixed test-first
+  (commit `63d8c15`, +11 tests, 209→220), 2 accepted by-design + 1 deferred.
+  Fixes: `failUnder`/`diff` partiality now counts `skippedEngines` not just
+  costCapped/degraded (shared `isPartialRun`, rule #6); `diff` gained
+  `engineSetChanged` (a dropped engine no longer vanishes) + throws on a
+  cross-domain diff; `loadSnapshot` rejects an incompatible `schema_version`
+  by value (rule #2) and validates all required fields. Accepted: ISO-keyed
+  snapshot overwrite (idempotent), diff direction (explicit via from/to).
 
 ## Carried risks / decisions to watch
 
