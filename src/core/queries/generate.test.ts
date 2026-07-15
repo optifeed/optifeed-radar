@@ -257,6 +257,22 @@ describe('generateQueries', () => {
     expect(judge.prompts[0]).not.toContain('Estes');
   });
 
+  it('instructs the model to write self-contained questions (no dangling back-references)', async () => {
+    const judge = recordingJudge(goodAnswer);
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+
+    const gen = judge.prompts[0]!;
+    // The core fix: each question must stand alone (it is sent to the engine
+    // with no prior turn), so demonstratives like "this brand" / "these
+    // products" that point at nothing are forbidden.
+    expect(gen.toLowerCase()).toContain('self-contained');
+    expect(gen.toLowerCase()).toContain('back-reference');
+    // Trust questions name the brand explicitly, not "this brand".
+    expect(gen).toContain('name the brand');
+  });
+
   it('strips any competitor a misbehaving judge slips into the prompts', async () => {
     const answer = JSON.stringify({
       'best-of': ['Best kits?', 'Is Estes better than the rest?'],
