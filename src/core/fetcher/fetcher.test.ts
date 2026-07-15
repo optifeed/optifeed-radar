@@ -95,7 +95,7 @@ describe('fetchUrl', () => {
   });
 
   it('sends an honest user-agent and caches by URL within a run', async () => {
-    const seen: Array<Record<string, string> | undefined> = [];
+    const seen: (Record<string, string> | undefined)[] = [];
     const fn: FetchLike = vi.fn(async (_url, init) => {
       seen.push(init?.headers);
       return res(200, 'ok');

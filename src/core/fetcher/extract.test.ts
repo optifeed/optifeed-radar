@@ -19,8 +19,8 @@ describe('extractPage', () => {
     expect(page.lang).toBe('en-US');
     expect(page.h1).toBe('Espresso machines for your kitchen');
     expect(page.canonical).toBe('https://acme.example/');
-    expect(page.og['site_name']).toBe('Acme Espresso');
-    expect(page.og['type']).toBe('website');
+    expect(page.og.site_name).toBe('Acme Espresso');
+    expect(page.og.type).toBe('website');
 
     // Both JSON-LD blocks parsed into objects.
     expect(page.jsonLd).toHaveLength(2);

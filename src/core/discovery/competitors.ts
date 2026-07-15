@@ -60,7 +60,7 @@ export function parseCompetitors(text: string): string[] {
   if (jsonStart !== -1) {
     const candidate = trimmed.slice(jsonStart, trimmed.lastIndexOf(']') + 1);
     try {
-      const parsed = JSON.parse(candidate);
+      const parsed: unknown = JSON.parse(candidate);
       if (Array.isArray(parsed)) {
         return clean(parsed.filter((x): x is string => typeof x === 'string'));
       }

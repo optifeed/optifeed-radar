@@ -197,7 +197,7 @@ export function buildAuditReport(input: AuditInput): AuditReport {
 
   // --- Sitemap ---
   let sitemapFraction = 0;
-  if (!input.sitemap || !input.sitemap.present) {
+  if (!input.sitemap?.present) {
     add('sitemap.missing', 'warn', 'No sitemap found.');
   } else if (!input.sitemap.parseable) {
     add('sitemap.unparseable', 'warn', 'Sitemap could not be parsed.');

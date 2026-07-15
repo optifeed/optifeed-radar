@@ -15,11 +15,11 @@ function jsonResponse(body: unknown): HttpJsonResponse {
 
 /** A fake httpPost returning a canned body and recording the last call. */
 function fakePost(body: unknown) {
-  const calls: Array<{
+  const calls: {
     url: string;
     headers: Record<string, string>;
     body: string;
-  }> = [];
+  }[] = [];
   const fn: HttpPost = async (url, init) => {
     calls.push({ url, headers: init.headers, body: init.body });
     return jsonResponse(body);
@@ -66,7 +66,7 @@ describe('createAdapter', () => {
     expect(answer.costUsd).toBeCloseTo(expected, 12);
     // Request shape: chat endpoint + bearer auth.
     expect(calls[0]!.url).toContain('/chat/completions');
-    expect(calls[0]!.headers['authorization']).toBe('Bearer sk-test');
+    expect(calls[0]!.headers.authorization).toBe('Bearer sk-test');
   });
 
   it('parses an Anthropic answer', async () => {

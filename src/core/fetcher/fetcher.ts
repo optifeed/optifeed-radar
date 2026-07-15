@@ -85,8 +85,7 @@ function originOf(siteUrl: string): string {
 }
 
 export function createFetcher(options: FetcherOptions = {}): Fetcher {
-  const fetchImpl =
-    options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike);
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const userAgent = options.userAgent ?? DEFAULTS.userAgent;
   const timeoutMs = options.timeoutMs ?? DEFAULTS.timeoutMs;
   const maxBytes = options.maxBytes ?? DEFAULTS.maxBytes;
