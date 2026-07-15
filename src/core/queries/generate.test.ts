@@ -273,6 +273,19 @@ describe('generateQueries', () => {
     expect(gen).toContain('name the brand');
   });
 
+  it('instructs the model to keep questions evergreen (no hardcoded year)', async () => {
+    const judge = recordingJudge(goodAnswer);
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+
+    const gen = judge.prompts[0]!;
+    // Models default to their training-cutoff year ("best phones in 2023"),
+    // which is stale on read; questions must stay evergreen.
+    expect(gen.toLowerCase()).toContain('evergreen');
+    expect(gen.toLowerCase()).toContain('year');
+  });
+
   it('strips any competitor a misbehaving judge slips into the prompts', async () => {
     const answer = JSON.stringify({
       'best-of': ['Best kits?', 'Is Estes better than the rest?'],
