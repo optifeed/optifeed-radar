@@ -104,6 +104,24 @@ describe('shareOfVoice', () => {
     competitors: ['Estes', 'Quest'],
   };
 
+  it('dedupes when a competitor list accidentally repeats the brand', () => {
+    const p: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      brand: 'Acme',
+      aliases: [],
+      competitors: ['Acme', 'Beta'], // brand duplicated in competitors
+    };
+    const rows = shareOfVoice(
+      [mention({ mentioned: true, entities: ['Acme'] })],
+      p,
+    );
+    const acmeRows = rows.filter((r) => r.name === 'Acme');
+    expect(acmeRows).toHaveLength(1); // not double-counted
+    expect(acmeRows[0]!.isBrand).toBe(true);
+    expect(rows.map((r) => r.name).sort()).toEqual(['Acme', 'Beta']);
+  });
+
   it('counts brand + competitor mentions and computes shares', () => {
     const results = [
       mention({ mentioned: true, entities: ['Acme', 'Estes'] }),

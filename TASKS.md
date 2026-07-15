@@ -241,6 +241,18 @@ Owner: ___ · PR: ___
   the runner; JSON-LD array recursion; sitemap parseability by content;
   non-JSON 2xx wrapped; gemini maxTokens; concurrent audit fetches; llms-full
   wired in; regex simplification). +8 regression tests.
+- 2026-07-15: end-of-wave workflow review of Wave 3 (M4/M5/M7), 22 agents
+  (6 finder lenses + adversarial verify). 15 verified findings (1 refuted), all
+  fixed test-first (+30 tests, 151→181). Headliners: `--brand/--category`
+  flags no longer clobber a curated profile (load+merge); non-Latin brand /
+  competitor detection fixed via a shared Unicode-aware matcher (`core/text.ts`)
+  - CJK by substring, others by boundary - so 楽天 scores instead of silently
+    0; LLM-JSON parsers hardened with a balanced-brace extractor (trailing prose
+    no longer voids the parse); `loadProfile` now validates; fetch-failure no
+    longer clobbers a good cached profile (degrades instead); `mergeProfile`
+    preserves user `geo`; `ScoreReport` tagged with the scoring schema_version;
+    sentiment handles negation; SoV dedupes brand==competitor; cost
+    authorization estimates the real token budget (setup + judge phases).
 
 ## Carried risks / decisions to watch
 

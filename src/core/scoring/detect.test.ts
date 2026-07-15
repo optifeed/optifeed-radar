@@ -89,6 +89,30 @@ describe('analyzeAnswer - mention detection', () => {
     expect(r.citedDomains).toEqual(['acme.example', 'blog.foo.com']);
   });
 
+  it('detects non-Latin brand names (CJK and Cyrillic)', () => {
+    const jp = analyzeAnswer(
+      answer('私は楽天をお勧めします。'),
+      profile({ brand: '楽天', domain: 'rakuten.co.jp' }),
+    );
+    expect(jp.mentioned).toBe(true);
+
+    const ru = analyzeAnswer(
+      answer('Я рекомендую Яндекс всем.'),
+      profile({ brand: 'Яндекс', domain: 'yandex.ru' }),
+    );
+    expect(ru.mentioned).toBe(true);
+  });
+
+  it('anchors the domain match on host boundaries (no substring hits)', () => {
+    const p = profile({ brand: 'Acme', domain: 'acme.com' });
+    expect(analyzeAnswer(answer('Visit acme.com for kits.'), p).mentioned).toBe(
+      true,
+    );
+    expect(analyzeAnswer(answer('Beware myacme.com scams.'), p).mentioned).toBe(
+      false,
+    );
+  });
+
   it('flags a generic-word brand as ambiguous for the judge pass', () => {
     const p = profile({ brand: 'Orange' });
     const r = analyzeAnswer(answer('I like fresh orange juice.'), p);
@@ -107,5 +131,15 @@ describe('analyzeAnswer - mention detection', () => {
         .sentiment,
     ).toBe('negative');
     expect(analyzeAnswer(answer('Acme exists.'), p).sentiment).toBe('neutral');
+  });
+
+  it('accounts for negation (a negated positive is not positive)', () => {
+    const p = profile({ brand: 'Acme' });
+    expect(
+      analyzeAnswer(
+        answer('Acme is not reliable and I would not recommend it.'),
+        p,
+      ).sentiment,
+    ).toBe('negative');
   });
 });

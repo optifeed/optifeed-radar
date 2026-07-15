@@ -67,11 +67,28 @@ export async function loadProfile(
     if (isNotFound(err)) return null;
     throw err;
   }
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as BrandProfile;
+    parsed = JSON.parse(raw);
   } catch (err) {
     throw new ProfileParseError(path, err);
   }
+  return validateProfile(parsed, path);
+}
+
+/** Validate a parsed profile's required shape (a hand edit can break it). */
+function validateProfile(raw: unknown, path: string): BrandProfile {
+  const fail = (why: string): never => {
+    throw new ProfileParseError(path, new Error(why));
+  };
+  if (!raw || typeof raw !== 'object') fail('expected an object');
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.schema_version !== 'string') fail('missing schema_version');
+  if (typeof obj.domain !== 'string') fail('missing domain');
+  if (typeof obj.brand !== 'string') fail('missing brand');
+  if (!Array.isArray(obj.aliases)) fail('aliases must be an array');
+  if (!Array.isArray(obj.competitors)) fail('competitors must be an array');
+  return obj as unknown as BrandProfile;
 }
 
 /** Persist a profile as pretty JSON, ensuring the state directory exists. */

@@ -83,6 +83,27 @@ describe('excludeCompetitors', () => {
       excludeCompetitors(['What is the question buyers ask?'], ['Quest']),
     ).toEqual(['What is the question buyers ask?']);
   });
+
+  it('strips competitors with non-word edge characters (C++, .NET)', () => {
+    expect(
+      excludeCompetitors(
+        ['Is C++ the best choice?', 'What about memory safety?'],
+        ['C++'],
+      ),
+    ).toEqual(['What about memory safety?']);
+    expect(excludeCompetitors(['Should I use .NET here?'], ['.NET'])).toEqual(
+      [],
+    );
+  });
+
+  it('strips non-Latin competitor names', () => {
+    expect(
+      excludeCompetitors(
+        ['楽天と比べてどうですか?', '通常の質問です'],
+        ['楽天'],
+      ),
+    ).toEqual(['通常の質問です']);
+  });
 });
 
 describe('parseIntentQueries', () => {
@@ -108,6 +129,15 @@ describe('parseIntentQueries', () => {
     const text = '```json\n{"trust": ["Is this brand reputable?"]}\n```';
     const byIntent = parseIntentQueries(text, ['trust']);
     expect(byIntent.trust).toEqual(['Is this brand reputable?']);
+  });
+
+  it('extracts the object even when prose with braces follows the JSON', () => {
+    const text =
+      'Sure!\n```json\n{"best-of":["a","b"]}\n```\nLet me know if you need {more}.';
+    expect(parseIntentQueries(text, ['best-of'])['best-of']).toEqual([
+      'a',
+      'b',
+    ]);
   });
 });
 
@@ -245,6 +275,24 @@ describe('generateQueries', () => {
 
     expect(pack.queries.every((q) => !/Estes/i.test(q.prompt))).toBe(true);
     expect(pack.queries.map((q) => q.prompt)).toContain('Best kits?');
+  });
+
+  it('authorizes against the real output budget, not the 100-token judge estimate', async () => {
+    const judge = recordingJudge(goodAnswer);
+    // The old fixed ~100-output-token estimate (~$0.00017) would fit under this
+    // cap; the real ~900-token generation budget does not, so it must skip.
+    const guard = new CostGuard({ maxSetupCostUsd: 0.0003 });
+
+    const { pack, skipped } = await generateQueries(
+      profile(),
+      { judge, guard },
+      { generatedAt: AT_ISO },
+    );
+
+    expect(skipped).toBeDefined();
+    expect(pack.queries).toEqual([]);
+    expect(guard.costCapped).toBe(true);
+    expect(judge.prompts).toEqual([]);
   });
 
   it('skips generation and never spends when it would exceed the setup cap', async () => {

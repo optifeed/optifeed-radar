@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CostGuard } from '../costs.js';
 import type { JudgeClient } from '../types.js';
-import { discoverCompetitors } from './competitors.js';
+import { discoverCompetitors, parseCompetitors } from './competitors.js';
 
 /** A judge that records the prompt it saw and returns a canned answer. */
 function recordingJudge(
@@ -33,6 +33,13 @@ describe('discoverCompetitors', () => {
     expect(result.competitors).toEqual(['Estes', 'Quest Aerospace']);
     expect(guard.spentUsd).toBeCloseTo(0.002, 10);
     expect(judge.prompts[0]).toContain('Acme Rockets');
+  });
+
+  it('parses a JSON array even when a later bracket appears in prose', () => {
+    expect(parseCompetitors('["Estes","Quest"] (see ref [1])')).toEqual([
+      'Estes',
+      'Quest',
+    ]);
   });
 
   it('parses a numbered/bulleted list when the model does not return JSON', async () => {

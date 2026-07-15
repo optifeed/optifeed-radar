@@ -5,12 +5,15 @@
  * brand (name + aliases + domain) and known competitors. Ambiguous cases
  * (generic-word brand) are flagged for the judge pass, not resolved here.
  */
+import { fold, indexOfTerm } from '../text.js';
 import type {
   BrandProfile,
   EngineAnswer,
   MentionResult,
   Sentiment,
 } from '../types.js';
+
+export { fold };
 
 /** Common single-word brands that collide with everyday words (judge disambiguates). */
 const GENERIC_WORDS = new Set([
@@ -52,44 +55,69 @@ const NEGATIVE_WORDS = [
   'complaints',
 ];
 
-/** Lowercase and strip diacritics so "Café" matches "cafe". */
-export function fold(text: string): string {
-  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** First match index of `term` in already-folded `text`, or -1. Word-boundary. */
-function firstIndexOf(foldedText: string, term: string): number {
-  const folded = fold(term).trim();
-  if (!folded) return -1;
-  // A domain (contains a dot) is matched literally; names use word boundaries.
-  const pattern = folded.includes('.')
-    ? escapeRegExp(folded)
-    : `\\b${escapeRegExp(folded)}\\b`;
-  return foldedText.search(new RegExp(pattern));
-}
-
-/** Earliest index at which any of `terms` appears, or -1. */
+/** Earliest index at which any of `terms` appears, or -1. Boundary-aware. */
 function earliestIndex(foldedText: string, terms: string[]): number {
   let best = -1;
   for (const term of terms) {
-    const idx = firstIndexOf(foldedText, term);
+    const idx = indexOfTerm(foldedText, term);
     if (idx !== -1 && (best === -1 || idx < best)) best = idx;
   }
   return best;
 }
 
+const POSITIVE = new Set(POSITIVE_WORDS);
+const NEGATIVE = new Set(NEGATIVE_WORDS);
+const NEGATORS = new Set([
+  'not',
+  'no',
+  'never',
+  'without',
+  'hardly',
+  'cannot',
+  'cant',
+  'dont',
+  'doesnt',
+  'didnt',
+  'isnt',
+  'arent',
+  'wasnt',
+  'werent',
+  'wont',
+  'wouldnt',
+  'couldnt',
+  'shouldnt',
+]);
+const NEGATION_WINDOW = 3;
+
+/**
+ * Lexicon sentiment with negation handling: a positive word negated within the
+ * preceding few tokens ("not reliable", "would not recommend") counts negative,
+ * and a negated negative is discounted to neutral rather than flipped positive.
+ */
 function detectSentiment(foldedText: string): Sentiment {
-  const count = (words: string[]) =>
-    words.reduce(
-      (n, w) => n + (new RegExp(`\\b${w}\\b`).test(foldedText) ? 1 : 0),
-      0,
-    );
-  const pos = count(POSITIVE_WORDS);
-  const neg = count(NEGATIVE_WORDS);
+  const tokens = foldedText
+    .replace(/['’]/g, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+  let pos = 0;
+  let neg = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    const isPos = POSITIVE.has(token);
+    const isNeg = NEGATIVE.has(token);
+    if (!isPos && !isNeg) continue;
+    const negated = tokens
+      .slice(Math.max(0, i - NEGATION_WINDOW), i)
+      .some((w) => NEGATORS.has(w));
+    if (isPos) {
+      if (negated) neg++;
+      else pos++;
+    } else if (!negated) {
+      neg++; // a negated negative is discounted to neutral (skipped)
+    }
+  }
+
   if (pos > neg) return 'positive';
   if (neg > pos) return 'negative';
   return 'neutral';
@@ -130,7 +158,8 @@ export function analyzeAnswer(
   const found: { name: string; idx: number }[] = [];
   if (mentioned) found.push({ name: profile.brand, idx: brandIdx });
   for (const competitor of profile.competitors) {
-    const idx = firstIndexOf(folded, competitor);
+    if (fold(competitor).trim() === fold(profile.brand).trim()) continue;
+    const idx = indexOfTerm(folded, competitor);
     if (idx !== -1) found.push({ name: competitor, idx });
   }
   found.sort((a, b) => a.idx - b.idx);

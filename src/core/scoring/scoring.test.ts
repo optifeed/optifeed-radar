@@ -119,6 +119,17 @@ describe('scoreAnswers (orchestration)', () => {
     expect(report.engines[0]!.score).toBe(0); // false positive removed
   });
 
+  it('tags the report with the scoring schema version, not the profile version', async () => {
+    const oldProfile: BrandProfile = { ...profile, schema_version: '0.0' };
+    const report = await scoreAnswers(
+      [ans('openai', 'parametric', 'Acme is fine.')],
+      oldProfile,
+      {},
+      { generatedAt: AT },
+    );
+    expect(report.schema_version).toBe(SCHEMA_VERSION);
+  });
+
   it('skips the judge pass entirely when no judge is provided', async () => {
     const answers = [ans('openai', 'parametric', 'I love fresh orange juice.')];
     const orangeProfile: BrandProfile = {

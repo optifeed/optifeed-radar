@@ -5,7 +5,8 @@
  * cap hit or a judge error degrades to an empty competitor list with a reason,
  * so discovery always returns a usable profile.
  */
-import { CostGuard, estimateJudgeCallUsd } from '../costs.js';
+import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import { extractBalanced } from '../text.js';
 import type { JudgeClient } from '../types.js';
 
 /** Upper bound on competitors we keep from one call. */
@@ -55,10 +56,10 @@ function buildPrompt(input: CompetitorInput): string {
 export function parseCompetitors(text: string): string[] {
   const trimmed = text.trim();
 
-  // Prefer a JSON array if the model returned one (possibly fenced).
-  const jsonStart = trimmed.indexOf('[');
-  if (jsonStart !== -1) {
-    const candidate = trimmed.slice(jsonStart, trimmed.lastIndexOf(']') + 1);
+  // Prefer a JSON array if the model returned one (possibly fenced or followed
+  // by prose - extractBalanced ignores later brackets that would break a slice).
+  const candidate = extractBalanced(trimmed, '[', ']');
+  if (candidate !== null) {
     try {
       const parsed: unknown = JSON.parse(candidate);
       if (Array.isArray(parsed)) {
@@ -96,14 +97,18 @@ export async function discoverCompetitors(
   deps: CompetitorDeps,
 ): Promise<CompetitorResult> {
   const { judge, guard } = deps;
-  const projected = deps.projectedCostUsd ?? estimateJudgeCallUsd(judge.model);
+  const prompt = buildPrompt(input);
+  const maxTokens = 300;
+  const projected =
+    deps.projectedCostUsd ??
+    estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
 
   if (!guard.authorize(projected, 'setup')) {
     return { competitors: [], skipped: 'setup cost cap reached' };
   }
 
   try {
-    const res = await judge.complete(buildPrompt(input), { maxTokens: 300 });
+    const res = await judge.complete(prompt, { maxTokens });
     guard.record(res.costUsd, 'setup');
     return { competitors: parseCompetitors(res.text) };
   } catch (err) {

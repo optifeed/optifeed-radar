@@ -49,6 +49,38 @@ export function buildProfile(input: BuildProfileInput): BrandProfile {
   };
 }
 
+export interface FlagInput {
+  brand?: string;
+  category?: string;
+  generatedAt: string;
+}
+
+/**
+ * Apply `--brand`/`--category` flags over an existing profile, overriding ONLY
+ * the flagged fields (marked `user`) and preserving every other curated field.
+ * This is the flags path when a profile already exists - it must never wipe
+ * fields the flags do not mention.
+ */
+export function applyFlags(
+  existing: BrandProfile,
+  flags: FlagInput,
+): BrandProfile {
+  const merged: BrandProfile = {
+    ...existing,
+    generatedAt: flags.generatedAt,
+    sources: { ...existing.sources },
+  };
+  if (flags.brand !== undefined) {
+    merged.brand = flags.brand;
+    merged.sources = { ...merged.sources, brand: 'user' };
+  }
+  if (flags.category !== undefined) {
+    merged.category = flags.category;
+    merged.sources = { ...merged.sources, category: 'user' };
+  }
+  return merged;
+}
+
 export interface FlagProfileInput {
   domain: string;
   brand?: string;
@@ -99,6 +131,12 @@ export function mergeProfile(
       (merged[field] as unknown) = existing[field];
       merged.sources = { ...merged.sources, [field]: 'user' };
     }
+  }
+
+  // `geo` is only ever set by a manual edit (discovery never extracts it) and
+  // is not a source-tracked field, so always carry an existing geo forward.
+  if (existing.geo !== undefined && merged.geo === undefined) {
+    merged.geo = existing.geo;
   }
 
   // A user-degraded profile that later gets a real fetch is no longer degraded;

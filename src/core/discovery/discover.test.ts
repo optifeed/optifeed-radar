@@ -187,6 +187,83 @@ describe('discover', () => {
     expect(result.profile.generatedAt).toBe(AT);
   });
 
+  it('flag override preserves an existing curated profile (no data loss)', async () => {
+    const existing: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      brand: 'Acme',
+      aliases: ['ACME'],
+      category: 'rockets',
+      offerings: ['Orbit Kit'],
+      locale: 'en-US',
+      geo: 'Berlin',
+      competitors: ['Estes', 'Quest'],
+      sources: { brand: 'extracted', competitors: 'llm' },
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const { fetcher, calls } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const j = judge('["Estes"]');
+    const { fs } = memFs({ [profilePath('/state')]: JSON.stringify(existing) });
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', brand: 'Acme Rockets' },
+    );
+
+    expect(result.profile.brand).toBe('Acme Rockets'); // flag applied
+    expect(result.profile.sources?.brand).toBe('user');
+    // Curated fields survive.
+    expect(result.profile.competitors).toEqual(['Estes', 'Quest']);
+    expect(result.profile.offerings).toEqual(['Orbit Kit']);
+    expect(result.profile.geo).toBe('Berlin');
+    expect(calls).toEqual([]); // still no fetch on the flags path
+    expect(j.calls).toBe(0);
+  });
+
+  it('does not clobber a good cached profile when a refresh fetch fails', async () => {
+    const existing: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      brand: 'Acme Rockets',
+      aliases: ['Acme'],
+      category: 'model rockets',
+      competitors: ['Estes'],
+      sources: { brand: 'extracted' },
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    // Empty page map: homepage fetch fails, sitemap empty -> zero pages.
+    const { fetcher } = fakeFetcher({});
+    const j = judge('["Estes"]');
+    const { fs } = memFs({ [profilePath('/state')]: JSON.stringify(existing) });
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', refresh: true },
+    );
+
+    expect(result.profile).toEqual(existing); // kept intact
+    expect(result.competitorNote).toMatch(/fetch/i);
+  });
+
+  it('returns a degraded stem profile when the fetch fails and no profile exists', async () => {
+    const { fetcher } = fakeFetcher({});
+    const j = judge('[]');
+    const { fs } = memFs();
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.profile.brand).toBe('Acme'); // domain stem
+    expect(result.profile.degraded).toBe(true);
+  });
+
   it('builds a degraded profile from flags with no fetch', async () => {
     const { fetcher, calls } = fakeFetcher({
       'https://acme.example/': fixture('schema-rich.html'),

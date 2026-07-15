@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, type BrandProfile } from '../types.js';
 import type { ExtractedSignals } from './extract.js';
 import {
+  applyFlags,
   buildProfile,
   buildProfileFromFlags,
   mergeProfile,
@@ -71,7 +72,60 @@ describe('buildProfileFromFlags', () => {
   });
 });
 
+describe('applyFlags', () => {
+  it('overrides only the flagged fields, preserving the rest as user-set', () => {
+    const existing: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      brand: 'Acme',
+      aliases: ['ACME'],
+      category: 'rockets',
+      offerings: ['Orbit Kit'],
+      locale: 'en-US',
+      geo: 'Berlin',
+      competitors: ['Estes', 'Quest'],
+      sources: { brand: 'extracted', competitors: 'llm' },
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const merged = applyFlags(existing, {
+      brand: 'Acme Rockets',
+      generatedAt: AT,
+    });
+
+    expect(merged.brand).toBe('Acme Rockets'); // flag wins
+    expect(merged.sources?.brand).toBe('user');
+    // Everything else survives untouched.
+    expect(merged.competitors).toEqual(['Estes', 'Quest']);
+    expect(merged.offerings).toEqual(['Orbit Kit']);
+    expect(merged.geo).toBe('Berlin');
+    expect(merged.generatedAt).toBe(AT);
+  });
+});
+
 describe('mergeProfile', () => {
+  it('preserves a user-edited geo when the fresh profile lacks it', () => {
+    const existing: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      brand: 'Acme',
+      aliases: [],
+      geo: 'Berlin, Germany',
+      competitors: [],
+      sources: {},
+    };
+    const fresh: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'acme.example',
+      brand: 'Acme',
+      aliases: [],
+      competitors: [],
+      sources: {},
+      generatedAt: AT,
+    };
+    expect(mergeProfile(existing, fresh).geo).toBe('Berlin, Germany');
+  });
+
   it('keeps user-sourced fields and takes fresh values for the rest', () => {
     const existing: BrandProfile = {
       schema_version: SCHEMA_VERSION,

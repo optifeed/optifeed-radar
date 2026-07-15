@@ -5,7 +5,8 @@
  * (main phase). Hitting either bound stops the pass without throwing - the
  * remaining ambiguous results are simply left as pass-1 decided them.
  */
-import { CostGuard, estimateJudgeCallUsd } from '../costs.js';
+import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import { extractBalanced } from '../text.js';
 import type {
   BrandProfile,
   EngineAnswer,
@@ -43,12 +44,11 @@ interface Verdict {
 
 /** Parse the judge's JSON verdict; defaults conservatively on malformed output. */
 export function parseVerdict(text: string): Verdict {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) return { mentioned: false };
+  const json = extractBalanced(text, '{', '}');
+  if (json === null) return { mentioned: false };
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text.slice(start, end + 1));
+    parsed = JSON.parse(json);
   } catch {
     return { mentioned: false };
   }
@@ -98,20 +98,23 @@ export async function refineAmbiguous(
 
   if (maxJudge === 0) return { results: refined, judged };
 
-  const projected = deps.projectedCostUsd ?? estimateJudgeCallUsd(judge.model);
-
+  const maxTokens = 60;
   for (let i = 0; i < refined.length && judged < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
     if (!result?.ambiguous || !answer) continue;
 
+    // Project against the real prompt size (it embeds the full answer text),
+    // so a long answer cannot slip past the cost cap on a fixed under-estimate.
+    const prompt = buildPrompt(answer, profile);
+    const projected =
+      deps.projectedCostUsd ??
+      estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
     if (!guard.authorize(projected, 'main')) break; // cost-capped: stop cleanly
 
     let verdict: Verdict;
     try {
-      const res = await judge.complete(buildPrompt(answer, profile), {
-        maxTokens: 60,
-      });
+      const res = await judge.complete(prompt, { maxTokens });
       guard.record(res.costUsd, 'main');
       verdict = parseVerdict(res.text);
     } catch {

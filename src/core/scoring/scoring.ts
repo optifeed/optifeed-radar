@@ -7,15 +7,16 @@
  * {@link ScoreReport}. All judge I/O is injected.
  */
 import { CostGuard } from '../costs.js';
-import type {
-  BrandProfile,
-  EngineAnswer,
-  EngineId,
-  EngineKind,
-  EngineScore,
-  JudgeClient,
-  MentionResult,
-  ScoreReport,
+import {
+  SCHEMA_VERSION,
+  type BrandProfile,
+  type EngineAnswer,
+  type EngineId,
+  type EngineKind,
+  type EngineScore,
+  type JudgeClient,
+  type MentionResult,
+  type ScoreReport,
 } from '../types.js';
 import { analyzeAnswer } from './detect.js';
 import { JUDGE_RATE_CAP, refineAmbiguous } from './judge.js';
@@ -69,7 +70,7 @@ export async function scoreAnswers(
   const score = compositeScore(engines);
 
   return {
-    schema_version: profile.schema_version,
+    schema_version: SCHEMA_VERSION,
     domain: profile.domain,
     score,
     engines,

@@ -135,6 +135,25 @@ export function estimateJudgeCallUsd(
   );
 }
 
+/**
+ * Estimate the USD cost of a single call with explicit token counts, priced by
+ * the configured model (unknown -> priciest entry). Use this when the real
+ * input/output budget is known, so the cost guard authorizes against reality.
+ */
+export function estimateCallUsd(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): number {
+  const pricing = MODEL_PRICING.models[model] ?? priciestPricing();
+  return costOfCall(pricing, inputTokens, outputTokens);
+}
+
+/** Rough token count from character length (~4 chars/token) for pre-call estimates. */
+export function approxTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 /** The most expensive pricing in the table - a conservative unknown-model default. */
 function priciestPricing(): ModelPricing {
   return Object.values(MODEL_PRICING.models).reduce((max, p) =>

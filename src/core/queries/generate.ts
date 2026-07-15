@@ -5,7 +5,8 @@
  * are separated from the single I/O function `generateQueries`, so the whole
  * module unit-tests against a mocked judge with no network.
  */
-import { CostGuard, estimateJudgeCallUsd } from '../costs.js';
+import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import { extractBalanced, fold, mentionsTerm } from '../text.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -32,20 +33,20 @@ export function activeIntents(profile: BrandProfile): QueryIntent[] {
   return QUERY_INTENTS.filter((i) => i !== 'local' || Boolean(profile.geo));
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Remove prompts that name any competitor (word-boundary, case-insensitive). */
+/**
+ * Remove prompts that name any competitor. Boundary-aware and Unicode-safe
+ * (case/accent-folded), so "Quest" does not knock out "question" but "C++",
+ * ".NET", and non-Latin names are still caught (shared matcher).
+ */
 export function excludeCompetitors(
   prompts: string[],
   competitors: string[],
 ): string[] {
-  const patterns = competitors
-    .map((c) => c.trim())
-    .filter(Boolean)
-    .map((c) => new RegExp(`\\b${escapeRegExp(c)}\\b`, 'i'));
-  return prompts.filter((p) => !patterns.some((re) => re.test(p)));
+  const terms = competitors.map((c) => c.trim()).filter(Boolean);
+  return prompts.filter((prompt) => {
+    const folded = fold(prompt);
+    return !terms.some((term) => mentionsTerm(folded, term));
+  });
 }
 
 /**
@@ -65,13 +66,12 @@ export function parseIntentQueries(
     local: [],
   };
 
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) return byIntent;
+  const json = extractBalanced(text, '{', '}');
+  if (json === null) return byIntent;
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text.slice(start, end + 1));
+    parsed = JSON.parse(json);
   } catch {
     return byIntent;
   }
@@ -226,17 +226,18 @@ export async function generateQueries(
     generatedAt: opts.generatedAt,
   };
 
-  const projected = deps.projectedCostUsd ?? estimateJudgeCallUsd(judge.model);
+  const perIntent = Math.ceil(target / intents.length);
+  const prompt = buildGenPrompt(profile, intents, perIntent);
+  const maxTokens = 900;
+  const projected =
+    deps.projectedCostUsd ??
+    estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
   if (!guard.authorize(projected, 'setup')) {
     return { pack: emptyPack, skipped: 'setup cost cap reached' };
   }
 
-  const perIntent = Math.ceil(target / intents.length);
   try {
-    const res = await judge.complete(
-      buildGenPrompt(profile, intents, perIntent),
-      { maxTokens: 900 },
-    );
+    const res = await judge.complete(prompt, { maxTokens });
     guard.record(res.costUsd, 'setup');
     const byIntent = parseIntentQueries(res.text, intents);
     const pack = buildQueryPack({

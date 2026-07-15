@@ -13,6 +13,7 @@ import type { BrandProfile, JudgeClient } from '../types.js';
 import { discoverCompetitors } from './competitors.js';
 import { extractSignals } from './extract.js';
 import {
+  applyFlags,
   buildProfile,
   buildProfileFromFlags,
   mergeProfile,
@@ -106,26 +107,60 @@ export async function discover(
   const write = async (profile: BrandProfile) =>
     persist ? await saveProfile(profile, opts.stateDir, fs) : undefined;
 
-  // Flags path: build a degraded profile with no fetch (never overwrites an
-  // existing user profile silently - it IS the user's explicit input).
+  const existing = await loadProfile(opts.stateDir, fs);
+
+  // Flags path: no fetch. Override ONLY the flagged fields over an existing
+  // profile (preserving every curated field); build from scratch if none.
   if (opts.brand !== undefined || opts.category !== undefined) {
-    const profile = buildProfileFromFlags({
-      domain,
-      brand: opts.brand,
-      category: opts.category,
-      generatedAt: now(),
-    });
+    const profile = existing
+      ? applyFlags(existing, {
+          brand: opts.brand,
+          category: opts.category,
+          generatedAt: now(),
+        })
+      : buildProfileFromFlags({
+          domain,
+          brand: opts.brand,
+          category: opts.category,
+          generatedAt: now(),
+        });
     return { profile, path: await write(profile) };
   }
 
   // Reuse a persisted profile unless the caller asked to refresh.
-  const existing = await loadProfile(opts.stateDir, fs);
   if (existing && !opts.refresh) {
     return { profile: existing, fromCache: true };
   }
 
   // Fresh discovery: fetch -> extract -> one guarded competitor call.
   const pages = await gatherPages(domain, deps.fetcher, samplePages);
+
+  // Total fetch failure: never clobber a good cached profile with a stem-only
+  // one. Keep the existing profile, or (if none) return a degraded stem profile.
+  if (pages.length === 0) {
+    if (existing) {
+      return {
+        profile: existing,
+        fromCache: true,
+        competitorNote: 'fetch failed; kept the existing profile',
+      };
+    }
+    const degradedStem: BrandProfile = {
+      ...buildProfile({
+        domain,
+        signals: extractSignals(domain, []),
+        competitors: [],
+        generatedAt: now(),
+      }),
+      degraded: true,
+    };
+    return {
+      profile: degradedStem,
+      path: await write(degradedStem),
+      competitorNote: 'fetch failed; degraded to a domain-only profile',
+    };
+  }
+
   const signals = extractSignals(domain, pages);
 
   let competitors: string[] = [];

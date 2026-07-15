@@ -65,4 +65,18 @@ describe('profile persistence', () => {
       ProfileParseError,
     );
   });
+
+  it('throws ProfileParseError on a structurally invalid profile', async () => {
+    // Valid JSON but missing required fields / wrong types.
+    const { fs } = memFs({
+      [profilePath('/state')]: JSON.stringify({
+        domain: 'x.com',
+        brand: 'X',
+        competitors: 'not-an-array',
+      }),
+    });
+    await expect(loadProfile('/state', fs)).rejects.toBeInstanceOf(
+      ProfileParseError,
+    );
+  });
 });

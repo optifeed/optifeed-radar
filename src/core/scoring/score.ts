@@ -100,7 +100,17 @@ export function shareOfVoice(
   results: MentionResult[],
   profile: BrandProfile,
 ): ShareOfVoiceRow[] {
-  const names = [profile.brand, ...profile.competitors];
+  // Dedupe (case-insensitively) so a competitor list that repeats the brand or
+  // itself never yields duplicate rows; the brand always wins its own row.
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const name of [profile.brand, ...profile.competitors]) {
+    const key = name.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      names.push(name);
+    }
+  }
   const counts = new Map<string, number>(names.map((n) => [n, 0]));
   for (const r of results) {
     for (const entity of r.entities) {

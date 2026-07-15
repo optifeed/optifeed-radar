@@ -7,7 +7,7 @@ import {
   type JudgeClient,
   type MentionResult,
 } from '../types.js';
-import { refineAmbiguous } from './judge.js';
+import { parseVerdict, refineAmbiguous } from './judge.js';
 
 const profile: BrandProfile = {
   schema_version: SCHEMA_VERSION,
@@ -53,6 +53,16 @@ function countingJudge(text: string): JudgeClient & { calls: number } {
     },
   };
 }
+
+describe('parseVerdict', () => {
+  it('parses the verdict object despite trailing prose braces', () => {
+    const v = parseVerdict(
+      '{"mentioned": true, "sentiment": "positive"} note {x}',
+    );
+    expect(v.mentioned).toBe(true);
+    expect(v.sentiment).toBe('positive');
+  });
+});
 
 describe('refineAmbiguous (judge pass 2)', () => {
   it('caps judge calls at 30% of all answers', async () => {
@@ -127,6 +137,28 @@ describe('refineAmbiguous (judge pass 2)', () => {
 
     expect(judge.calls).toBe(1);
     expect(out.judged).toBe(1);
+    expect(guard.costCapped).toBe(true);
+  });
+
+  it('authorizes a long answer against its real input size', async () => {
+    const longText = 'orange juice is nice. '.repeat(400); // ~8800 chars
+    const results = [ambiguousMention()];
+    const answers = [answer(longText)];
+    const judge = countingJudge('{"mentioned": false}');
+    // The old fixed 700-input-token estimate would fit; the real ~2000+ tokens
+    // of embedded answer text do not, so the guard must stop it.
+    const guard = new CostGuard({ maxCostUsd: 0.0002 });
+
+    const out = await refineAmbiguous(
+      results,
+      answers,
+      profile,
+      { judge, guard },
+      { judgeRateCap: 1 },
+    );
+
+    expect(judge.calls).toBe(0);
+    expect(out.judged).toBe(0);
     expect(guard.costCapped).toBe(true);
   });
 
