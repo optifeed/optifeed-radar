@@ -60,7 +60,12 @@ export function scoreEngine(
       ? null
       : positions.reduce((a, b) => a + b, 0) / positions.length;
 
-  const positionScore = avgPosition === null ? 0 : 1 / avgPosition;
+  // Coverage-aware position: the mean of (1/rank) over ALL answers, so an answer
+  // that never mentions the brand contributes 0. A brand absent from half the
+  // answers cannot earn full position credit from the half where it leads
+  // (being #1-when-present must not mask being missing from the conversation).
+  const positionScore =
+    answers === 0 ? 0 : positions.reduce((sum, p) => sum + 1 / p, 0) / answers;
 
   const sentimentAvg =
     mentions === 0

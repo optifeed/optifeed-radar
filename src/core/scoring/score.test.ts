@@ -36,7 +36,7 @@ function mentionAt(
 }
 
 describe('scoreEngine (published formula)', () => {
-  it('reproduces the documented worked example → 59', () => {
+  it('reproduces the documented worked example → 53', () => {
     // 5 answers, 3 mentioned at positions 1,2,3 with sentiments +,0,0.
     const results = [
       mentionAt(1, 'positive'),
@@ -47,10 +47,12 @@ describe('scoreEngine (published formula)', () => {
     ];
     const s = scoreEngine('openai', 'parametric', results);
     expect(s.mentionRate).toBeCloseTo(0.6, 10);
-    expect(s.avgPosition).toBeCloseTo(2, 10);
+    expect(s.avgPosition).toBeCloseTo(2, 10); // avg rank WHEN mentioned (display)
     expect(s.mentions).toBe(3);
     expect(s.answers).toBe(5);
-    expect(s.score).toBe(59); // (0.6*0.6 + 0.4*0.5) * 1.05 = 0.588 → 59
+    // positionScore is coverage-aware: mean of 1/rank over ALL 5 answers.
+    // (0.6*0.6 + 0.4*((1/1+1/2+1/3)/5)) * 1.05 = (0.36 + 0.1467)*1.05 = 0.532 → 53
+    expect(s.score).toBe(53);
   });
 
   it('scores 0 with no mentions and reports a null avg position', () => {

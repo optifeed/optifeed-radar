@@ -44,7 +44,7 @@ For one engine, over its N answers:
 
 ```
 mentionRate   = mentions / N                       # 0..1
-positionScore = mentions == 0 ? 0 : 1 / avgPosition # 1.0 at rank 1, less deeper
+positionScore = mean over all N answers of (1 / rank when mentioned, else 0)
 sentimentAvg  = mean(+1 positive, 0 neutral, -1 negative) over mentioned answers
 sentimentMod  = 1 + 0.15 * sentimentAvg            # 0.85 .. 1.15
 
@@ -54,16 +54,24 @@ score = round(clamp(raw, 0, 1) * 100)
 
 Weights: mention rate 0.60, position 0.40, sentiment swing +/- 15%.
 
+`positionScore` is coverage-aware: it averages `1 / rank` over **all** answers,
+not only the ones that mention you, so an answer that never mentions your brand
+contributes 0. Being ranked first when you do appear cannot mask being absent
+from half the conversation.
+
 Worked example. An engine with 5 answers, mentioned in 3 of them at positions
 1, 2, and 3, with sentiments positive, neutral, neutral:
 
 ```
 mentionRate   = 3 / 5 = 0.60
-avgPosition   = (1 + 2 + 3) / 3 = 2   ->  positionScore = 1 / 2 = 0.50
+positionScore = (1/1 + 1/2 + 1/3 + 0 + 0) / 5 = 1.833 / 5 = 0.367
 sentimentAvg  = (1 + 0 + 0) / 3 = 0.333  ->  sentimentMod = 1.05
-raw   = (0.60 * 0.60 + 0.40 * 0.50) * 1.05 = 0.56 * 1.05 = 0.588
-score = round(58.8) = 59
+raw   = (0.60 * 0.60 + 0.40 * 0.367) * 1.05 = 0.507 * 1.05 = 0.532
+score = round(53.2) = 53
 ```
+
+(`avgPosition`, the average rank when mentioned, is reported alongside the score
+for context but is not the value used in the formula.)
 
 ## Step 3 - composite score (the headline number)
 

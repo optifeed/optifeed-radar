@@ -14,12 +14,12 @@
       "Qdoba"
     ]
   },
-  "score": 61,
+  "score": 46,
   "engines": [
     {
       "engine": "openai",
       "kind": "parametric",
-      "score": 92,
+      "score": 77,
       "mentionRate": 0.6666666666666666,
       "avgPosition": 1,
       "answers": 3,
@@ -28,7 +28,7 @@
     {
       "engine": "perplexity",
       "kind": "grounded",
-      "score": 81,
+      "score": 57,
       "mentionRate": 0.5,
       "avgPosition": 1,
       "answers": 2,
