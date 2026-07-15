@@ -10,6 +10,16 @@ engines mention your brand for a set of buyer questions, on the runs you did.
 Engines vary between runs, samples are finite, and language is messy. Treat the
 number as a directional signal, not a precise measurement.
 
+## Which questions feed the score
+
+Only unbranded buyer questions count toward the AI Visibility Score - questions
+that never name your brand ("what are the best gluten-free snacks?"), so a
+mention means the engine surfaced you unprompted. Questions that name your brand
+by design (the "trust" intent, e.g. "is Wefood reliable?") are kept out of the
+score, since naming the brand guarantees a mention. Those are reported
+separately as a reputation summary (positive / neutral / negative sentiment) and
+never inflate the headline number.
+
 ## Step 1 - mention detection (per answer)
 
 Each engine answer is analyzed for whether your brand appears.
