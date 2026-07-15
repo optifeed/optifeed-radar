@@ -104,6 +104,31 @@ describe('resolveQueries', () => {
     expect(j.calls).toBe(0);
   });
 
+  it('never reuses a cached pack from a different domain (shared state dir)', async () => {
+    // A flat, writable-project state dir holds another brand's queries.yml; a
+    // run for THIS profile's domain must regenerate, not ask another brand's
+    // buyer prompts.
+    const otherPack: QueryPack = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'figma.com',
+      generatedAt: AT,
+      queries: [{ id: 'q1', intent: 'best-of', prompt: 'Best design tool?' }],
+    };
+    const { fs } = memFs({ [queriesPath('/state')]: toYaml(otherPack) });
+    const j = judge();
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', count: 4 },
+    );
+
+    expect(result.fromCache).toBeUndefined(); // did NOT reuse figma's pack
+    expect(result.pack.domain).toBe('acme.example');
+    expect(result.pack.queries).not.toContainEqual(otherPack.queries[0]);
+    expect(j.calls).toBe(1); // regenerated for this brand
+  });
+
   it('generates and persists a pack when none exists', async () => {
     const { fs, files } = memFs();
     const j = judge();

@@ -67,7 +67,10 @@ export async function resolveQueries(
   }
 
   // 2. Reuse a persisted pack unless asked to regenerate (hand edits survive).
-  const existing = await loadQueryPack(opts.stateDir, fs);
+  // A shared state dir can hold another brand's pack - never ask one brand's
+  // buyer prompts for a different domain; a mismatch regenerates.
+  const loaded = await loadQueryPack(opts.stateDir, fs);
+  const existing = loaded?.domain === profile.domain ? loaded : undefined;
   if (existing && !opts.regenerate) {
     return { pack: existing, fromCache: true };
   }

@@ -107,7 +107,13 @@ export async function discover(
   const write = async (profile: BrandProfile) =>
     persist ? await saveProfile(profile, opts.stateDir, fs) : undefined;
 
-  const existing = await loadProfile(opts.stateDir, fs);
+  // Never serve a cached profile for a different domain: the writable-project
+  // state dir is a flat `<cwd>/.optifeed` shared across brands, so it can hold
+  // another domain's profile. Treat a mismatch as no cache - discover fresh
+  // rather than analyze the wrong brand. (Same invariant `diff` enforces before
+  // comparing two snapshots.)
+  const loaded = await loadProfile(opts.stateDir, fs);
+  const existing = loaded?.domain === domain ? loaded : undefined;
 
   // Flags path: no fetch. Override ONLY the flagged fields over an existing
   // profile (preserving every curated field); build from scratch if none.

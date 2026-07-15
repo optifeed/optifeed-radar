@@ -153,6 +153,39 @@ describe('discover', () => {
     expect(j.calls).toBe(0); // no judge spend
   });
 
+  it('never serves a cached profile for a different domain (shared state dir)', async () => {
+    // A flat, writable-project state dir holds one brand's profile; a run for a
+    // DIFFERENT domain must re-discover, not analyze the wrong brand.
+    const otherBrand: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'figma.com',
+      brand: 'Figma',
+      aliases: ['Figma'],
+      competitors: ['Adobe XD'],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      sources: { brand: 'extracted' },
+    };
+    const { fetcher, calls } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const j = judge('["Estes"]');
+    const { fs } = memFs({
+      [profilePath('/state')]: JSON.stringify(otherBrand),
+    });
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.fromCache).toBeUndefined(); // did NOT reuse figma's cache
+    expect(result.profile.domain).toBe('acme.example');
+    expect(result.profile.brand).toBe('Acme Rockets'); // discovered fresh
+    expect(result.profile.competitors).not.toContain('Adobe XD'); // no bleed
+    expect(calls).toContain('https://acme.example/'); // actually fetched
+  });
+
   it('--refresh re-discovers but preserves user-edited fields', async () => {
     const existing: BrandProfile = {
       schema_version: SCHEMA_VERSION,
