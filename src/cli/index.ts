@@ -6,6 +6,8 @@ import process from 'node:process';
 import { Command } from 'commander';
 import { renderAuditJson, renderAuditText } from '../core/output/index.js';
 import { runAudit } from '../core/run/index.js';
+import { registerCheck } from './check.js';
+import { type Runtime, defaultRuntime } from './runtime.js';
 
 /**
  * Read the package version at runtime.
@@ -22,8 +24,27 @@ export function getVersion(): string {
   return pkg.version;
 }
 
-/** Build the commander program. Kept side-effect free so tests can inspect it. */
-export function buildProgram(): Command {
+/** Register `audit <domain>` (zero-key path) on the program. */
+function registerAudit(program: Command, rt: Runtime): void {
+  program
+    .command('audit')
+    .argument('<domain>', 'the site to audit, e.g. example.com')
+    .description('Static AI-readiness audit (no API keys, no AI calls)')
+    .option('--json', 'output the raw JSON report')
+    .action(async (domain: string, options: { json?: boolean }) => {
+      const report = await runAudit(domain, { fetcher: rt.fetcher });
+      const out = options.json
+        ? renderAuditJson(report)
+        : renderAuditText(report);
+      rt.out(`${out}\n`);
+    });
+}
+
+/**
+ * Build the commander program. Side-effect free (no parse) so tests can drive
+ * it with an injected {@link Runtime} and inspect output.
+ */
+export function buildProgram(rt: Runtime = defaultRuntime()): Command {
   const program = new Command();
   program
     .name('optifeed-visibility')
@@ -32,18 +53,8 @@ export function buildProgram(): Command {
     )
     .version(getVersion(), '-v, --version', 'print the version');
 
-  program
-    .command('audit')
-    .argument('<domain>', 'the site to audit, e.g. example.com')
-    .description('Static AI-readiness audit (no API keys, no AI calls)')
-    .option('--json', 'output the raw JSON report')
-    .action(async (domain: string, options: { json?: boolean }) => {
-      const report = await runAudit(domain);
-      const out = options.json
-        ? renderAuditJson(report)
-        : renderAuditText(report);
-      process.stdout.write(`${out}\n`);
-    });
+  registerAudit(program, rt);
+  registerCheck(program, rt);
 
   return program;
 }

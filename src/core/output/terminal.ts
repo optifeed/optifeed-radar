@@ -67,6 +67,11 @@ export function renderAuditJson(report: AuditReport): string {
   return JSON.stringify(report, null, 2);
 }
 
+/** Stable pretty JSON of the check envelope for `--json` (no ANSI, the contract). */
+export function renderCheckJson(env: VisibilityEnvelope): string {
+  return JSON.stringify(env, null, 2);
+}
+
 /** Right-pad to a column width for aligned tables. */
 function pad(s: string, width: number): string {
   return s.length >= width ? s : s + ' '.repeat(width - s.length);

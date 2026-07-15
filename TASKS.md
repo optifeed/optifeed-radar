@@ -25,7 +25,7 @@ Last updated: 2026-07-15.
 ## Ship milestones (the gates that matter)
 
 - [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Still pending for full M9/M10/M11: HTML report, colorized output, and wiring M8's snapshots + `--fail-under` into the `check` CLI (the M8 contract itself now exists).
-- [~] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 check cmd). Core pipeline + renderers done: `runCheck` (M10) wires M3-M8 e2e; M9 renders the envelope (terminal + HTML). Pending only: M11 `check` command (thin wrapper: parse flags → `runCheck` → `renderCheckText`).
+- [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. Live end-to-end with a real engine key (spend) is deferred to the M17 smoke test.
 - [ ] **`shopping` beta ships** - Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 - [ ] **MCP ships** - stdio server over the same core (M15)
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
@@ -174,13 +174,14 @@ Owner: setup · PR: (M9) · needs M8
 - [x] Acceptance: HTML zero external requests; consumes only M8 envelope
 - Module report: `renderCheckText` (terminal) + `renderCheckHtml` (HTML) over the M8 `VisibilityEnvelope`, consuming it only (no re-derive). Terminal: headline AI Visibility Score, the honest sampling caveat (`varianceNote` + a grammatical `samplingLine`), per-engine lines (grounded vs parametric shown separately - copy rule), share of voice with a `(you)` marker, warn/error findings (info hidden in the landing view), a `Run notes` block surfacing honesty (costCapped/skippedEngines/degraded via the shared `honestyNotes`, rule #6), and the report path. Color is via **picocolors** (M9's owned dep, added) and fully optional - `{color:false}` yields ANSI-free output for capture/`--json`. HTML: one self-contained file (inline `<style>`, dark theme, agency header brand+domain+date, per-engine/SoV/findings tables, `Run notes`, raw answers as evidence behind `<details>`), **zero external resource loads** (no script/src/link/@import/remote url), and every piece of external text (brand, prompts, answers, citations, findings) HTML-escaped so untrusted LLM/web output cannot inject markup. **Single footer CTA**: extracted `FOOTER_CTA` into `footer.ts` (defined once); the seed's audit-specific "no engines queried" line became `AUDIT_ONLY_NOTE` in the audit body, so `check` and `audit` share one honest CTA (the old merged constant was false for a check run). Both renderers end with `FOOTER_CTA`; neither uses an em-dash. Depends only on `../types` + the M8 envelope; no cli/mcp. 15 new tests (226->239); verified by rendering the golden envelope (terminal eyeballed, HTML written + self-contained checks). Deviation: the exact landing-page example output / HTML mockup is external and unavailable - copy + layout are honest and structurally complete but to be reconciled against the messaging guide at M16.
 
-### [ ] M11 - CLI assembly (after M10)
+### [~] M11 - CLI assembly (after M10)
 
-Owner: ___ · PR: ___ · thin over M10 + M9
+Owner: setup · PR: (M11) · thin over M10 + M9
 
-- [ ] commands: `audit` `check` `compare` `sources` `queries` `diff` `shopping` `lint-feed` `mcp` `config`
-- [ ] all interactive prompts bypassable (`--yes` + flags); ship `audit` first
-- [ ] Acceptance e2e mocked: audit no-key, check 1-key, full, clean `--json` (no ANSI)
+- [~] commands: `audit` [x] `check` [x] · `compare` `sources` `queries` `diff` `config` deferred (CLI-native, own follow-up); `shopping` (M12) `lint-feed` (M14) `mcp` (M15) land with their modules
+- [x] all interactive prompts bypassable (`--yes` + flags); ship `audit` first
+- [x] Acceptance e2e mocked: audit no-key, check 1-key, full, clean `--json` (no ANSI)
+- Module report: `check <domain>` is the M11 headline - THIN over `runCheck` (M10) then an M9 renderer (hard rule #1: no orchestration in cli/). Flags: `--yes`, `--json` (clean envelope, no ANSI), `--report <file>` (HTML), `--quick` (8 prompts), `--engines a,b`, `--max-cost`/`--max-setup-cost` (CostGuard caps), `--refresh`/`--regenerate`/`--brand`/`--category`/`--queries`. Introduced a `Runtime` seam (`cli/runtime.ts`): every process effect (stdout/stderr, env, cwd, home, isTTY, clock, writeFile, fetcher) plus a `checkDeps` override behind one injectable object, so the 6 command e2e tests run with no process globals and no network. `defaultCheckDeps` builds the concrete deps (adapters from env, judge via `resolveJudgeModel` cheapest+notice → `createJudgeClient`, guard from cost flags, node fs, and a confirm gate that aborts off a TTY - agents pass `--yes`, hard rule #8). No-key `check` prints guidance to run `audit` and exits 1. `audit` now takes an injected fetcher via the runtime (offline-testable). Added `renderCheckJson` (M9). Deps added (M11-owned): `@inquirer/prompts` (lazy-imported inside the confirm gate). 6 new tests (239→245); verified the built CLI live: `--version`, `--help` (both commands), no-key `check` guidance+exit 1, and a real zero-key `audit example.com` over the network. Deferred to a follow-up: `compare`/`sources`/`queries`/`diff`/`config` (plus a `diff` renderer M9 did not build), and live `check` verification with a real key (M17 smoke test).
 
 ### [ ] M12 - Shopping beta (after M10)
 
