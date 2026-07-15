@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "domain": "caferio.example",
+  "from": "2026-07-01T00:00:00.000Z",
+  "to": "2026-07-15T00:00:00.000Z",
+  "scoreDelta": 8,
+  "engines": [
+    {
+      "engine": "openai",
+      "scoreDelta": 10,
+      "wonPrompts": [
+        "p2"
+      ],
+      "lostPrompts": [
+        "p3"
+      ]
+    },
+    {
+      "engine": "perplexity",
+      "scoreDelta": 5,
+      "wonPrompts": [
+        "p1"
+      ],
+      "lostPrompts": []
+    }
+  ],
+  "promptSetChanged": false
+}

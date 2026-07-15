@@ -24,7 +24,7 @@ Last updated: 2026-07-15.
 
 ## Ship milestones (the gates that matter)
 
-- [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Still pending for full M8/M9/M10/M11: snapshots, HTML report, `--fail-under` exit code, colorized output.
+- [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Still pending for full M9/M10/M11: HTML report, colorized output, and wiring M8's snapshots + `--fail-under` into the `check` CLI (the M8 contract itself now exists).
 - [ ] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 check cmd)
 - [ ] **`shopping` beta ships** - Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 - [ ] **MCP ships** - stdio server over the same core (M15)
@@ -144,12 +144,13 @@ Owner: setup · PR: (M7) · needs M4 + M6 (NOT M5)
 - [x] Acceptance: tricky golden fixtures (common-word brand, competitor-only, non-English); budget cap; formula matches doc
 - Module report: `detect.ts` (pure pass 1 - accent/case fold + word-boundary match of brand/aliases/domain and competitors; entities by first appearance; position; lexicon sentiment; cited domains; generic-word brands flagged `ambiguous`). `judge.ts` (pass 2 - re-judges ONLY ambiguous results, capped at `floor(0.30 * answers)` AND gated by the cost guard on the `main` phase; cap/cost/judge-error all stop cleanly, never throw; a "not mentioned" verdict removes the false positive). `score.ts` (published formula + `SCORE_WEIGHTS` source of truth: engine 0-100 = `(0.6*mentionRate + 0.4*positionScore) * sentimentMod`; composite = grounded-weighted mean 1.5 vs 1.0; SoV; sources). `scoring.ts` orchestrator (pass1 -> pass2 -> aggregate -> `ScoreReport`; judge/guard injected, judge optional). `METHODOLOGY.md` published at repo root with two worked examples the tests reproduce (engine 59, composite 52). Depends only on M4 profile + M6 `EngineAnswer`/`JudgeClient` shapes (imports `../types` + `../costs`, not `../engines`). Backward-compatible M1 additions: `Sentiment`, `MentionResult`, `EngineScore`, `ShareOfVoiceRow`, `SourceRow`, `ScoreReport`. Golden fixtures: `test/fixtures/scoring/{answers.json,golden-report.json}` (accented brand "Café Rio", competitor-only answers, grounded citations, mixed engine kinds -> composite 61). 23 new tests (151 total).
 
-### [ ] M8 - Output data contract — ON THE CRITICAL PATH
+### [x] M8 - Output data contract — ON THE CRITICAL PATH
 
-Owner: ___ · PR: ___ · needs M7 + M3
+Owner: setup · PR: (M8) · needs M7 + M3
 
-- [ ] `--json` stable envelope; snapshots to `.optifeed/snapshots/`; `diff(a,b)`; `--fail-under`
-- [ ] Acceptance: JSON schema snapshot test (break→bump), diff golden incl. changed-prompt-set
+- [x] `--json` stable envelope; snapshots to `.optifeed/snapshots/`; `diff(a,b)`; `--fail-under`
+- [x] Acceptance: JSON schema snapshot test (break→bump), diff golden incl. changed-prompt-set
+- Module report: `core/output` grew the M8 data contract (M9 renderer seed stays). `envelope.ts` - `VisibilityEnvelope` (THE stable shape every consumer reads) + pure `buildEnvelope` wrapping the M7 `ScoreReport` (headline `score`, per-engine, SoV, sources, per-answer mentions), the M4 profile, the raw M6 `answers` (evidence M9 renders - carried so renderers never re-derive), M3 `auditFindings` (surfaced as `findings`, never a competing audit score - rule #6), and run honesty (`costCapped`/`degraded`/`skippedEngines` attached only when set). `sampling` = `{nPrompts (distinct prompts), nAnswers, judged, varianceNote}`; `VARIANCE_NOTE` is the single honest caveat constant. Timestamp injected (deterministic). `snapshot.ts` - injected `SnapshotFs` (adds `readdir` over the profile/query persist pattern); `saveSnapshot`→`<stateDir>/snapshots/<ISO>.json` with colons sanitized to `-` (Windows-safe, still lexically chronological); `loadSnapshot` validates + throws `SnapshotParseError` not clobber; `listSnapshots` sorted, missing-dir→`[]`. `diff.ts` - `diffEnvelopes(a,b)`→`SnapshotDiff` (headline `scoreDelta`, per-engine `scoreDelta`/`wonPrompts`/`lostPrompts` over engines in BOTH runs; prompt-level mention = brand in ANY answer to that prompt; `promptSetChanged` flag + won/lost restricted to the shared-prompt intersection so a regenerated/hand-edited pack is never mislabeled a win/loss). `failunder.ts` - pure `failUnder(envelope, threshold?)`→`{passed, exitCode (0/1), partial, reason}`; a cost-capped/degraded run is flagged `partial` with an honest note. Golden fixtures: `test/fixtures/output/{golden-envelope.json (built from the real scoring answers fixture - the schema snapshot; break→bump), golden-diff.json}`. Depends only on `../types` + `../scoring` shapes (no cli/mcp). 28 new tests (181→209); verified end-to-end on the real disk path (`nodeSnapshotFs`: save→list→round-trip→diff→fail-under). Deferred to M10/M11 wiring: the actual `check --json`/`--fail-under` CLI surface and audit-vs-check envelope selection.
 
 ---
 
