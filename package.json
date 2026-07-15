@@ -38,6 +38,7 @@
     "check": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "commander": "^13.1.0"
   },
   "devDependencies": {

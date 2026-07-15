@@ -66,13 +66,14 @@ Owner: ___ · PR: ___
 
 ## Wave 2 - parallel tracks (need M1)
 
-### [ ] M2 - Fetcher
+### [x] M2 - Fetcher
 
-Owner: ___ · PR: ___
+Owner: setup · PR: (M2)
 
-- [ ] `fetchUrl` (timeout/redirects/max-size/honest UA), `fetchRobots`, `fetchSitemap`, `fetchLlmsTxt`, `extractPage`
-- [ ] in-run URL cache; graceful failure objects (never throws raw)
-- [ ] Acceptance fixtures: redirect chain, 404, huge-page truncation, malformed HTML, sitemap recursion
+- [x] `fetchUrl` (timeout/redirects/max-size/honest UA), `fetchRobots`, `fetchSitemap`, `fetchLlmsTxt`, `extractPage`
+- [x] in-run URL cache; graceful failure objects (never throws raw)
+- [x] Acceptance fixtures: redirect chain, 404, huge-page truncation, malformed HTML, sitemap recursion
+- Module report: `createFetcher({ fetchImpl })` factory holds the in-run cache and takes an injected fetch, so all 12 tests run with a fake router and zero network. Manual redirect following (`redirect: 'manual'`) to report `finalUrl` and cap hops. Body cap truncates by UTF-16 length (approx). `extractPage` is pure cheerio. Fixtures in `test/fixtures/fetcher/` and excluded from prettier (intentionally malformed).
 
 ### [ ] M3 - Audit engine (zero-LLM) — FIRST SHIPPABLE
 
