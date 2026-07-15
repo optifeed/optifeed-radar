@@ -44,6 +44,20 @@ describe('extractPage', () => {
     expect(page.jsonLd).toEqual([]);
   });
 
+  it('matches meta/rel attribute values case-insensitively (real sites vary casing)', () => {
+    // apple.com serves <meta name="Description"> with a capital D; HTML attribute
+    // values like name/rel are effectively case-insensitive, so we must not miss
+    // them (a case-sensitive selector reported "no meta description" on apple.com).
+    const page = extractPage(
+      '<html><head>' +
+        '<meta name="Description" content="Capital-D description.">' +
+        '<link rel="Canonical" href="https://acme.example/">' +
+        '</head><body></body></html>',
+    );
+    expect(page.metaDescription).toBe('Capital-D description.');
+    expect(page.canonical).toBe('https://acme.example/');
+  });
+
   it('skips invalid JSON-LD blocks without failing', () => {
     const page = extractPage(
       '<html><head><script type="application/ld+json">{ not json }</script></head><body></body></html>',

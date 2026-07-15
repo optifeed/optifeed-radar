@@ -28,7 +28,10 @@ export function extractPage(html: string): ExtractedPage {
   const $ = cheerio.load(html);
 
   const og: Record<string, string> = {};
-  $('meta[property^="og:"]').each((_, el) => {
+  // The `i` flag makes the attribute-VALUE match case-insensitive: real sites
+  // vary casing (apple.com uses <meta name="Description">, rel="Canonical"),
+  // and name/rel/property values are effectively case-insensitive in HTML.
+  $('meta[property^="og:" i]').each((_, el) => {
     const property = $(el).attr('property');
     const content = $(el).attr('content');
     if (property && content) {
@@ -56,9 +59,9 @@ export function extractPage(html: string): ExtractedPage {
   return {
     title: textOrUndefined($('head > title').first().text()),
     metaDescription: textOrUndefined(
-      $('meta[name="description"]').attr('content'),
+      $('meta[name="description" i]').attr('content'),
     ),
-    canonical: textOrUndefined($('link[rel="canonical"]').attr('href')),
+    canonical: textOrUndefined($('link[rel="canonical" i]').attr('href')),
     lang: textOrUndefined($('html').attr('lang')),
     h1: textOrUndefined($('h1').first().text()),
     og,
