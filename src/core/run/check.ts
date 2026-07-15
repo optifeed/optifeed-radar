@@ -166,10 +166,19 @@ export async function runCheck(
   if (queries.note) notes.push(queries.note);
   const prompts = queries.pack.queries.map((q) => q.prompt);
 
-  // Estimate the main ASK and gate on it (bypassable with --yes, hard rule #8).
+  // Gate the main ASK spend (bypassable with --yes, hard rule #8). Spending is
+  // allowed ONLY when explicitly confirmed: `--yes`, or a `confirm` handler that
+  // returns true. A consumer that wires neither (e.g. a misconfigured MCP call)
+  // must NOT silently spend - the safe default is to abort before asking.
   const availableEngines = adapters.filter((a) => a.available());
-  const estimate = priceRun(prompts.length, availableEngines, deps.judge);
-  if (!opts.yes && deps.confirm) {
+  if (!opts.yes) {
+    if (!deps.confirm) {
+      notes.push(
+        'Aborted before spending: engine queries need confirmation. Pass yes to run non-interactively, or provide a confirm handler.',
+      );
+      return { aborted: true, notes };
+    }
+    const estimate = priceRun(prompts.length, availableEngines, deps.judge);
     const ok = await deps.confirm({
       estimate,
       nPrompts: prompts.length,

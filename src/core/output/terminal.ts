@@ -164,8 +164,10 @@ export function honestyNotes(env: VisibilityEnvelope): string[] {
   if (!isPartialRun(env)) return [];
   const notes: string[] = [];
   if (env.costCapped) {
+    // The cap can trip in the setup phase (discovery/query-gen) or the main
+    // phase (asking), so do not claim specifically that prompts were skipped.
     notes.push(
-      'Cost cap reached: this is a partial run, some prompts were not asked.',
+      'Cost cap reached: the run stopped early to stay under budget, so results may be partial.',
     );
   }
   for (const s of env.skippedEngines ?? []) {

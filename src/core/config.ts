@@ -22,7 +22,8 @@ export const DEFAULT_JUDGE_MODELS: Record<EngineId, string> = {
   perplexity: 'sonar',
 };
 
-const ENGINE_ORDER: EngineId[] = [
+/** The canonical set of engine ids, in a stable order. Single source of truth. */
+export const ENGINE_ORDER: EngineId[] = [
   'openai',
   'anthropic',
   'gemini',

@@ -20,6 +20,7 @@ export interface CheckFlags {
   report?: string;
   quick?: boolean;
   engines?: string[];
+  judge?: string;
   maxCost?: number;
   maxSetupCost?: number;
   refresh?: boolean;

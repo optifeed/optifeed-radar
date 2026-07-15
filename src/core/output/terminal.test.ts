@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AuditReport } from '../audit/index.js';
+import { AUDIT_ONLY_NOTE } from './footer.js';
 import { FOOTER_CTA, renderAuditText } from './terminal.js';
 
 const report: AuditReport = {
@@ -44,5 +45,11 @@ describe('renderAuditText', () => {
 
   it('never uses an em-dash (messaging guide)', () => {
     expect(renderAuditText(report)).not.toContain('—');
+  });
+
+  it('discloses that the audit queried no AI engines (rule #6)', () => {
+    // Guards the caveat directly: the footer split moved it out of FOOTER_CTA,
+    // so the audit-only honesty note needs its own assertion.
+    expect(renderAuditText(report)).toContain(AUDIT_ONLY_NOTE);
   });
 });

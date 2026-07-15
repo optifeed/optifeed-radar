@@ -266,6 +266,23 @@ Owner: ___ · PR: ___
   cross-domain diff; `loadSnapshot` rejects an incompatible `schema_version`
   by value (rule #2) and validates all required fields. Accepted: ISO-keyed
   snapshot overwrite (idempotent), diff direction (explicit via from/to).
+- 2026-07-15: end-of-wave review of Wave 4 (M9/M10/M11), 21 agents (4 finder
+  lenses + adversarial verify), plus a live `check` smoke against a real
+  OpenAI key. 10 findings (1 refuted) + 1 live-smoke finding, all fixed
+  test-first (commit `<this>`, +7 tests, 245→252). Money/honesty headliners:
+  runCheck no longer spends when a consumer wires no `confirm` and omits `--yes`
+  (aborts - protects the coming MCP entrypoint, rule #8); `--engines <typo>`
+  now errors instead of silently billing every engine; `--report` write is
+  best-effort and never throws away a paid run; `--json --report` writes both;
+  the cost-cap note no longer claims "prompts not asked" when only the setup
+  cap fired; the CLI now surfaces keyless engines as skipped (honest 1-of-4,
+  found live). Cleanups: `--judge` option added (the notice pointed at a flag
+  that did not exist), `ENGINE_ORDER` exported (3rd hardcoded engine list
+  removed), confirm prose moved to stderr, `AUDIT_ONLY_NOTE` gained a test.
+  Live smoke verified real cost accrual ($0.0024, dated model id
+  `gpt-4o-mini-2024-07-18`), no key persisted to disk, real discovery, and
+  audit findings merged. Deferred: test-helper dedup across cli/run tests;
+  trim 0%-share-of-voice rows. Accepted: nothing outstanding.
 
 ## Carried risks / decisions to watch
 

@@ -223,6 +223,23 @@ describe('runCheck end to end (all mocked)', () => {
     expect(result.snapshotPath).toBeUndefined();
   });
 
+  it('refuses to spend when there is no confirm handler and not --yes (rule #8)', async () => {
+    // A seam consumer (e.g. MCP) that wires no confirm and forgets --yes must
+    // NOT silently spend money; the safe default is to abort before asking.
+    const fs = seededFs();
+    const adapters = [fakeAdapter('openai', 'parametric')];
+    const askSpy = vi.spyOn(adapters[0]!, 'ask');
+    const result = await runCheck(
+      'acme.example',
+      { ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })), adapters },
+      { stateDir: STATE }, // no yes, no confirm in deps override below
+    );
+    // baseDeps has no confirm; the override above keeps it absent.
+    expect(result.aborted).toBe(true);
+    expect(askSpy).not.toHaveBeenCalled();
+    expect(result.envelope).toBeUndefined();
+  });
+
   it('caps mid-run under --max-cost: partial envelope, costCapped, never throws', async () => {
     const fs = seededFs();
     // askAll authorizes an estimated per-call cost against the guard before each

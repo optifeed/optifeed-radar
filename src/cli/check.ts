@@ -6,6 +6,7 @@
 import { Command } from 'commander';
 import {
   DEFAULT_JUDGE_MODELS,
+  ENGINE_ORDER,
   detectAvailableEngines,
   resolveJudgeModel,
   resolveStateDir,
@@ -31,17 +32,19 @@ import {
 import type { EngineId } from '../core/types.js';
 import type { CheckFlags, Runtime } from './runtime.js';
 
-const ENGINE_IDS: EngineId[] = ['openai', 'anthropic', 'gemini', 'perplexity'];
-
+/**
+ * Parse `--engines a,b` into known engine ids. Unknown tokens are dropped; an
+ * all-unknown value yields `[]`, which the action treats as an error (rather
+ * than silently querying - and billing - every engine).
+ */
 function parseEngines(value: string): EngineId[] {
   const wanted = value
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  const known = wanted.filter((e): e is EngineId =>
-    (ENGINE_IDS as string[]).includes(e),
+  return wanted.filter((e): e is EngineId =>
+    (ENGINE_ORDER as string[]).includes(e),
   );
-  return known;
 }
 
 function toFlags(o: Record<string, unknown>): CheckFlags {
@@ -51,6 +54,7 @@ function toFlags(o: Record<string, unknown>): CheckFlags {
     report: o.report as string | undefined,
     quick: o.quick as boolean | undefined,
     engines: o.engines as EngineId[] | undefined,
+    judge: o.judge as string | undefined,
     maxCost: o.maxCost as number | undefined,
     maxSetupCost: o.maxSetupCost as number | undefined,
     refresh: o.refresh as boolean | undefined,
@@ -66,12 +70,14 @@ function toFlags(o: Record<string, unknown>): CheckFlags {
  * available, honest notice), wires adapters/guard/fs, and provides a confirm
  * gate that is a no-op abort off a TTY (agents pass `--yes`).
  */
-async function defaultCheckDeps(
+export async function defaultCheckDeps(
   rt: Runtime,
   flags: CheckFlags,
   available: EngineId[],
 ): Promise<RunCheckDeps> {
-  const wanted = flags.engines?.length ? flags.engines : available;
+  // Default to ALL engines so keyless ones reach askAll and are surfaced as
+  // skippedEngines (honest 1-of-4 reporting); `--engines` narrows the set.
+  const wanted = flags.engines?.length ? flags.engines : ENGINE_ORDER;
   const adapters = createEngineAdapters({ env: rt.env }).filter((a) =>
     wanted.includes(a.id),
   );
@@ -79,10 +85,11 @@ async function defaultCheckDeps(
   const judgeRes = await resolveJudgeModel({
     interactive: false,
     availableEngines: available,
+    savedJudgeModel: flags.judge,
   });
   if (judgeRes.notice) rt.err(`${judgeRes.notice}\n`);
   const judgeEngine =
-    ENGINE_IDS.find((e) => DEFAULT_JUDGE_MODELS[e] === judgeRes.model) ??
+    ENGINE_ORDER.find((e) => DEFAULT_JUDGE_MODELS[e] === judgeRes.model) ??
     available[0]!;
   const judgeAdapter = createEngineAdapters({
     env: rt.env,
@@ -98,7 +105,8 @@ async function defaultCheckDeps(
     const cost = ctx.estimate
       ? `about $${ctx.estimate.totalUsd.toFixed(4)}`
       : 'an unknown amount';
-    rt.out(
+    // Prompt prose goes to stderr so it never pollutes --json on stdout.
+    rt.err(
       `This will query ${ctx.engines.length} engines with ${ctx.nPrompts} prompts (estimated cost: ${cost}).\n`,
     );
     if (!rt.isTTY) {
@@ -130,11 +138,12 @@ export function registerCheck(program: Command, rt: Runtime): void {
     .description(
       'Ask real AI engines real buyer questions and score your brand',
     )
-    .option('-y, --yes', 'skip the cost confirmation (for agents / CI)')
+    .option('-y, --yes', 'skip the cost confirmation (for AI agents / CI)')
     .option('--json', 'output the raw JSON envelope (no ANSI)')
     .option('--report <file>', 'also write a self-contained HTML report')
     .option('--quick', 'use a smaller prompt pack (8 prompts)')
     .option('--engines <list>', 'comma-separated engines to use', parseEngines)
+    .option('--judge <model>', 'judge model for discovery/query-gen/scoring')
     .option('--max-cost <usd>', 'hard cap on total spend', parseFloat)
     .option(
       '--max-setup-cost <usd>',
@@ -148,6 +157,16 @@ export function registerCheck(program: Command, rt: Runtime): void {
     .option('--queries <file>', 'use an explicit query pack file')
     .action(async (domain: string, options: Record<string, unknown>) => {
       const flags = toFlags(options);
+
+      // `--engines` was given but nothing in it was recognized: error rather
+      // than silently falling back to querying (and billing) every engine.
+      if (flags.engines?.length === 0) {
+        rt.err(
+          `No recognized engines in --engines. Known engines: ${ENGINE_ORDER.join(', ')}.\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
 
       const available = detectAvailableEngines(rt.env).filter((e) =>
         flags.engines?.length ? flags.engines.includes(e) : true,
@@ -189,16 +208,31 @@ export function registerCheck(program: Command, rt: Runtime): void {
       }
       const env = result.envelope!;
 
-      if (flags.json) {
-        rt.out(`${renderCheckJson(env)}\n`);
-        return;
+      // Write the report first, independent of --json, and never let a failed
+      // write throw away the paid run's results (report is a best-effort side
+      // output). Its confirmation goes to stderr under --json so stdout stays
+      // pure JSON.
+      let reportWritten: string | undefined;
+      if (flags.report) {
+        try {
+          await rt.writeFile(flags.report, renderCheckHtml(env));
+          reportWritten = flags.report;
+        } catch (e) {
+          rt.err(
+            `Could not write report to ${flags.report}: ${e instanceof Error ? e.message : String(e)}\n`,
+          );
+        }
       }
 
-      if (flags.report) {
-        await rt.writeFile(flags.report, renderCheckHtml(env));
-        rt.out(`HTML report written to ${flags.report}\n`);
+      if (flags.json) {
+        rt.out(`${renderCheckJson(env)}\n`);
+        if (reportWritten) rt.err(`HTML report written to ${reportWritten}\n`);
+      } else {
+        rt.out(
+          `${renderCheckText(env, { reportPath: result.snapshotPath })}\n`,
+        );
+        if (reportWritten) rt.out(`HTML report written to ${reportWritten}\n`);
       }
-      rt.out(`${renderCheckText(env, { reportPath: result.snapshotPath })}\n`);
       for (const note of result.notes) rt.err(`${note}\n`);
     });
 }

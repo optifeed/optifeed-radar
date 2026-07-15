@@ -15,6 +15,7 @@ import {
   type QueryPack,
 } from '../core/types.js';
 import { buildProgram } from './index.js';
+import { defaultCheckDeps } from './check.js';
 import { type Runtime } from './runtime.js';
 
 const STATE = '/proj/.optifeed';
@@ -208,5 +209,72 @@ describe('check command', () => {
     await run(rt, ['check', 'acme.example', '--yes']);
     expect(rt.errors.join('')).toContain('audit acme.example');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('errors on an unrecognized --engines value instead of billing every engine', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    await run(rt, ['check', 'acme.example', '--yes', '--engines', 'opnai']);
+    expect(rt.errors.join('').toLowerCase()).toContain('engine');
+    expect(process.exitCode).toBe(1);
+    // Nothing rendered - it did not silently fall back to all engines.
+    expect(rt.output.join('')).not.toContain('AI Visibility Score');
+  });
+
+  it('writes the HTML report AND prints JSON when both are requested', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    await run(rt, [
+      'check',
+      'acme.example',
+      '--yes',
+      '--json',
+      '--report',
+      'out.html',
+    ]);
+    expect(rt.reports.get('out.html')).toContain('<!doctype html>');
+    expect(() => JSON.parse(rt.output.join(''))).not.toThrow();
+  });
+
+  it('still prints the paid results if the report write fails', async () => {
+    const rt = testRuntime({
+      env: { OPENAI_API_KEY: 'sk-test' },
+      writeFile: async () => {
+        throw new Error('ENOENT: no such directory');
+      },
+    });
+    await run(rt, [
+      'check',
+      'acme.example',
+      '--yes',
+      '--report',
+      '/nope/out.html',
+    ]);
+    expect(rt.output.join('')).toContain('AI Visibility Score');
+    expect(rt.errors.join('').toLowerCase()).toContain('report');
+  });
+});
+
+describe('defaultCheckDeps engine selection', () => {
+  it('builds adapters for ALL engines (not just keyed ones) so keyless engines surface as skipped', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    const deps = await defaultCheckDeps(rt, {}, ['openai']);
+    // All four adapters are present; the three keyless ones are unavailable and
+    // askAll will move them to skippedEngines (honest 1-of-4 reporting).
+    expect(deps.adapters).toHaveLength(4);
+    const unavailable = deps.adapters!.filter((a) => !a.available());
+    expect(unavailable.map((a) => a.id).sort()).toEqual([
+      'anthropic',
+      'gemini',
+      'perplexity',
+    ]);
+  });
+
+  it('restricts to the requested engines when --engines is given', async () => {
+    const rt = testRuntime({
+      env: { OPENAI_API_KEY: 'sk-test', ANTHROPIC_API_KEY: 'sk-test' },
+    });
+    const deps = await defaultCheckDeps(rt, { engines: ['openai'] }, [
+      'openai',
+    ]);
+    expect(deps.adapters!.map((a) => a.id)).toEqual(['openai']);
   });
 });
