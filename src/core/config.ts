@@ -150,12 +150,14 @@ export interface ResolveStateDirInput {
 }
 
 /**
- * State dir: `<cwd>/.optifeed` when the project dir is writable, else
- * `<home>/.optifeed/<domain>`. Uses POSIX-style joins (no fs access).
+ * State dir: `<cwd>/.optifeed/<domain>` when the project dir is writable, else
+ * `<home>/.optifeed/<domain>`. Domain-scoped in both cases so several brands
+ * can be checked from one directory without their caches colliding. Uses
+ * POSIX-style joins (no fs access).
  */
 export function resolveStateDir(input: ResolveStateDirInput): string {
   const join = (...parts: string[]) => parts.join('/');
   return input.isProjectWritable
-    ? join(input.cwd, '.optifeed')
+    ? join(input.cwd, '.optifeed', input.domain)
     : join(input.homeDir, '.optifeed', input.domain);
 }

@@ -91,14 +91,16 @@ describe('resolveJudgeModel fallback matrix', () => {
 });
 
 describe('resolveStateDir', () => {
-  it('uses ./.optifeed when the project dir is writable', () => {
+  it('uses ./.optifeed/<domain> when the project dir is writable', () => {
     const dir = resolveStateDir({
       cwd: '/home/u/project',
       domain: 'acme.com',
       homeDir: '/home/u',
       isProjectWritable: true,
     });
-    expect(dir).toBe('/home/u/project/.optifeed');
+    // Domain-scoped so multiple brands can be checked from one directory
+    // without their caches colliding.
+    expect(dir).toBe('/home/u/project/.optifeed/acme.com');
   });
 
   it('falls back to ~/.optifeed/<domain> when the project dir is not writable', () => {
