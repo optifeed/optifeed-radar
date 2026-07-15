@@ -85,15 +85,16 @@ Owner: setup · PR: (M3)
 - [x] Acceptance: perfect(=100) / robots-blocks-GPTBot / no-llms-txt / schema-less; deterministic (report equality across runs)
 - Module report: `buildAuditReport` is pure/deterministic (no clock, no network) - score stability comes for free. Published weights robots 40 / structured 25 / llms 15 / meta 15 / sitemap 5. Structured scoring does NOT require Product schema (would unfairly penalize non-ecommerce brands); Product presence is an info finding only. Added `canonical` to M2 `extractPage` (backward-compatible) for the meta check. Note: METHODOLOGY.md publishing of these weights is owned by M7/M8 output; the constant is the source of truth.
 
-### [ ] M6 - Engine adapters (implements JudgeClient)
+### [x] M6 - Engine adapters (implements JudgeClient)
 
-Owner: ___ · PR: ___
+Owner: setup · PR: (M6)
 
-- [ ] openai (chat + web_search mode), anthropic, gemini (grounding degrades not errors), perplexity (citations degrade not throw)
-- [ ] shared: p-limit, backoff on 429/5xx, per-call cost → CostGuard, timeout
-- [ ] `askAll` runner + `skippedEngines[]`; **provides `JudgeClient` impl**
-- [ ] each provider file <~200 lines (new engine = copy one file)
-- [ ] Acceptance: mocked HTTP, retry/backoff, partial-run shape, cost accumulation, JudgeClient conformance
+- [x] openai (chat + Responses/web_search mode), anthropic, gemini (grounding when asked, degrades not errors), perplexity (citations degrade not throw)
+- [x] shared: per-provider concurrency cap (`mapLimit`), exponential backoff on 429/5xx, per-call cost → CostGuard, timeout (all injectable)
+- [x] `askAll` runner + `skippedEngines[]` (total failure never kills the run); **`createJudgeClient` provides the M1 `JudgeClient` impl**
+- [x] each provider file is a small `ProviderSpec` (endpoint/buildRequest/parse); new engine = copy one spec + one registry line
+- [x] Acceptance: mocked HTTP throughout, retry/backoff paths, partial-run shape, cost accumulation, JudgeClient conformance. 18 new tests; 72 total green.
+- Module report: `createAdapter(spec, deps)` wraps a provider spec with shared retry/cost/clock; `httpPost`, `sleep`, `now`, `apiKey` all injected so every path tests with no network and deterministic timestamps. Wire shapes for parametric endpoints match real APIs; OpenAI grounded (Responses) and Gemini grounding use simplified shapes to be firmed up at the M17 smoke test. `defaultHttpPost` wraps global fetch for production.
 
 ### [ ] M13 - ACP/UCP protocol spike (do before M14)
 
