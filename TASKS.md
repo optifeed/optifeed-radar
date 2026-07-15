@@ -284,6 +284,21 @@ Owner: ___ · PR: ___
   audit findings merged. Deferred: test-helper dedup across cli/run tests;
   trim 0%-share-of-voice rows. Accepted: nothing outstanding.
 
+- 2026-07-15: post-review fixes + UX from live `check` use (test-first, 252→269).
+  (1) Cache served the wrong brand: `discover`/`resolveQueries` reused a cached
+  profile/pack without a domain check, so a shared `.optifeed` served one brand's
+  data for another - now a domain mismatch re-discovers (commit `864a89a`).
+  (2) State dir domain-scoped to `<cwd>/.optifeed/<domain>` so multiple brands
+  coexist per directory (`c3cc7cc`). (3) Live progress: `runCheck` emits phase
+  `ProgressEvent`s (core emits data, never renders - rule #1), CLI renders a
+  stderr spinner + per-prompt list, TTY-only and off under `--json` (`6abe2ad`).
+  (4) Generated buyer prompts now must be self-contained - no dangling "this
+  brand"/"these products" back-references (bit the Turkish pack); trust prompts
+  name the brand (`9f47f63`). (5) Branded (trust) prompts scored apart as a
+  `reputation` block (sentiment), kept OUT of the visibility score so it stays
+  "surfaced unprompted" - M7/M8/M9 + optional envelope field, schema unchanged
+  (`9be899d`). All five verified live against wefood.com.tr.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
