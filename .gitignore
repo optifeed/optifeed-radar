@@ -8,6 +8,10 @@ dist/
 # local run state (never commit; may contain user data, never keys)
 .optifeed/
 
+# local secrets - engine API keys (never commit)
+.env
+.env.local
+
 # coverage
 coverage/
 
