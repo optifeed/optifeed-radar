@@ -9,4 +9,6 @@ export * from './envelope.js';
 export * from './snapshot.js';
 export * from './diff.js';
 export * from './failunder.js';
+export * from './footer.js';
 export * from './terminal.js';
+export * from './html.js';

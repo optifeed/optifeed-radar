@@ -41,6 +41,7 @@
   "dependencies": {
     "cheerio": "^1.2.0",
     "commander": "^13.1.0",
+    "picocolors": "^1.1.1",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
