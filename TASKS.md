@@ -1,9 +1,9 @@
 # Optifeed Visibility - Build Tracker
 
-Living checklist for the build. Source of scope: the dev plan (`optifeed-visibility-dev-plan.md`,
-kept in the planning workspace). This file tracks **status only** - it does not
-restate the plan. Keep the two in sync: if scope changes, edit the plan first,
-then reflect it here.
+Living checklist for the build. Source of scope: the dev plan
+(`docs/dev-plan.md`, the authoritative in-repo copy). This file tracks
+**status only** - it does not restate the plan. Keep the two in sync: if scope
+changes, edit the plan first, then reflect it here.
 
 > This is the canonical, in-repo copy (moved here when M0 scaffolded the repo).
 > The planning-workspace copy is superseded.
