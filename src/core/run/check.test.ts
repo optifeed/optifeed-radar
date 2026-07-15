@@ -20,7 +20,7 @@ import {
   type JudgeClient,
   type QueryPack,
 } from '../types.js';
-import { runCheck } from './check.js';
+import { runCheck, type ProgressEvent } from './check.js';
 
 const STATE = '/state';
 const NOW = () => '2026-07-15T00:00:00.000Z';
@@ -189,6 +189,46 @@ describe('runCheck end to end (all mocked)', () => {
     // Snapshot written under the state dir.
     expect(result.snapshotPath).toContain('snapshots');
     expect(fs.files.has(result.snapshotPath!)).toBe(true);
+  });
+
+  it('emits ordered progress events across every phase (rule #1: data, not render)', async () => {
+    const fs = seededFs();
+    const fetcher = createFetcher({ fetchImpl: fakeFetch() });
+    const events: ProgressEvent[] = [];
+
+    await runCheck(
+      'acme.example',
+      { ...baseDeps(fs, fetcher), onProgress: (e) => events.push(e) },
+      { stateDir: STATE, yes: true },
+    );
+
+    const kinds = events.map((e) => e.kind);
+    // Phase order, ignoring the repeated per-answer ticks.
+    expect(kinds.filter((k) => k !== 'ask-answered')).toEqual([
+      'discovery-start',
+      'discovery-done',
+      'queries-start',
+      'queries-done',
+      'ask-start',
+      'ask-done',
+      'scoring-start',
+      'scoring-done',
+    ]);
+
+    // 2 prompts x 2 engines = 4 individual asks; the counter advances 1..4.
+    const start = events.find((e) => e.kind === 'ask-start');
+    expect(start).toEqual({ kind: 'ask-start', total: 4 });
+    const ticks = events.filter((e) => e.kind === 'ask-answered');
+    expect(ticks).toHaveLength(4);
+    expect(ticks.at(-1)).toEqual({ kind: 'ask-answered', done: 4, total: 4 });
+
+    // Discovery/queries carry what the renderer prints.
+    expect(events.find((e) => e.kind === 'discovery-done')).toMatchObject({
+      brand: 'Acme',
+    });
+    expect(events.find((e) => e.kind === 'queries-done')).toMatchObject({
+      prompts: ['best widgets brand?', 'top widget makers?'],
+    });
   });
 
   it('bypasses the confirmation gate under --yes', async () => {

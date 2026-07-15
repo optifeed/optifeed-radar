@@ -33,6 +33,22 @@ import { createFetcher } from '../fetcher/index.js';
 import { createEngineAdapters } from '../engines/index.js';
 import type { EngineId, JudgeClient, RunHonesty } from '../types.js';
 
+/**
+ * Progress events emitted through a run's phases. Structured data only - the
+ * orchestrator never renders (hard rule #1); a caller (the CLI) turns these
+ * into a spinner and per-prompt lines.
+ */
+export type ProgressEvent =
+  | { kind: 'discovery-start' }
+  | { kind: 'discovery-done'; brand: string }
+  | { kind: 'queries-start' }
+  | { kind: 'queries-done'; prompts: string[] }
+  | { kind: 'ask-start'; total: number }
+  | { kind: 'ask-answered'; done: number; total: number }
+  | { kind: 'ask-done'; answered: number; total: number }
+  | { kind: 'scoring-start' }
+  | { kind: 'scoring-done' };
+
 /** Context passed to the confirmation gate before the main ASK spend. */
 export interface ConfirmContext {
   /** Pre-run cost estimate, or undefined if it could not be priced. */
@@ -68,6 +84,8 @@ export interface RunCheckDeps {
   confirm?: (ctx: ConfirmContext) => Promise<boolean>;
   /** Env for the default adapter set, when `adapters` is not injected. */
   env?: Record<string, string | undefined>;
+  /** Progress sink for interactive rendering; defaults to a no-op. */
+  onProgress?: (event: ProgressEvent) => void;
 }
 
 /** Options mirroring the `check` command's flags. */
@@ -121,10 +139,12 @@ export async function runCheck(
   const adapters =
     deps.adapters ?? createEngineAdapters({ env: deps.env ?? process.env });
   const persist = opts.persist ?? true;
+  const report = deps.onProgress ?? ((): void => undefined);
   const notes: string[] = [];
 
   // Discovery (M4) and the zero-LLM audit (M3) are independent fetch-only work;
   // run them concurrently (the fetcher's in-run cache dedupes shared URLs).
+  report({ kind: 'discovery-start' });
   const [discovery, auditReport] = await Promise.all([
     discover(
       domain,
@@ -149,9 +169,11 @@ export async function runCheck(
     ),
   ]);
   const profile = discovery.profile;
+  report({ kind: 'discovery-done', brand: profile.brand });
   if (discovery.competitorNote) notes.push(discovery.competitorNote);
 
   // Query pack (M5): explicit file > cached > generate (setup budget).
+  report({ kind: 'queries-start' });
   const queries = await resolveQueries(
     profile,
     { judge: deps.judge, guard, fs: deps.queryFs ?? nodeQueryFs(), now },
@@ -165,6 +187,7 @@ export async function runCheck(
   );
   if (queries.note) notes.push(queries.note);
   const prompts = queries.pack.queries.map((q) => q.prompt);
+  report({ kind: 'queries-done', prompts });
 
   // Gate the main ASK spend (bypassable with --yes, hard rule #8). Spending is
   // allowed ONLY when explicitly confirmed: `--yes`, or a `confirm` handler that
@@ -192,13 +215,22 @@ export async function runCheck(
 
   // Ask (M6): a total engine failure never kills the run; the cost cap trips
   // here on the main budget and returns partial answers, never over-spending.
+  const total = prompts.length * availableEngines.length;
+  report({ kind: 'ask-start', total });
+  let done = 0;
   const asked = await askAll(prompts, adapters, {
     mode: opts.mode,
     guard,
     concurrency: opts.concurrency,
+    onAnswered: () => {
+      done += 1;
+      report({ kind: 'ask-answered', done, total });
+    },
   });
+  report({ kind: 'ask-done', answered: asked.answers.length, total });
 
   // Score (M7): deterministic pass 1 + a budgeted judge pass 2.
+  report({ kind: 'scoring-start' });
   const generatedAt = now();
   const score = await scoreAnswers(
     asked.answers,
@@ -206,6 +238,7 @@ export async function runCheck(
     { judge: deps.judge, guard },
     { judgeRateCap: opts.judgeRateCap, generatedAt },
   );
+  report({ kind: 'scoring-done' });
 
   // Assemble honesty from ALL three independent signals (M8 review lesson #1):
   // a cap, a skipped engine, or a degraded profile each make the run partial.

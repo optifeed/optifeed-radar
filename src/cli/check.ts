@@ -30,6 +30,7 @@ import {
   type RunCheckDeps,
 } from '../core/run/index.js';
 import type { EngineId } from '../core/types.js';
+import { createProgressReporter } from './progress.js';
 import type { CheckFlags, Runtime } from './runtime.js';
 
 /**
@@ -184,6 +185,15 @@ export function registerCheck(program: Command, rt: Runtime): void {
         ? rt.checkDeps(flags)
         : await defaultCheckDeps(rt, flags, available);
 
+      // Live progress (spinner + per-prompt list) only on an interactive TTY
+      // and never under --json - it writes to stderr so stdout stays pure JSON,
+      // and agents/CI (non-TTY) get the clean, quiet path.
+      const reporter =
+        rt.isTTY && !flags.json
+          ? createProgressReporter({ write: (s) => rt.err(s) })
+          : undefined;
+      if (reporter) deps.onProgress = reporter.onProgress;
+
       const stateDir = resolveStateDir({
         cwd: rt.cwd,
         homeDir: rt.homeDir,
@@ -191,16 +201,21 @@ export function registerCheck(program: Command, rt: Runtime): void {
         isProjectWritable: rt.isProjectWritable,
       });
 
-      const result = await runCheck(domain, deps, {
-        stateDir,
-        yes: flags.yes,
-        count: flags.quick ? 8 : undefined,
-        refresh: flags.refresh,
-        regenerate: flags.regenerate,
-        brand: flags.brand,
-        category: flags.category,
-        queriesFile: flags.queries,
-      });
+      let result;
+      try {
+        result = await runCheck(domain, deps, {
+          stateDir,
+          yes: flags.yes,
+          count: flags.quick ? 8 : undefined,
+          refresh: flags.refresh,
+          regenerate: flags.regenerate,
+          brand: flags.brand,
+          category: flags.category,
+          queriesFile: flags.queries,
+        });
+      } finally {
+        reporter?.stop();
+      }
 
       if (result.aborted) {
         rt.out('Aborted - no engines were queried.\n');

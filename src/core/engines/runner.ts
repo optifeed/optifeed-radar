@@ -29,6 +29,11 @@ export interface AskAllOptions {
   guard?: CostGuard;
   /** Max concurrent requests per provider (default 4). */
   concurrency?: number;
+  /**
+   * Called once per individual engine call as it settles (ok, error, or
+   * capped), for progress reporting. Pure side-channel - never affects results.
+   */
+  onAnswered?: () => void;
 }
 
 /** Run `fn` over items with at most `limit` in flight, preserving order. */
@@ -96,8 +101,12 @@ export async function askAll(
           // per-call cost before asking; once it trips, `authorize` sets
           // `costCapped` and we stop asking (partial run, never over-spend hard).
           if (guard) {
-            if (guard.costCapped) return { kind: 'capped' };
+            if (guard.costCapped) {
+              opts.onAnswered?.();
+              return { kind: 'capped' };
+            }
             if (!guard.authorize(estimateCall(adapter.model))) {
+              opts.onAnswered?.();
               return { kind: 'capped' };
             }
           }
@@ -110,6 +119,10 @@ export async function askAll(
               kind: 'error',
               error: err instanceof Error ? err.message : String(err),
             };
+          } finally {
+            // ok/error settle here; the capped paths above reported already, so
+            // every call ticks exactly once.
+            opts.onAnswered?.();
           }
         },
       );

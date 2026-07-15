@@ -79,6 +79,31 @@ describe('askAll', () => {
     expect(result.skippedEngines).toEqual([]);
   });
 
+  it('ticks onAnswered exactly once per individual call (ok and error paths)', async () => {
+    let ticks = 0;
+    await askAll(
+      ['good', 'bad'],
+      [
+        fakeAdapter('openai'),
+        fakeAdapter('perplexity', { failOn: (p) => p === 'bad' }),
+      ],
+      { onAnswered: () => (ticks += 1) },
+    );
+    // 2 prompts x 2 adapters, each settles once (one of them errors).
+    expect(ticks).toBe(4);
+  });
+
+  it('ticks onAnswered once per call when the cost cap stops asking', async () => {
+    const guard = new CostGuard({ maxCostUsd: 0 }); // caps immediately
+    let ticks = 0;
+    await askAll(['p1', 'p2'], [fakeAdapter('openai', { costUsd: 0.02 })], {
+      guard,
+      onAnswered: () => (ticks += 1),
+    });
+    // Both prompts settle (as capped) and each ticks exactly once - no double count.
+    expect(ticks).toBe(2);
+  });
+
   it('records per-call cost into the CostGuard', async () => {
     const guard = new CostGuard();
     await askAll(['p1', 'p2'], [fakeAdapter('openai', { costUsd: 0.02 })], {
