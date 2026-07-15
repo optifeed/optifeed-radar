@@ -21,6 +21,18 @@ npx optifeed-visibility check yourbrand.com
 Under active development. The repo is public early so you can follow along.
 If this is useful to you, a star genuinely helps.
 
+The zero-key `audit` runs end to end today, from a clone:
+
+```bash
+npm install
+npx tsx src/cli/index.ts audit yourbrand.com
+```
+
+It checks AI-crawler access (robots.txt), llms.txt, schema.org structured
+data, meta basics, and your sitemap, then prints a 0-100 AI-readiness score.
+No API keys, no AI calls. The full `check` pipeline and the published `npx`
+package are still in progress.
+
 ## What it will do
 
 - `audit` - instant, zero-key static AI-readiness check (robots.txt AI-crawler
