@@ -7,6 +7,7 @@ import * as cheerio from 'cheerio';
 export interface ExtractedPage {
   title?: string;
   metaDescription?: string;
+  canonical?: string;
   lang?: string;
   h1?: string;
   /** Open Graph properties keyed without the `og:` prefix (e.g. `site_name`). */
@@ -57,6 +58,7 @@ export function extractPage(html: string): ExtractedPage {
     metaDescription: textOrUndefined(
       $('meta[name="description"]').attr('content'),
     ),
+    canonical: textOrUndefined($('link[rel="canonical"]').attr('href')),
     lang: textOrUndefined($('html').attr('lang')),
     h1: textOrUndefined($('h1').first().text()),
     og,

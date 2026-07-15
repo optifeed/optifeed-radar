@@ -75,13 +75,15 @@ Owner: setup · PR: (M2)
 - [x] Acceptance fixtures: redirect chain, 404, huge-page truncation, malformed HTML, sitemap recursion
 - Module report: `createFetcher({ fetchImpl })` factory holds the in-run cache and takes an injected fetch, so all 12 tests run with a fake router and zero network. Manual redirect following (`redirect: 'manual'`) to report `finalUrl` and cap hops. Body cap truncates by UTF-16 length (approx). `extractPage` is pure cheerio. Fixtures in `test/fixtures/fetcher/` and excluded from prettier (intentionally malformed).
 
-### [ ] M3 - Audit engine (zero-LLM) — FIRST SHIPPABLE
+### [x] M3 - Audit engine (zero-LLM) — FIRST SHIPPABLE
 
-Owner: ___ · PR: ___
+Owner: setup · PR: (M3)
 
-- [ ] robots.txt bot table · llms.txt · JSON-LD/schema · meta basics · sitemap (each pure fn → `Finding[]`)
-- [ ] `AuditReport` (score 0-100 published weights, sorted findings, per-bot table)
-- [ ] Acceptance: perfect / robots-blocks-GPTBot / no-llms-txt / schema-less; deterministic score
+- [x] robots.txt bot table (9 AI bots) · llms.txt · JSON-LD/schema · meta basics · sitemap
+- [x] `AuditReport` (score 0-100 published weights `AUDIT_WEIGHTS`, findings sorted by severity, per-bot access table)
+- [x] `gatherAuditInput(domain, fetcher)` assembles inputs via M2 (nulls on fetch failure)
+- [x] Acceptance: perfect(=100) / robots-blocks-GPTBot / no-llms-txt / schema-less; deterministic (report equality across runs)
+- Module report: `buildAuditReport` is pure/deterministic (no clock, no network) - score stability comes for free. Published weights robots 40 / structured 25 / llms 15 / meta 15 / sitemap 5. Structured scoring does NOT require Product schema (would unfairly penalize non-ecommerce brands); Product presence is an info finding only. Added `canonical` to M2 `extractPage` (backward-compatible) for the meta check. Note: METHODOLOGY.md publishing of these weights is owned by M7/M8 output; the constant is the source of truth.
 
 ### [ ] M6 - Engine adapters (implements JudgeClient)
 
