@@ -24,7 +24,7 @@ Last updated: 2026-07-15.
 
 ## Ship milestones (the gates that matter)
 
-- [ ] **`audit` ships** - zero-key static audit end to end (M0-M3, M8, M9, M10 runAudit, M11 audit cmd)
+- [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Still pending for full M8/M9/M10/M11: snapshots, HTML report, `--fail-under` exit code, colorized output.
 - [ ] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 check cmd)
 - [ ] **`shopping` beta ships** - Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 - [ ] **MCP ships** - stdio server over the same core (M15)
