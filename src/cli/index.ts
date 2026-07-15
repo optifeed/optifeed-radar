@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { Command } from 'commander';
+import { renderAuditJson, renderAuditText } from '../core/output/index.js';
+import { runAudit } from '../core/run/index.js';
 
 /**
  * Read the package version at runtime.
@@ -29,6 +31,20 @@ export function buildProgram(): Command {
       'Open-source AI visibility checker. Is your brand recommended by AI engines?',
     )
     .version(getVersion(), '-v, --version', 'print the version');
+
+  program
+    .command('audit')
+    .argument('<domain>', 'the site to audit, e.g. example.com')
+    .description('Static AI-readiness audit (no API keys, no AI calls)')
+    .option('--json', 'output the raw JSON report')
+    .action(async (domain: string, options: { json?: boolean }) => {
+      const report = await runAudit(domain);
+      const out = options.json
+        ? renderAuditJson(report)
+        : renderAuditText(report);
+      process.stdout.write(`${out}\n`);
+    });
+
   return program;
 }
 
@@ -44,5 +60,12 @@ function isDirectRun(): boolean {
 }
 
 if (isDirectRun()) {
-  buildProgram().parse(process.argv);
+  buildProgram()
+    .parseAsync(process.argv)
+    .catch((err: unknown) => {
+      process.stderr.write(
+        `${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exitCode = 1;
+    });
 }
