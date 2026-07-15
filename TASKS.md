@@ -230,6 +230,15 @@ Owner: ___ · PR: ___
 - [ ] `check` surfaces ONE headline score (audit's 0-100 only in standalone `audit`)
 - [ ] copy passes the messaging guide (no free-vs-paid equivalence, tense rules, em-dash ban)
 
+## Review log
+
+- 2026-07-15: high-effort workflow code review of M0–M6 (17 agents, 4 finder
+  angles + adversarial verify). 10 verified findings, all fixed test-first in
+  commit `d439065` (cost priced by configured model; `--max-cost` enforced in
+  the runner; JSON-LD array recursion; sitemap parseability by content;
+  non-JSON 2xx wrapped; gemini maxTokens; concurrent audit fetches; llms-full
+  wired in; regex simplification). +8 regression tests.
+
 ## Carried risks / decisions to watch
 
 - [ ] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in)
