@@ -25,7 +25,7 @@ Last updated: 2026-07-15.
 ## Ship milestones (the gates that matter)
 
 - [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Still pending for full M9/M10/M11: HTML report, colorized output, and wiring M8's snapshots + `--fail-under` into the `check` CLI (the M8 contract itself now exists).
-- [ ] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 check cmd)
+- [~] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 check cmd). Core pipeline done end to end: `runCheck` (M10) wires M3-M8 with mocked-everything e2e coverage. Pending: M9 terminal render + M11 `check` command (thin wrappers over `runCheck`).
 - [ ] **`shopping` beta ships** - Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 - [ ] **MCP ships** - stdio server over the same core (M15)
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
@@ -156,13 +156,14 @@ Owner: setup · PR: (M8) · needs M7 + M3
 
 ## Wave 4 - orchestration + entrypoints (need M8)
 
-### [ ] M10 - Run orchestrator (`core/run`) — THE SEAM
+### [x] M10 - Run orchestrator (`core/run`) — THE SEAM
 
-Owner: ___ · PR: ___ · needs M3,M4,M5,M6,M7,M8
+Owner: setup · PR: (M10) · needs M3,M4,M5,M6,M7,M8
 
-- [ ] `runCheck(domain,opts)` wires the full pipeline + two-phase budget + snapshot; returns envelope (no render)
-- [ ] `runAudit(domain,opts)` zero-key path; injection points for adapters/JudgeClient/fetcher
-- [ ] Acceptance e2e (all mocked): audit-only, full check, `--yes`, mid-run `--max-cost` → `costCapped`
+- [x] `runCheck(domain,opts)` wires the full pipeline + two-phase budget + snapshot; returns envelope (no render)
+- [x] `runAudit(domain,opts)` zero-key path; injection points for adapters/JudgeClient/fetcher
+- [x] Acceptance e2e (all mocked): audit-only, full check, `--yes`, mid-run `--max-cost` → `costCapped`
+- Module report: `runCheck` (`core/run/check.ts`) is the seam - one function wiring discover (M4) + audit gather/build (M3) [run CONCURRENTLY, both fetch-only, fetcher cache dedupes - lesson #6] → resolveQueries (M5) → estimate + confirm gate → askAll (M6) → scoreAnswers (M7) → buildEnvelope (M8) → saveSnapshot. Returns `RunCheckResult {envelope?, aborted, snapshotPath?, notes}`; renders nothing (M9's job). Everything that spends or hits the network is injected (`fetcher`, `adapters`, `judge`, `guard`, `profileFs`/`queryFs`/`snapshotFs`, `now`, `confirm`), defaulting to real impls - so the 6 e2e tests drive the whole pipeline with mocks and zero network (hard rule #3). Two-phase budget honored end to end (discovery/query-gen authorize `setup`, ask/judge `main`); a shared `CostGuard` threads through all four spenders. **Honesty assembled from ALL THREE independent signals** (M8 review lesson #1): `costCapped` (guard), `skippedEngines` (askAll), `degraded` (profile) - surfaced upward, never hidden (rule #6). Confirmation gate is bypassable (`--yes`) and only fires when a `confirm` callback is injected (agents/CI stay non-interactive - hard rule #8); declining returns `aborted:true` with no spend, no snapshot. Partial never throws: a cap returns partial answers + `costCapped`. `runAudit` kept as the seeded zero-key path (M3 only, returns `AuditReport`; audit's 0-100 stays separate from the check envelope - rule #6). Estimate is best-effort (`priceRun` returns undefined for an unpriced model or no judge; the guard still caps). Depends only on other modules' barrels (`../discovery`, `../queries`, `../engines`, `../scoring`, `../audit`, `../output`, `../costs`) - no cli/mcp import. 6 new tests (220→226); verified end-to-end on the real disk path (node fs + real fetcher: snapshot persists + reloads, audit surfaced a GPTBot block, degraded path). Deferred to M11: the `check`/`audit` commands (thin wrappers) and the interactive `confirm` implementation.
 
 ### [ ] M9 - Output renderers (can land after M10)
 
@@ -267,7 +268,7 @@ Owner: ___ · PR: ___
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
-- [ ] Confirm no orchestration logic leaks into `cli/`/`mcp/` (must live in M10)
+- [ ] Confirm no orchestration logic leaks into `cli/`/`mcp/` (must live in M10) - M10 `runCheck`/`runAudit` now own the full flow; re-check when M11/M15 wrap them (commands must be thin: parse flags → call run → render)
 - [ ] ACP/UCP spec churn - re-verify M13 notes before M14 rules AND at release (M17)
 - [ ] Reserved "first" claim ("first open-source SKU-level AI shopping visibility tool") - re-verify when M12 ships
 - [ ] Shared `core` load-time validation helper: `loadProfile`, `parseQueryPack`, and `loadSnapshot` each hand-roll schema_version-by-value + required-field checks (M8 review lesson #3). Extract one helper (own PR, touches M4/M5/M8 persist) so the checks can't drift apart or silently skip a field.
