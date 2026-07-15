@@ -269,7 +269,7 @@ Owner: ___ · PR: ___
 - 2026-07-15: end-of-wave review of Wave 4 (M9/M10/M11), 21 agents (4 finder
   lenses + adversarial verify), plus a live `check` smoke against a real
   OpenAI key. 10 findings (1 refuted) + 1 live-smoke finding, all fixed
-  test-first (commit `<this>`, +7 tests, 245→252). Money/honesty headliners:
+  test-first (commit `2c3047d`, +7 tests, 245→252). Money/honesty headliners:
   runCheck no longer spends when a consumer wires no `confirm` and omits `--yes`
   (aborts - protects the coming MCP entrypoint, rule #8); `--engines <typo>`
   now errors instead of silently billing every engine; `--report` write is
