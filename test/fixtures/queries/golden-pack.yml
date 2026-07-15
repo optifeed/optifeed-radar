@@ -1,0 +1,25 @@
+schema_version: "0.1"
+domain: acme.example
+queries:
+  - id: q1
+    intent: best-of
+    prompt: What are the best model rocket kits for beginners?
+  - id: q2
+    intent: comparison
+    prompt: What should I compare when choosing a model rocket kit?
+  - id: q3
+    intent: problem
+    prompt: Why does my model rocket engine keep misfiring?
+  - id: q4
+    intent: trust
+    prompt: Is Acme Rockets a reputable brand?
+  - id: q5
+    intent: best-of
+    prompt: Which model rocket starter kits are most recommended?
+  - id: q6
+    intent: problem
+    prompt: How do I stop a rocket kit from arcing on launch?
+  - id: q7
+    intent: trust
+    prompt: Are Acme Rockets kits safe for kids?
+generatedAt: 2026-07-15T00:00:00.000Z

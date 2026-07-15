@@ -49,11 +49,32 @@ export interface BrandProfile {
   category?: string;
   offerings?: string[];
   locale?: string;
+  /** A physical location/service area, if any; gates local-intent queries (M5). */
+  geo?: string;
   competitors: string[];
   degraded?: boolean;
   generatedAt?: string;
   /** Provenance per field; `user` fields survive `--refresh` (M4). */
   sources?: ProfileSources;
+}
+
+/** Buyer-question intent categories for generated queries (M5). */
+export type QueryIntent =
+  'best-of' | 'comparison' | 'problem' | 'trust' | 'local';
+
+/** One generated buyer prompt. */
+export interface Query {
+  id: string;
+  intent: QueryIntent;
+  prompt: string;
+}
+
+/** An editable, reusable pack of buyer prompts (M5). Lean initial shape. */
+export interface QueryPack {
+  schema_version: string;
+  domain: string;
+  queries: Query[];
+  generatedAt?: string;
 }
 
 /** One judge call abstracted so M4/M5 depend on this, not on M6 (the seam). */

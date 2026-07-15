@@ -125,13 +125,14 @@ Owner: setup · PR: (M4) · needs M2 + M1 JudgeClient
 - [x] Acceptance: schema-rich / meta-only / JS-shell fixtures; merge rules
 - Module report: split into pure + I/O. Pure: `extractSignals` (deterministic brand/aliases/category/offerings/locale from M2 `ExtractedPage[]`, JSON-LD walked for objects/arrays/`@graph` per lesson #4) and `profile.ts` (`buildProfile`, `buildProfileFromFlags`, `mergeProfile`). I/O: `discoverCompetitors` (the one judge call, `estimateJudgeCallUsd`→`guard.authorize('setup')`→`record`; cap or judge error degrades to `[]` with a reason, never throws - lessons #3/#5), `persist.ts` (injected `ProfileFs`; corrupt file throws `ProfileParseError` rather than clobbering), and the `discover` orchestrator (fetcher/judge/guard/fs/clock all injected). Depends only on the M1 `JudgeClient` interface - no M6 import (carried-risk item cleared). Decisions: brand priority og:site_name > JSON-LD Organization/WebSite name > domain stem; domain stem skips common second-levels (`acme.co.uk`→`acme`). `--brand`/`--category` take the no-fetch degraded path outright (also how a JS-shell site "falls back to flags"). `degraded` reserved for the flags path only; a cost-capped competitor call leaves `competitors: []` and surfaces via the guard's `costCapped`, not `degraded`. Backward-compatible M1 additions: `ProfileField`/`ProfileSources` types + `BrandProfile.sources`; `estimateJudgeCallUsd` in `costs.ts` (unknown model → priciest-entry fallback, lesson #2). 20 new tests (104 total); verified end-to-end through the real M2 fetcher.
 
-### [ ] M5 - Query generation
+### [x] M5 - Query generation
 
-Owner: ___ · PR: ___ · needs M4 + JudgeClient
+Owner: setup · PR: (M5) · needs M4 + JudgeClient
 
-- [ ] 20 prompts across intents (skip local w/o geo); write `queries.yml`; validate on reruns; `--regenerate` only
-- [ ] competitor names NEVER in prompts; `--queries <file>`; `export` helper
-- [ ] Acceptance: golden mocked-judge, intent distribution, competitor-exclusion, hand-edit survives
+- [x] 20 prompts across intents (skip local w/o geo); write `queries.yml`; validate on reruns; `--regenerate` only
+- [x] competitor names NEVER in prompts; `--queries <file>`; `export` helper
+- [x] Acceptance: golden mocked-judge, intent distribution, competitor-exclusion, hand-edit survives
+- Module report: pure core (`activeIntents`, `parseIntentQueries`, `excludeCompetitors`, `buildQueryPack`) + one I/O fn (`generateQueries`, ONE guarded judge call on the setup budget; cap/judge-error degrade to an empty pack, never throw) + `persist.ts` (yaml, validated load; corrupt/invalid file throws `QueryPackError` not clobber) + the `resolveQueries` orchestrator (`--queries` file > cached `queries.yml` (hand edits survive) > generate on `--regenerate`). Depends only on the M1 `JudgeClient` interface - no M6 import (carried-risk item cleared for M5). Decisions: competitor names are WITHHELD from the generation prompt (not just filtered) - "used only at scoring"; `buildQueryPack` still strips any that slip in as a defensive bias guard, and prompts round-robin across intents so a capped pack stays balanced. `local` intent gated on a new backward-compatible `BrandProfile.geo` (absent by default -> local skipped). Added `yaml` dep (M5 owns it, per the plan). Backward-compatible M1 additions: `QueryIntent`, `Query`, `QueryPack`, `BrandProfile.geo`. Golden fixture (`test/fixtures/queries/golden-pack.yml`) pins the on-disk format AND proves the bias rule end to end (an "Estes" prompt is stripped, so an 8-target pack honestly yields 7). 24 new tests (128 total).
 
 ### [ ] M7 - Scoring (starts when M4 lands)
 
@@ -242,7 +243,7 @@ Owner: ___ · PR: ___
 
 ## Carried risks / decisions to watch
 
-- [ ] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in)
+- [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
 - [ ] Confirm no orchestration logic leaks into `cli/`/`mcp/` (must live in M10)
 - [ ] ACP/UCP spec churn - re-verify M13 notes before M14 rules AND at release (M17)
 - [ ] Reserved "first" claim ("first open-source SKU-level AI shopping visibility tool") - re-verify when M12 ships
