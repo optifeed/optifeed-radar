@@ -270,3 +270,4 @@ Owner: ___ · PR: ___
 - [ ] Confirm no orchestration logic leaks into `cli/`/`mcp/` (must live in M10)
 - [ ] ACP/UCP spec churn - re-verify M13 notes before M14 rules AND at release (M17)
 - [ ] Reserved "first" claim ("first open-source SKU-level AI shopping visibility tool") - re-verify when M12 ships
+- [ ] Shared `core` load-time validation helper: `loadProfile`, `parseQueryPack`, and `loadSnapshot` each hand-roll schema_version-by-value + required-field checks (M8 review lesson #3). Extract one helper (own PR, touches M4/M5/M8 persist) so the checks can't drift apart or silently skip a field.

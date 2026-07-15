@@ -116,6 +116,36 @@ These failure modes passed green tests. Watch for them in every new module:
 7. **Do not fetch-and-discard.** If you fetch something, use it in the output,
    or do not fetch it.
 
+## Lessons from the M8 code review (2026-07-15)
+
+Honesty (hard rule #6) and validation (hard rule #2) are where green tests lie
+the most. Watch these in every module that scores, persists, or compares:
+
+1. **"Partial" is multi-signal - centralize the predicate, check every flag.**
+   `RunHonesty` carries three _independent_ optionals (`costCapped`,
+   `skippedEngines`, `degraded`); "is this run partial?" must consider all
+   three from one shared function (`isPartialRun`), never a hand-rolled subset
+   at each call site. `failUnder`/`diff` checked only two, so a one-engine run
+   read as full-confidence.
+2. **Honesty must propagate to every derived artifact, and "inputs changed"
+   guards must be symmetric.** If an envelope is partial, everything computed
+   from it (diffs, exit codes, renders) says so - a derived artifact that drops
+   the flags relaunders a partial run as complete. And if you flag one changed
+   dimension (`promptSetChanged`), flag every changeable dimension
+   (`engineSetChanged`) - an unguarded axis hides a whole engine leaving.
+3. **`schema_version` validation checks the VALUE; a validator vouches for
+   EVERY field a consumer dereferences.** Type-checking the field to be a
+   string is not rule #2 - comparing it to the supported version is (else the
+   guard never fires at load). A loader that validates 6 of 12 fields gives
+   false confidence: the first missing field crashes a downstream consumer that
+   trusted the loader. (Three loaders - `loadProfile`, `parseQueryPack`,
+   `loadSnapshot` - now hand-roll the same checks; a shared `core` validation
+   helper is the standing follow-up.)
+4. **A function comparing two persisted artifacts must verify they are
+   comparable.** Snapshots share one directory and are keyed only by time; two
+   files are not guaranteed to be the same subject. `diff` throws on a
+   domain mismatch rather than silently comparing two brands.
+
 ## Review cadence
 
 - Run a workflow-backed code review (high effort) at the end of each wave
