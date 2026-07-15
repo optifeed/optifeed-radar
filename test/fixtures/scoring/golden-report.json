@@ -1,0 +1,150 @@
+{
+  "schema_version": "0.1",
+  "domain": "caferio.example",
+  "score": 61,
+  "engines": [
+    {
+      "engine": "openai",
+      "kind": "parametric",
+      "score": 92,
+      "mentionRate": 0.6666666666666666,
+      "avgPosition": 1,
+      "answers": 3,
+      "mentions": 2
+    },
+    {
+      "engine": "perplexity",
+      "kind": "grounded",
+      "score": 81,
+      "mentionRate": 0.5,
+      "avgPosition": 1,
+      "answers": 2,
+      "mentions": 1
+    },
+    {
+      "engine": "anthropic",
+      "kind": "parametric",
+      "score": 0,
+      "mentionRate": 0,
+      "avgPosition": null,
+      "answers": 1,
+      "mentions": 0
+    }
+  ],
+  "mentions": [
+    {
+      "engine": "openai",
+      "prompt": "best fast-casual mexican?",
+      "mentioned": true,
+      "position": 1,
+      "sentiment": "positive",
+      "entities": [
+        "Café Rio",
+        "Chipotle"
+      ],
+      "citedDomains": [],
+      "ambiguous": false
+    },
+    {
+      "engine": "openai",
+      "prompt": "best fast-casual mexican?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": "neutral",
+      "entities": [
+        "Chipotle",
+        "Qdoba"
+      ],
+      "citedDomains": [],
+      "ambiguous": false
+    },
+    {
+      "engine": "openai",
+      "prompt": "best fast-casual mexican?",
+      "mentioned": true,
+      "position": 1,
+      "sentiment": "positive",
+      "entities": [
+        "Café Rio"
+      ],
+      "citedDomains": [],
+      "ambiguous": false
+    },
+    {
+      "engine": "perplexity",
+      "prompt": "best fast-casual mexican?",
+      "mentioned": true,
+      "position": 1,
+      "sentiment": "positive",
+      "entities": [
+        "Café Rio"
+      ],
+      "citedDomains": [
+        "caferio.example",
+        "eater.com"
+      ],
+      "ambiguous": false
+    },
+    {
+      "engine": "perplexity",
+      "prompt": "best fast-casual mexican?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": "neutral",
+      "entities": [
+        "Qdoba",
+        "Chipotle"
+      ],
+      "citedDomains": [
+        "eater.com"
+      ],
+      "ambiguous": false
+    },
+    {
+      "engine": "anthropic",
+      "prompt": "best fast-casual mexican?",
+      "mentioned": false,
+      "position": null,
+      "sentiment": "neutral",
+      "entities": [],
+      "citedDomains": [],
+      "ambiguous": false
+    }
+  ],
+  "shareOfVoice": [
+    {
+      "name": "Café Rio",
+      "isBrand": true,
+      "mentions": 3,
+      "sharePct": 37.5
+    },
+    {
+      "name": "Chipotle",
+      "isBrand": false,
+      "mentions": 3,
+      "sharePct": 37.5
+    },
+    {
+      "name": "Qdoba",
+      "isBrand": false,
+      "mentions": 2,
+      "sharePct": 25
+    }
+  ],
+  "sources": [
+    {
+      "domain": "eater.com",
+      "count": 2
+    },
+    {
+      "domain": "caferio.example",
+      "count": 1
+    }
+  ],
+  "sampling": {
+    "answers": 6,
+    "judged": 0,
+    "judgeRateCap": 0.3
+  },
+  "generatedAt": "2026-07-15T00:00:00.000Z"
+}

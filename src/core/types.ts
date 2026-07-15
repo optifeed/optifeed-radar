@@ -100,6 +100,68 @@ export interface EngineAnswer {
   ts: string;
 }
 
+/** Sentiment of an answer toward the brand (M7). */
+export type Sentiment = 'positive' | 'neutral' | 'negative';
+
+/** Per-answer mention analysis (M7). Lean initial shape. */
+export interface MentionResult {
+  engine: EngineId;
+  prompt: string;
+  /** Whether the brand (name/alias/domain) appears. */
+  mentioned: boolean;
+  /** 1-based rank among detected entities, or null if unranked/absent. */
+  position: number | null;
+  sentiment: Sentiment;
+  /** Known entities (brand + competitors) detected, first-appearance order. */
+  entities: string[];
+  /** Domains cited by grounded engines. */
+  citedDomains: string[];
+  /** Flagged for the judge pass (generic-word brand, unclear position). */
+  ambiguous: boolean;
+  /** Whether the judge pass (pass 2) refined this result. */
+  judged?: boolean;
+}
+
+/** One engine's aggregated score (M7). */
+export interface EngineScore {
+  engine: EngineId;
+  kind: EngineKind;
+  score: number; // 0-100
+  mentionRate: number; // 0..1
+  avgPosition: number | null;
+  answers: number;
+  mentions: number;
+}
+
+/** A share-of-voice row: the brand or a competitor (M7). */
+export interface ShareOfVoiceRow {
+  name: string;
+  isBrand: boolean;
+  mentions: number;
+  sharePct: number;
+}
+
+/** A cited-source row aggregated across grounded answers (M7). */
+export interface SourceRow {
+  domain: string;
+  count: number;
+}
+
+/** The scoring output for a run (M7). M8 wraps this into the public envelope. */
+export interface ScoreReport {
+  schema_version: string;
+  domain: string;
+  /** The one headline AI Visibility Score, 0-100 (hard rule #6). */
+  score: number;
+  engines: EngineScore[];
+  mentions: MentionResult[];
+  shareOfVoice: ShareOfVoiceRow[];
+  sources: SourceRow[];
+  /** Judge-pass usage, surfaced for honesty. */
+  sampling: { answers: number; judged: number; judgeRateCap: number };
+  generatedAt?: string;
+}
+
 /** The honesty flags a run carries so partial/capped runs are never hidden. */
 export interface RunHonesty {
   costCapped?: boolean;

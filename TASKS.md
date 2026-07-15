@@ -134,14 +134,15 @@ Owner: setup · PR: (M5) · needs M4 + JudgeClient
 - [x] Acceptance: golden mocked-judge, intent distribution, competitor-exclusion, hand-edit survives
 - Module report: pure core (`activeIntents`, `parseIntentQueries`, `excludeCompetitors`, `buildQueryPack`) + one I/O fn (`generateQueries`, ONE guarded judge call on the setup budget; cap/judge-error degrade to an empty pack, never throw) + `persist.ts` (yaml, validated load; corrupt/invalid file throws `QueryPackError` not clobber) + the `resolveQueries` orchestrator (`--queries` file > cached `queries.yml` (hand edits survive) > generate on `--regenerate`). Depends only on the M1 `JudgeClient` interface - no M6 import (carried-risk item cleared for M5). Decisions: competitor names are WITHHELD from the generation prompt (not just filtered) - "used only at scoring"; `buildQueryPack` still strips any that slip in as a defensive bias guard, and prompts round-robin across intents so a capped pack stays balanced. `local` intent gated on a new backward-compatible `BrandProfile.geo` (absent by default -> local skipped). Added `yaml` dep (M5 owns it, per the plan). Backward-compatible M1 additions: `QueryIntent`, `Query`, `QueryPack`, `BrandProfile.geo`. Golden fixture (`test/fixtures/queries/golden-pack.yml`) pins the on-disk format AND proves the bias rule end to end (an "Estes" prompt is stripped, so an 8-target pack honestly yields 7). 24 new tests (128 total).
 
-### [ ] M7 - Scoring (starts when M4 lands)
+### [x] M7 - Scoring (starts when M4 lands)
 
-Owner: ___ · PR: ___ · needs M4 + M6 (NOT M5)
+Owner: setup · PR: (M7) · needs M4 + M6 (NOT M5)
 
-- [ ] hybrid mention detection (deterministic pass 1, judge pass 2 ≤30% via cost guard)
-- [ ] per-answer: mentioned/position/sentiment/entities(SoV)/cited domains
-- [ ] per-engine + composite score; `METHODOLOGY.md` (published verbatim); SoV table
-- [ ] Acceptance: tricky golden fixtures (common-word brand, competitor-only, non-English); budget cap; formula matches doc
+- [x] hybrid mention detection (deterministic pass 1, judge pass 2 ≤30% via cost guard)
+- [x] per-answer: mentioned/position/sentiment/entities(SoV)/cited domains
+- [x] per-engine + composite score; `METHODOLOGY.md` (published verbatim); SoV table
+- [x] Acceptance: tricky golden fixtures (common-word brand, competitor-only, non-English); budget cap; formula matches doc
+- Module report: `detect.ts` (pure pass 1 - accent/case fold + word-boundary match of brand/aliases/domain and competitors; entities by first appearance; position; lexicon sentiment; cited domains; generic-word brands flagged `ambiguous`). `judge.ts` (pass 2 - re-judges ONLY ambiguous results, capped at `floor(0.30 * answers)` AND gated by the cost guard on the `main` phase; cap/cost/judge-error all stop cleanly, never throw; a "not mentioned" verdict removes the false positive). `score.ts` (published formula + `SCORE_WEIGHTS` source of truth: engine 0-100 = `(0.6*mentionRate + 0.4*positionScore) * sentimentMod`; composite = grounded-weighted mean 1.5 vs 1.0; SoV; sources). `scoring.ts` orchestrator (pass1 -> pass2 -> aggregate -> `ScoreReport`; judge/guard injected, judge optional). `METHODOLOGY.md` published at repo root with two worked examples the tests reproduce (engine 59, composite 52). Depends only on M4 profile + M6 `EngineAnswer`/`JudgeClient` shapes (imports `../types` + `../costs`, not `../engines`). Backward-compatible M1 additions: `Sentiment`, `MentionResult`, `EngineScore`, `ShareOfVoiceRow`, `SourceRow`, `ScoreReport`. Golden fixtures: `test/fixtures/scoring/{answers.json,golden-report.json}` (accented brand "Café Rio", competitor-only answers, grounded citations, mixed engine kinds -> composite 61). 23 new tests (151 total).
 
 ### [ ] M8 - Output data contract — ON THE CRITICAL PATH
 

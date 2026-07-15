@@ -1,0 +1,58 @@
+[
+  {
+    "engine": "openai",
+    "kind": "parametric",
+    "prompt": "best fast-casual mexican?",
+    "text": "For fast-casual Mexican, I really love Cafe Rio and also Chipotle.",
+    "model": "gpt-4o",
+    "costUsd": 0,
+    "ts": "2026-07-15T00:00:00.000Z"
+  },
+  {
+    "engine": "openai",
+    "kind": "parametric",
+    "prompt": "best fast-casual mexican?",
+    "text": "Chipotle is my top pick, then Qdoba, then others.",
+    "model": "gpt-4o",
+    "costUsd": 0,
+    "ts": "2026-07-15T00:00:00.000Z"
+  },
+  {
+    "engine": "openai",
+    "kind": "parametric",
+    "prompt": "best fast-casual mexican?",
+    "text": "Café Rio has excellent salads and great service.",
+    "model": "gpt-4o",
+    "costUsd": 0,
+    "ts": "2026-07-15T00:00:00.000Z"
+  },
+  {
+    "engine": "perplexity",
+    "kind": "grounded",
+    "prompt": "best fast-casual mexican?",
+    "text": "Cafe Rio is the best in the category, highly recommend it.",
+    "model": "sonar",
+    "costUsd": 0,
+    "ts": "2026-07-15T00:00:00.000Z",
+    "citations": ["https://caferio.example/menu", "https://eater.com/best"]
+  },
+  {
+    "engine": "perplexity",
+    "kind": "grounded",
+    "prompt": "best fast-casual mexican?",
+    "text": "Qdoba and Chipotle dominate most rankings.",
+    "model": "sonar",
+    "costUsd": 0,
+    "ts": "2026-07-15T00:00:00.000Z",
+    "citations": ["https://eater.com/rankings"]
+  },
+  {
+    "engine": "anthropic",
+    "kind": "parametric",
+    "prompt": "best fast-casual mexican?",
+    "text": "I do not have a strong preference here.",
+    "model": "claude-sonnet-5",
+    "costUsd": 0,
+    "ts": "2026-07-15T00:00:00.000Z"
+  }
+]
