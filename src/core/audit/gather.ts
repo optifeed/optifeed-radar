@@ -26,32 +26,35 @@ export async function gatherAuditInput(
 ): Promise<AuditInput> {
   const samplePages = opts.samplePages ?? 3;
   const origin = toSiteUrl(domain);
+  const sitemapUrl = `${origin}/sitemap.xml`;
 
-  const robots = await fetcher.fetchRobots(origin);
-  const llms = await fetcher.fetchLlmsTxt(origin);
-  const llmsFull = await fetcher.fetchUrl(`${origin}/llms-full.txt`);
-  const home = await fetcher.fetchUrl(`${origin}/`);
+  // These five fetches are independent - run them concurrently.
+  const [robots, llms, llmsFull, home, sitemapRoot] = await Promise.all([
+    fetcher.fetchRobots(origin),
+    fetcher.fetchLlmsTxt(origin),
+    fetcher.fetchUrl(`${origin}/llms-full.txt`),
+    fetcher.fetchUrl(`${origin}/`),
+    fetcher.fetchUrl(sitemapUrl),
+  ]);
 
   const homepage = home.ok ? extractPage(home.body) : null;
+  const sampledPages = homepage ? [homepage] : [];
 
-  const sitemapUrl = `${origin}/sitemap.xml`;
-  const sitemapRoot = await fetcher.fetchUrl(sitemapUrl);
   let sitemap: AuditInput['sitemap'] = {
     present: false,
     parseable: false,
     urlCount: 0,
   };
-  const sampledPages = homepage ? [homepage] : [];
-
   if (sitemapRoot.ok) {
-    const sm = await fetcher.fetchSitemap(sitemapUrl);
-    sitemap = {
-      present: true,
-      parseable: sm.urls.length > 0,
-      urlCount: sm.urls.length,
-    };
-    for (const url of sm.urls.slice(0, samplePages)) {
-      const res = await fetcher.fetchUrl(url);
+    // Parseable = it actually looks like a sitemap. A valid but empty sitemap
+    // (zero <loc>) is still parseable - url count alone must not decide this.
+    const parseable = /<(urlset|sitemapindex)\b/i.test(sitemapRoot.body);
+    const sm = await fetcher.fetchSitemap(sitemapUrl); // sitemapUrl is already cached
+    sitemap = { present: true, parseable, urlCount: sm.urls.length };
+    const sampled = await Promise.all(
+      sm.urls.slice(0, samplePages).map((url) => fetcher.fetchUrl(url)),
+    );
+    for (const res of sampled) {
       if (res.ok) sampledPages.push(extractPage(res.body));
     }
   }

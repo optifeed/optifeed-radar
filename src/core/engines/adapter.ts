@@ -102,16 +102,18 @@ export function createAdapter(
         deps.retry,
       );
       const parsed = spec.parse(json, mode);
-      const usedModel = parsed.model ?? model;
+      // Report the provider's actual (often dated) model id, but price by the
+      // configured model - only that key is guaranteed to be in MODEL_PRICING,
+      // so pricing by the echoed dated id would silently cost $0.
       return {
         engine: spec.id,
         kind: mode,
         prompt,
         text: parsed.text,
         citations: parsed.citations,
-        model: usedModel,
+        model: parsed.model ?? model,
         tokens: parsed.usage,
-        costUsd: computeCost(usedModel, parsed.usage),
+        costUsd: computeCost(model, parsed.usage),
         ts: now(),
       };
     },

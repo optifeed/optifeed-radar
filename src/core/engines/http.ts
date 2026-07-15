@@ -95,7 +95,16 @@ export async function postJsonWithRetry(
     }
 
     if (res.status >= 200 && res.status < 300) {
-      return res.json();
+      try {
+        return await res.json();
+      } catch {
+        // A 2xx with a non-JSON body (captive portal, gateway page): wrap it
+        // so callers get a graceful HttpError, never a raw SyntaxError.
+        throw new HttpError(
+          res.status,
+          `HTTP ${res.status}: non-JSON response body`,
+        );
+      }
     }
 
     if (isRetryableStatus(res.status) && attempt < retries) {

@@ -21,7 +21,7 @@ export const geminiSpec: ProviderSpec = {
   supportsGrounded: true,
   endpoint: (_mode, model) =>
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-  buildRequest: ({ prompt, mode, apiKey }) => ({
+  buildRequest: ({ prompt, mode, apiKey, maxTokens }) => ({
     headers: {
       'x-goog-api-key': apiKey,
       'content-type': 'application/json',
@@ -29,6 +29,9 @@ export const geminiSpec: ProviderSpec = {
     body: {
       contents: [{ parts: [{ text: prompt }] }],
       ...(mode === 'grounded' ? { tools: [{ google_search: {} }] } : {}),
+      ...(maxTokens
+        ? { generationConfig: { maxOutputTokens: maxTokens } }
+        : {}),
     },
   }),
   parse: (json): ParsedResponse => {

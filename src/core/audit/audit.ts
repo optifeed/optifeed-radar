@@ -56,6 +56,11 @@ const SEVERITY_RANK: Record<Severity, number> = { error: 0, warn: 1, info: 2 };
 function collectJsonLdTypes(pages: ExtractedPage[]): Set<string> {
   const types = new Set<string>();
   const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      // Array-form JSON-LD (a bare array of entities) is common; recurse in.
+      node.forEach(visit);
+      return;
+    }
     if (!node || typeof node !== 'object') return;
     const obj = node as Record<string, unknown>;
     const t = obj['@type'];
@@ -70,7 +75,8 @@ function collectJsonLdTypes(pages: ExtractedPage[]): Set<string> {
 }
 
 function llmsHasLinks(text: string): boolean {
-  return /\]\(https?:\/\//.test(text) || /https?:\/\//.test(text);
+  // A markdown link necessarily contains a URL, so one URL check covers both.
+  return /https?:\/\//.test(text);
 }
 
 /** Build the deterministic audit report from fetched inputs. */
@@ -146,6 +152,13 @@ export function buildAuditReport(input: AuditInput): AuditReport {
     llmsFraction += 0.6;
     if (llmsHasLinks(llms)) llmsFraction += 0.4;
     else add('llms.nolinks', 'info', 'llms.txt has no links.');
+  }
+  if ((input.llmsFullTxt?.trim() ?? '') !== '') {
+    add(
+      'llms.full',
+      'info',
+      'llms-full.txt is present (good for AI ingestion).',
+    );
   }
   categories.push({
     id: 'llms',
