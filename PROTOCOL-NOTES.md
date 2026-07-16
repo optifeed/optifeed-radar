@@ -232,7 +232,72 @@ Each row is a candidate M14 rule `{id, protocol, severity, test, message, docsUr
 | `ucp.google.native_commerce`        | ucp      | warn     | 3.3 (Google impl eligibility)     |
 | `ucp.google.gmc_product_spec`       | ucp      | error    | 3.3 (pin GMC set at M17)          |
 
-Ported from the Rails feed-quality logic (M14's other input): reconcile the
-above against that rule set when M14 starts - overlaps (GTIN/brand/description
-depth/availability/image/return-policy) should share rule ids where the intent
-matches.
+See section 7 for the reconciliation with the Rails feed-quality logic (M14's
+other input), now done.
+
+---
+
+## 7. Reconciliation with the Rails agent-readiness logic
+
+Source: the Optifeed Rails app, branch `ai-visibility-crawler`,
+`app/models/concerns/export/agent_readiness.rb` +
+`app/models/export/description_sanitizer.rb` (read 2026-07-16). This is M14's
+OTHER input, alongside the protocol specs above.
+
+**What the Rails logic is:** a per-SKU **completeness/quality** checklist ("agent
+readiness"), NOT protocol conformance. Its rule table (`GAPS`) checks presence
+and description quality, tags each gap `:manual` (human fix) or `:llm`
+(auto-fillable), and rolls the gaps into a per-field graded readiness score
+(share of gap-free `sku x field` cells, 0-100). The scored fields are `title`,
+`description`, `brand`, `image_url`, `gtin`, `q_and_a`.
+
+**Rails `GAPS` rules (verbatim intent):**
+
+| Rails gap code             | field       | test                                          | strategy |
+| -------------------------- | ----------- | --------------------------------------------- | -------- |
+| `missing_title`            | title       | blank                                         | manual   |
+| `missing_description`      | description | blank                                         | llm      |
+| `thin_description`         | description | `< 20` sanitized chars                        | llm      |
+| `misformatted_description` | description | sanitizing strips significant HTML/JS residue | llm      |
+| `missing_brand`            | brand       | blank                                         | llm      |
+| `missing_image`            | image_url   | blank                                         | manual   |
+| `missing_gtin`             | gtin        | blank                                         | manual   |
+| `missing_q_and_a`          | q_and_a     | always a gap unless overridden                | llm      |
+
+Notable: `DescriptionSanitizer.MAX_CHARS = 5000` **matches ACP's description max
+exactly**; `THIN_DESCRIPTION_CHARS = 20`. Rails does **no format validation**
+(no GTIN digit-count, no ISO-8601 date, no HTTPS-URL, no ISO-4217 checks) and
+carries **no protocol tag** - every gap is generic quality.
+
+**The merge (this is the M14 rule set):** take the union, and resolve severity
+by combining Rails-quality with protocol-requiredness. Two genuine conflicts:
+
+| field                             | Rails says                  | Protocol (2.1 ACP) says              | -> M14 resolution                                             |
+| --------------------------------- | --------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| `brand`                           | quality gap, llm-fixable    | **REQUIRED**                         | **error** (protocol wins; still llm-fixable metadata)         |
+| `gtin`                            | `missing_gtin` gap (manual) | **optional**, no MPN interdependency | **info/advisory** - never a hard error (matches 2.1)          |
+| `title`                           | quality gap (manual)        | required                             | error                                                         |
+| `image_url`                       | quality gap (manual)        | required                             | error                                                         |
+| `description` (missing)           | quality gap                 | required, max 5000                   | error if blank                                                |
+| `description` (thin/misformatted) | quality gaps                | not specified by protocol            | **warn** (quality-only, keep Rails' 20-char + sanitizer test) |
+| `q_and_a`                         | quality gap                 | optional (ACP/UCP)                   | **info** (quality signal, not conformance)                    |
+
+**What each input uniquely contributes to M14:**
+
+- From the **protocols** (not in Rails): format validators (GTIN 8-14 digits,
+  ISO 8601 dates, ISO 4217 currency, HTTPS URLs), the availability enum,
+  conditional rules (seller policy when checkout-eligible, availability_date on
+  pre_order), and the `protocol` tag (`acp`/`ucp`/`both`).
+- From **Rails** (not in the protocols): description **quality** beyond presence
+  (thin < 20 chars; misformatted = HTML/JS residue via the shared sanitizer),
+  the `q_and_a` signal, the `:manual`/`:llm` auto-fixability dimension (useful
+  as rule metadata, not a pass/fail), and a proven **per-field graded feed
+  score** model M14's feed-level summary score can reuse (share of gap-free
+  cells, description's 3 codes collapsing to one field so a bad description
+  counts once).
+
+**M14 build note:** port the Rails `GAPS` table as the quality-rule seed, layer
+the protocol conformance + format rules from sections 2-3 on top, tag every rule
+with `protocol` + a severity resolved per the table above, and reuse the Rails
+per-field graded scoring for the feed-level summary. The `strategy` (manual/llm)
+maps cleanly to a future auto-fix hook but is out of M14's lint scope.
