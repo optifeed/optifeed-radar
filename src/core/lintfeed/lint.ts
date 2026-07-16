@@ -55,10 +55,12 @@ function scoredFields(rules: LintRule[]): string[] {
 function computeFeedScore(
   results: ProductLintResult[],
   rules: LintRule[],
-): number {
+): number | null {
   const fields = scoredFields(rules);
   const total = results.length * fields.length;
-  if (total === 0) return 0;
+  // Nothing to assess (an unparseable or empty feed): an honest null, not a
+  // fabricated 0 that reads like "every check failed" (rule #6).
+  if (total === 0) return null;
 
   let gapped = 0;
   for (const result of results) {
@@ -68,7 +70,9 @@ function computeFeedScore(
     // Only count fields that are actually scored (guards against a stray field).
     gapped += fields.filter((f) => gappedFields.has(f)).length;
   }
-  return Math.round(100 * (1 - gapped / total));
+  // Floor, so any gap keeps the score below 100 - a near-perfect feed is never
+  // rounded up to a perfect-looking 100 (rule #6, no fake precision).
+  return Math.floor(100 * (1 - gapped / total));
 }
 
 function verdictFor(score: number): string {
@@ -80,14 +84,16 @@ function verdictFor(score: number): string {
 /**
  * Readiness for one protocol: the share of products with NO error-severity
  * finding tagged that protocol (or `both`). Errors block readiness; warn/info
- * do not.
+ * do not. An unassessed feed gets a null score + `not assessed` (rule #6).
  */
 function computeReadiness(
   results: ProductLintResult[],
   protocol: 'acp' | 'ucp',
   productCount: number,
 ): ProtocolReadiness {
-  if (productCount === 0) return { protocol, score: 0, verdict: 'not ready' };
+  if (productCount === 0) {
+    return { protocol, score: null, verdict: 'not assessed' };
+  }
 
   const ready = results.filter(
     (result) =>
@@ -97,8 +103,23 @@ function computeReadiness(
           (f.protocol === protocol || f.protocol === 'both'),
       ),
   ).length;
-  const score = Math.round((100 * ready) / productCount);
+  // Floor, so a single blocking error can never round up to a "ready" 100.
+  const score = Math.floor((100 * ready) / productCount);
   return { protocol, score, verdict: verdictFor(score) };
+}
+
+const READINESS_PROTOCOLS: ('acp' | 'ucp')[] = ['acp', 'ucp'];
+
+/**
+ * Report readiness only for protocols that have at least one protocol-SPECIFIC
+ * rule. With no UCP-specific rules yet (the `both` rules count under ACP), UCP
+ * is not claimed as checked - a "UCP: ready" verdict backed by zero UCP checks
+ * would be false confidence (rule #6). UCP auto-appears when its rules land.
+ */
+function readinessProtocols(rules: LintRule[]): ('acp' | 'ucp')[] {
+  return READINESS_PROTOCOLS.filter((protocol) =>
+    rules.some((rule) => rule.protocol === protocol),
+  );
 }
 
 /** Build the full report from a parse result. */
@@ -125,10 +146,9 @@ export function buildFeedLintReport(
     products: results.filter((r) => r.findings.length > 0),
     summary,
     feedScore: computeFeedScore(results, rules),
-    readiness: [
-      computeReadiness(results, 'acp', productCount),
-      computeReadiness(results, 'ucp', productCount),
-    ],
+    readiness: readinessProtocols(rules).map((protocol) =>
+      computeReadiness(results, protocol, productCount),
+    ),
     parseErrors: parsed.parseErrors,
   };
 }

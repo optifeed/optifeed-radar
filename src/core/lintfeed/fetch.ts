@@ -26,5 +26,16 @@ export async function lintFeedUrl(
       ],
     });
   }
-  return lintFeedContent(result.body, { source: url });
+
+  const report = lintFeedContent(result.body, { source: url });
+  // A truncated body (hit the fetcher size cap) means the tail item is cut off
+  // and later products are missing - findings/score are partial. Surface it so
+  // a truncated feed is never read as a complete one (rule #6).
+  if (result.truncated) {
+    report.parseErrors = [
+      `Feed was truncated at the fetch size cap; results are partial (some products and the final item may be missing).`,
+      ...report.parseErrors,
+    ];
+  }
+  return report;
 }

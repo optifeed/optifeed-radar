@@ -53,6 +53,14 @@ describe('parseFeed - ACP JSON', () => {
     expect(p.currency).toBe('USD');
     expect(p.availability).toBe('in_stock');
   });
+
+  it('recognizes a capitalized/alternate wrapper key (Products/items/entries)', () => {
+    const wrapped = '{"Products": [ {"item_id": "X", "title": "Widget"} ]}';
+    const { products, parseErrors } = parseFeed(wrapped);
+    expect(parseErrors).toEqual([]);
+    expect(products).toHaveLength(1);
+    expect(products[0]!.id).toBe('X');
+  });
 });
 
 describe('parseFeed - failure modes (never throws)', () => {

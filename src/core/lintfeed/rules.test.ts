@@ -112,3 +112,16 @@ describe('format rules', () => {
     expect(r.violated(product({ imageUrl: 'https://x/i.jpg' }))).toBe(false);
   });
 });
+
+describe('qanda.missing tolerates key-spelling variants', () => {
+  it('does not flag Q&A when present under any of q_and_a / qanda / q-and-a', () => {
+    const r = rule('qanda.missing');
+    expect(r.violated(product({ raw: {} }))).toBe(true); // truly absent
+    expect(r.violated(product({ raw: { q_and_a: 'Q: ... A: ...' } }))).toBe(
+      false,
+    );
+    // JSON camelCase `qAndA` lands in raw as `qanda`; a hyphen key as `q-and-a`.
+    expect(r.violated(product({ raw: { qanda: 'present' } }))).toBe(false);
+    expect(r.violated(product({ raw: { 'q-and-a': 'present' } }))).toBe(false);
+  });
+});

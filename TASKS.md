@@ -324,6 +324,28 @@ Owner: ___ · PR: ___
   line. Verified live against the built CLI (diff scoring-change warning; sources
   --json honesty).
 
+- 2026-07-16: high-effort workflow review of M13+M14 (`8e66fb2..HEAD`), 16
+  agents (4 finder lenses + adversarial verify). 8 verified findings (0
+  refuted), ALL in the M14 lintfeed code (M13's notes drew none), all fixed
+  test-first (+8 tests, 328->336). Honesty headliners (all rule #6): (1)
+  `lintFeedUrl` dropped the fetcher's `truncated` flag - a size-capped feed was
+  linted as complete; now surfaces a truncation parseError. (2) an unparseable/
+  empty feed reported `feedScore 0` + "not ready" (fabricated precision over an
+  unevaluated feed) - now `feedScore: number|null` = null + verdict "not
+  assessed". (3) a UCP readiness verdict was emitted with ZERO UCP-specific
+  rules ("UCP: ready" = false confidence) - readiness is now derived from the
+  rule table, so only protocols with a specific rule are reported (just `acp`
+  now; `ucp` auto-returns when its rules land). (4) `Math.round` could launder
+  199/200-ready up to a "ready" 100 - now `Math.floor` so any error keeps it
+  <100. Correctness: (5) `parseJson` wrapper-key lookup was case-sensitive
+  (`{"Products":[...]}` read as 0 products) - now case-insensitive over
+  products/items/entries. (6) `qanda.missing` read a fixed `q_and_a` key while
+  JSON stores `qAndA` as `qanda` - now a separator-normalized lookup. Cleanups:
+  bare "agents" in report messages -> "AI agents" (copy rule); removed the dead
+  try/catch around the lenient `cheerio.load`. Verified on the built module
+  (null score + acp-only readiness on malformed; truncation flag; capitalized
+  wrapper).
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`

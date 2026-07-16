@@ -48,6 +48,25 @@ describe('lintFeedUrl', () => {
     );
     expect(report.productCount).toBe(0);
     expect(report.parseErrors.join(' ')).toMatch(/could not fetch/i);
-    for (const r of report.readiness) expect(r.verdict).toBe('not ready');
+    for (const r of report.readiness) expect(r.verdict).toBe('not assessed');
+  });
+
+  it('flags a truncated feed so partial results are not read as complete (rule #6)', async () => {
+    const truncatedFetcher: FeedFetcher = {
+      fetchUrl: async (url: string): Promise<FetchResult> => ({
+        ok: true,
+        url,
+        finalUrl: url,
+        status: 200,
+        body: fixture('clean.xml'),
+        contentType: 'application/xml',
+        truncated: true,
+      }),
+    };
+    const report = await lintFeedUrl(
+      'https://big.example/feed.xml',
+      truncatedFetcher,
+    );
+    expect(report.parseErrors.join(' ')).toMatch(/truncat/i);
   });
 });

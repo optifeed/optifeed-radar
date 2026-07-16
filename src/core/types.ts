@@ -254,9 +254,13 @@ export interface ProductLintResult {
 /** Readiness verdict for one protocol across the feed. */
 export interface ProtocolReadiness {
   protocol: 'acp' | 'ucp';
-  /** 0-100: share of products with no error-severity finding for this protocol. */
-  score: number;
-  /** Honest verdict: `ready` | `nearly ready` | `not ready`. */
+  /**
+   * 0-100: share of products with no error-severity finding for this protocol.
+   * `null` when the feed could not be assessed (nothing parsed) - never a
+   * fabricated 0 over an unevaluated feed (rule #6).
+   */
+  score: number | null;
+  /** Honest verdict: `ready` | `nearly ready` | `not ready` | `not assessed`. */
   verdict: string;
 }
 
@@ -271,8 +275,12 @@ export interface FeedLintReport {
   products: ProductLintResult[];
   /** Finding counts by severity across the whole feed. */
   summary: { error: number; warn: number; info: number };
-  /** Feed-level quality score 0-100 (per-field graded, per the Rails model). */
-  feedScore: number;
+  /**
+   * Feed-level quality score 0-100 (per-field graded, per the Rails model).
+   * `null` when the feed could not be assessed (nothing parsed) - an honest
+   * "not assessed", never a fabricated 0 over an unevaluated feed (rule #6).
+   */
+  feedScore: number | null;
   /** Per-protocol readiness verdicts. */
   readiness: ProtocolReadiness[];
   /** Parse problems (e.g. malformed XML) - surfaced, never thrown (hard rule #3). */

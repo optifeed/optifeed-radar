@@ -19,6 +19,9 @@ describe('lintFeedContent - clean feed', () => {
     expect(report.summary.warn).toBe(0);
     expect(report.feedScore).toBe(100);
     for (const r of report.readiness) expect(r.verdict).toBe('ready');
+    // Readiness is only reported for protocols with protocol-specific rules.
+    // No UCP-specific rules exist yet, so UCP is not claimed as checked (rule #6).
+    expect(report.readiness.map((r) => r.protocol)).toEqual(['acp']);
   });
 });
 
@@ -46,11 +49,36 @@ describe('lintFeedContent - thin description', () => {
     expect(findings.some((f) => f.ruleId === 'description.thin')).toBe(true);
     expect(report.summary.warn).toBeGreaterThan(0);
     expect(report.summary.error).toBe(0);
-    // one product, one gapped field (description) out of 8 scored fields.
-    expect(report.feedScore).toBe(88);
+    // one product, one gapped field (description) out of 8 scored fields:
+    // floor(100 * (1 - 1/8)) = floor(87.5) = 87 (floored so <100 is never
+    // rounded up to a perfect-looking score).
+    expect(report.feedScore).toBe(87);
     expect(report.readiness.find((r) => r.protocol === 'acp')?.verdict).toBe(
       'ready',
     );
+  });
+});
+
+describe('lintFeedContent - honest rounding (no round-up to perfect)', () => {
+  it('keeps readiness below "ready" when any product has a blocking error', () => {
+    // 199 clean products + 1 missing a title. 100*199/200 = 99.5 would round to
+    // 100 ("ready"); flooring keeps it 99 so a real error is never laundered.
+    const products = Array.from({ length: 200 }, (_, i) => ({
+      item_id: `SKU${i}`,
+      title: i === 0 ? '' : 'Acme Rocket Kit',
+      description: 'A complete beginner rocket kit with everything included.',
+      brand: 'Acme',
+      image_url: 'https://acme.example/i.jpg',
+      url: 'https://acme.example/p',
+      gtin: '00012345678905',
+      price: '29.99',
+      currency: 'USD',
+      availability: 'in_stock',
+    }));
+    const report = lintFeedContent(JSON.stringify(products));
+    const acp = report.readiness.find((r) => r.protocol === 'acp')!;
+    expect(acp.score).toBe(99);
+    expect(acp.verdict).not.toBe('ready');
   });
 });
 
@@ -59,8 +87,12 @@ describe('lintFeedContent - failure modes', () => {
     const report = lintFeedContent(fixture('malformed.xml'));
     expect(report.productCount).toBe(0);
     expect(report.parseErrors.length).toBeGreaterThan(0);
-    expect(report.feedScore).toBe(0);
-    for (const r of report.readiness) expect(r.verdict).toBe('not ready');
+    // Not evaluated -> null score + "not assessed", never a fabricated 0 (rule #6).
+    expect(report.feedScore).toBeNull();
+    for (const r of report.readiness) {
+      expect(r.score).toBeNull();
+      expect(r.verdict).toBe('not assessed');
+    }
   });
 
   it('flags missing required fields as errors that block ACP readiness', () => {

@@ -83,18 +83,10 @@ function localName(tag: string): string {
 }
 
 function parseXml(content: string): ParseResult {
-  let $: cheerio.CheerioAPI;
-  try {
-    $ = cheerio.load(content, { xmlMode: true });
-  } catch (err) {
-    return {
-      products: [],
-      format: 'xml',
-      parseErrors: [
-        `Could not parse XML: ${err instanceof Error ? err.message : String(err)}`,
-      ],
-    };
-  }
+  // cheerio/htmlparser2 is lenient and does not throw on malformed XML - it
+  // parses what it can, so malformed input falls through to the "no items"
+  // branch below rather than being caught here (no dead try/catch).
+  const $ = cheerio.load(content, { xmlMode: true });
 
   // RSS uses <item>; Atom uses <entry>. Read each element's children generically
   // so namespaced tags need no selector escaping and every field lands in raw.
@@ -126,6 +118,21 @@ function parseXml(content: string): ParseResult {
   return { products, format: 'xml', parseErrors: [] };
 }
 
+const WRAPPER_KEYS = new Set(['products', 'items', 'entries']);
+
+/** Find the product array under a known wrapper key, matched case-insensitively. */
+function wrappedArray(parsed: unknown): unknown[] | undefined {
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  for (const [key, value] of Object.entries(
+    parsed as Record<string, unknown>,
+  )) {
+    if (WRAPPER_KEYS.has(key.toLowerCase()) && Array.isArray(value)) {
+      return value as unknown[];
+    }
+  }
+  return undefined;
+}
+
 function stringField(value: unknown): string | undefined {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') {
@@ -148,11 +155,9 @@ function parseJson(content: string): ParseResult {
     };
   }
 
-  // Accept a bare array, or an object wrapping `products`/`items`.
-  const list = Array.isArray(parsed)
-    ? parsed
-    : ((parsed as Record<string, unknown>)?.products ??
-      (parsed as Record<string, unknown>)?.items);
+  // Accept a bare array, or an object wrapping the products under a known key
+  // matched case-insensitively (a feed may serve `Products`, `Items`, etc.).
+  const list = Array.isArray(parsed) ? parsed : wrappedArray(parsed);
   if (!Array.isArray(list)) {
     return {
       products: [],

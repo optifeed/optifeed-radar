@@ -24,6 +24,21 @@ function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim() === '';
 }
 
+/**
+ * True when `raw` has a non-blank value under any spelling variant of `name`
+ * (separators normalized away). JSON keys are only lower-cased at parse time,
+ * so `qAndA`/`q-and-a` land as `qanda`/`q-and-a` - a fixed-key lookup would miss
+ * a field the merchant actually populated.
+ */
+function hasRawField(raw: Record<string, string>, name: string): boolean {
+  const canonical = name.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return Object.entries(raw).some(
+    ([key, value]) =>
+      key.replace(/[^a-z0-9]/gi, '').toLowerCase() === canonical &&
+      !isBlank(value),
+  );
+}
+
 /** Availability values recognized across ACP + Google Shopping (normalized). */
 const AVAILABILITY_VALUES = new Set([
   'in_stock',
@@ -103,7 +118,7 @@ export const LINT_RULES: LintRule[] = [
     protocol: 'both',
     severity: 'warn',
     field: 'description',
-    message: `Description is under ${THIN_DESCRIPTION_CHARS} characters - too thin for agents to reason about.`,
+    message: `Description is under ${THIN_DESCRIPTION_CHARS} characters - too thin for AI agents to reason about.`,
     docsUrl: ACP_DOCS,
     violated: (p) =>
       !isBlank(p.description) &&
@@ -125,7 +140,8 @@ export const LINT_RULES: LintRule[] = [
     protocol: 'acp',
     severity: 'info',
     field: 'gtin',
-    message: 'No GTIN supplied (optional, but it improves agent matching).',
+    message:
+      'No GTIN supplied (optional, but it improves matching by AI agents).',
     docsUrl: ACP_DOCS,
     violated: (p) => isBlank(p.gtin),
   },
@@ -187,8 +203,8 @@ export const LINT_RULES: LintRule[] = [
     protocol: 'both',
     severity: 'info',
     field: 'q_and_a',
-    message: 'No Q&A content (helps agents answer buyer questions).',
+    message: 'No Q&A content (helps AI agents answer buyer questions).',
     docsUrl: ACP_DOCS,
-    violated: (p: FeedProduct) => isBlank(p.raw.q_and_a),
+    violated: (p: FeedProduct) => !hasRawField(p.raw, 'q_and_a'),
   },
 ];
