@@ -230,6 +230,15 @@ site (falls back to flags gracefully); profile merge rules.
 **Goal:** realistic buyer prompts, editable, reusable.
 **Depends on:** M4 (profile) + M1 `JudgeClient` (injected, mock in tests -
 not a hard M6 dependency). Generation call bills the cost guard setup budget.
+**Retrieval-informed rules (per the Profound fanout study, as of Apr 2026 -
+cite source + date in METHODOLOGY; re-verify at release, engine rewriting
+shifts):** weight `best-of` intent highest (the most rewrite-stable prompt
+form across engines); when a prompt carries price/spec constraints, generate
+BOTH a constrained and an unconstrained variant (engines frequently drop
+constraints) - but the pair still counts against `DEFAULT_QUERY_COUNT` and the
+setup budget, never on top of them; always keep location qualifiers when the
+profile has geo (they survive rewrites); prefer concrete specific questions
+over broad thematic ones (retrieval layers convert everything to fact-lookups).
 **Deliverables:** judge-model generation from profile: default 20 prompts
 across intent types `best-of | comparison | problem | trust | local`
 (skip local when profile has no geo). Write `queries.yml` (schema_version,
@@ -250,10 +259,20 @@ interface EngineAdapter {
   id: 'openai' | 'anthropic' | 'gemini' | 'perplexity';
   kind: 'parametric' | 'grounded';
   available(cfg): boolean; // key present
-  ask(prompt, opts): Promise<EngineAnswer>; // {text, citations?, model, tokens, costUsd, ts}
+  ask(prompt, opts): Promise<EngineAnswer>; // {text, citations?, fanoutQueries?, model, tokens, costUsd, ts}
 }
 ```
 
+- **Fanout capture (optional, backward-compatible field):** where the API
+  exposes the internal search queries the engine ran, record them as
+  `fanoutQueries?: string[]` on `EngineAnswer`. Rationale (Profound fanout
+  study, as of Apr 2026): engines rewrite prompts heavily before searching
+  (ChatGPT ~13% word overlap with the prompt, ~91% unique queries per run), so
+  "what the AI actually searched for" is evidence no free tool exposes. Absent
+  metadata = field omitted, NEVER fabricated (rule #6). Feasibility is
+  provider-dependent: OpenAI `web_search` tool calls expose it; Perplexity /
+  Gemini grounding metadata is unverified - VERIFY per-engine support at the
+  M17 smoke test before building any renderer UI around the field.
 - openai: chat (parametric) + Responses/web_search variant (grounded)
   behind one adapter with `mode` option.
 - anthropic: parametric.
@@ -291,6 +310,18 @@ interface EngineAdapter {
   modifier) → 0-100; composite = weighted mean (grounded engines weight
   higher); formula + weights in `METHODOLOGY.md` (deliverable of this
   module, published verbatim).
+- **Per-engine retrieval-stability, as HONEST FRAMING not a numeric modifier
+  (guard against fake precision - copy rule):** engines differ in run-to-run
+  retrieval variance (Profound fanout study, as of Apr 2026: Perplexity
+  near-stable ~14% unique queries; ChatGPT ~91%). Surface this as a
+  qualitative confidence qualifier on per-engine scores (high-variance engines
+  get wider "estimate" framing and benefit from more samples), NOT as a factor
+  that adjusts the score. If a per-engine `stability` constant is stored, it is
+  tagged approximate with a `lastUpdated` date + cited source (like
+  `MODEL_PRICING`), never presented as settled fact. METHODOLOGY also states
+  plainly: our prompts are GENERATED approximations of buyer questions, not
+  real user prompt data (the panel-data advantage hosted platforms sell) -
+  which is why the pack is editable.
 - Share-of-voice table vs profile competitors; sources aggregation.
   **Acceptance:** golden answer fixtures (incl. tricky: brand as common word,
   competitor-only answers, non-English); judge-budget cap enforced; formula
