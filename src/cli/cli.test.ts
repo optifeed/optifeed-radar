@@ -173,6 +173,66 @@ afterEach(() => {
   process.exitCode = 0;
 });
 
+const FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+  <channel>
+    <item>
+      <g:id>SKU1</g:id>
+      <g:title>Acme Beginner Rocket Kit</g:title>
+      <g:description>A complete model rocket kit for beginners, with engine and launch instructions.</g:description>
+      <g:image_link>https://acme.example/img/1.jpg</g:image_link>
+      <g:link>https://acme.example/p/1</g:link>
+      <g:price>29.99 USD</g:price>
+      <g:availability>in stock</g:availability>
+    </item>
+  </channel>
+</rss>`;
+
+/** A runtime whose fetcher serves `body` (or a 404) for the feed URL. */
+function feedRuntime(body: string | null) {
+  const fetchImpl: FetchLike = async () =>
+    body === null ? res('not found', 404) : res(body);
+  return testRuntime({ fetcher: createFetcher({ fetchImpl }) });
+}
+
+describe('lint-feed command', () => {
+  it('lints a fetched feed and prints the score plus findings', async () => {
+    const rt = feedRuntime(FEED_XML);
+    await run(rt, ['lint-feed', 'https://acme.example/feed.xml']);
+    const out = rt.output.join('');
+    expect(out).toContain('/100');
+    // The fixture item has no brand, which ACP requires -> an error finding.
+    expect(out).toContain('SKU1');
+    expect(out).toContain('[fail]');
+    expect(out).toContain('optifeed.com');
+  });
+
+  it('emits the raw report under --json with no ANSI', async () => {
+    const rt = feedRuntime(FEED_XML);
+    await run(rt, ['lint-feed', 'https://acme.example/feed.xml', '--json']);
+    const raw = rt.output.join('');
+    expect(raw.includes('[')).toBe(false);
+    const parsed = JSON.parse(raw);
+    expect(parsed.schema_version).toBe(SCHEMA_VERSION);
+    expect(parsed.source).toBe('https://acme.example/feed.xml');
+    expect(parsed.productCount).toBe(1);
+  });
+
+  it('surfaces a fetch failure honestly and exits 1', async () => {
+    const rt = feedRuntime(null);
+    await run(rt, ['lint-feed', 'https://acme.example/missing.xml']);
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain('not assessed');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 0 for an assessable feed even when it has findings', async () => {
+    const rt = feedRuntime(FEED_XML);
+    await run(rt, ['lint-feed', 'https://acme.example/feed.xml']);
+    expect(process.exitCode).toBe(0);
+  });
+});
+
 describe('audit command (zero-key)', () => {
   it('runs with no keys and prints score + footer', async () => {
     const rt = testRuntime();

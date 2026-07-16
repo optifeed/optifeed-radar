@@ -8,6 +8,7 @@ import { renderAuditJson, renderAuditText } from '../core/output/index.js';
 import { runAudit } from '../core/run/index.js';
 import { registerCheck } from './check.js';
 import { registerInspect } from './inspect.js';
+import { registerLintFeed } from './lintfeed.js';
 import { type Runtime, defaultRuntime } from './runtime.js';
 
 /**
@@ -56,6 +57,7 @@ export function buildProgram(rt: Runtime = defaultRuntime()): Command {
 
   registerAudit(program, rt);
   registerCheck(program, rt);
+  registerLintFeed(program, rt);
   registerInspect(program, rt);
 
   return program;
