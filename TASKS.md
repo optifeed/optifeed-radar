@@ -96,12 +96,13 @@ Owner: setup · PR: (M6)
 - [x] Acceptance: mocked HTTP throughout, retry/backoff paths, partial-run shape, cost accumulation, JudgeClient conformance. 18 new tests; 72 total green.
 - Module report: `createAdapter(spec, deps)` wraps a provider spec with shared retry/cost/clock; `httpPost`, `sleep`, `now`, `apiKey` all injected so every path tests with no network and deterministic timestamps. Wire shapes for parametric endpoints match real APIs; OpenAI grounded (Responses) and Gemini grounding use simplified shapes to be firmed up at the M17 smoke test. `defaultHttpPost` wraps global fetch for production.
 
-### [ ] M13 - ACP/UCP protocol spike (do before M14)
+### [x] M13 - ACP/UCP protocol spike (do before M14)
 
-Owner: ___ · PR: ___
+Owner: setup · PR: (M13)
 
-- [ ] `PROTOCOL-NOTES.md` - verified ACP + UCP field requirements with source URLs + dates
-- [ ] Acceptance: every requirement cites source + date; maps to future M14 rules
+- [x] `PROTOCOL-NOTES.md` - verified ACP + UCP field requirements with source URLs + dates (retrieved 2026-07-16, from PRIMARY sources only)
+- [x] Acceptance: every requirement cites source + date; maps to future M14 rules (section 6 starter rule-map)
+- Module report: research spike (no code). Went to primary sources only - OpenAI developer docs + the `agentic-commerce-protocol` and `universal-commerce-protocol` GitHub repos (spec + JSON schema files via `gh api`), never the community mirrors/vendor blogs. Key findings that shape M14: (1) there are THREE feed surfaces, not one - ACP/OpenAI ChatGPT flat feed (in production, 15 strict required fields; THE lint target), the ACP Product Feeds RFC (Status: Proposal/unreleased, minimal MUSTs, nested shape; advisory only), and UCP which is an API catalog capability (search/lookup over REST/MCP/A2A), NOT a static feed - its concrete feed surface is Google Merchant Center product data + a `native_commerce` eligibility attribute. (2) Debunked the widely-repeated "MPN required when GTIN absent" claim - NOT in the OpenAI spec (both optional; `brand` is the required identifier); verified against the source so M14 does not encode a phantom rule. (3) Pulled UCP required-field arrays straight from the JSON schemas (Product: id/title/description/price_range/variants; Variant: id/title/description/price). Six open questions parked for M17 re-verification (return_policy condition, is_ads_eligible scope, RFC release status, UCP schema churn, exact GMC product spec, GTIN/MPN drift). Deferred to M14: transcribing the full Google Merchant Center product spec, and reconciling against the Rails feed-quality logic (M14's other input). `PROTOCOL-NOTES.md` at repo root alongside `METHODOLOGY.md`.
 
 ### [ ] M14 - lint-feed (ACP + UCP) — INDEPENDENT TRACK
 
@@ -326,7 +327,7 @@ Owner: ___ · PR: ___
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
 - [ ] Confirm no orchestration logic leaks into `cli/`/`mcp/` (must live in M10) - M10 `runCheck`/`runAudit` now own the full flow; re-check when M11/M15 wrap them (commands must be thin: parse flags → call run → render)
-- [ ] ACP/UCP spec churn - re-verify M13 notes before M14 rules AND at release (M17)
+- [ ] ACP/UCP spec churn - M13 notes captured 2026-07-16 (`PROTOCOL-NOTES.md`); re-verify before M14 rules AND at release (M17). Six specific open questions parked in PROTOCOL-NOTES.md section 5 (return_policy condition, is_ads_eligible scope, ACP RFC release status, UCP schema churn, exact GMC product spec, GTIN/MPN interdependency drift).
 - [ ] Reserved "first" claim ("first open-source SKU-level AI shopping visibility tool") - re-verify when M12 ships
 - [x] Shared `core` load-time validation helper: `loadProfile`, `parseQueryPack`, and `loadSnapshot` each hand-rolled schema_version-by-value + required-field checks (M8 review lesson #3). Done - `core/validation.ts` (`createValidator(fail)`, error-agnostic so each loader keeps its own error type); all three routed through it. Closed the drift the extraction exposed: `loadProfile`/`parseQueryPack` previously only string-checked `schema_version` while `loadSnapshot` compared it by value - now all three reject an incompatible version (rule #2). +10 tests (269→279).
 
