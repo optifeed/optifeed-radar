@@ -1,0 +1,15 @@
+[
+  {
+    "item_id": "SKU1",
+    "title": "Acme Beginner Rocket Kit",
+    "description": "A complete model rocket kit for beginners, with engine, recovery wadding, and launch instructions.",
+    "brand": "Acme",
+    "gtin": "00012345678905",
+    "mpn": "ACME-001",
+    "image_url": "https://acme.example/img/1.jpg",
+    "url": "https://acme.example/p/1",
+    "price": "29.99",
+    "currency": "USD",
+    "availability": "in_stock"
+  }
+]

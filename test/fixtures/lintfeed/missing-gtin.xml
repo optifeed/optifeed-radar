@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+  <channel>
+    <title>Acme Rockets feed</title>
+    <item>
+      <g:id>SKU1</g:id>
+      <g:title>Acme Beginner Rocket Kit</g:title>
+      <g:description>A complete model rocket kit for beginners, with engine, recovery wadding, and launch instructions.</g:description>
+      <g:brand>Acme</g:brand>
+      <g:image_link>https://acme.example/img/1.jpg</g:image_link>
+      <g:link>https://acme.example/p/1</g:link>
+      <g:price>29.99 USD</g:price>
+      <g:availability>in stock</g:availability>
+    </item>
+  </channel>
+</rss>
