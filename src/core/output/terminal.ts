@@ -173,6 +173,55 @@ export function renderCheckText(
   return lines.join('\n');
 }
 
+/**
+ * The `sources` view: where AI engines drew their answers from (cited domains)
+ * and the share-of-voice split, read from the latest saved snapshot. Consumes
+ * the envelope only; honest about a partial run and about an empty citation set
+ * (parametric-only runs cite nothing). Ends with the shared footer CTA.
+ */
+export function renderSourcesText(
+  env: VisibilityEnvelope,
+  opts: TextRenderOptions = {},
+): string {
+  const c = colors(opts);
+  const lines: string[] = [];
+
+  lines.push(c.bold(`Sources and share of voice: ${env.profile.brand}`));
+  lines.push(`for ${env.domain}`);
+  lines.push('');
+
+  if (env.sources.length > 0) {
+    lines.push('Cited sources (grounded answers):');
+    for (const s of env.sources) {
+      lines.push(`  ${pad(s.domain, 28)}${`${s.count}`.padStart(4)}`);
+    }
+  } else {
+    lines.push('No cited sources: no grounded engine returned citations.');
+  }
+  lines.push('');
+
+  if (env.shareOfVoice.length > 0) {
+    lines.push('Share of voice:');
+    for (const row of env.shareOfVoice) {
+      const tag = row.isBrand ? c.bold(' (you)') : '';
+      lines.push(
+        `  ${pad(row.name, 20)}${`${row.sharePct}`.padStart(5)}%${tag}`,
+      );
+    }
+    lines.push('');
+  }
+
+  const honesty = honestyNotes(env);
+  if (honesty.length > 0) {
+    lines.push('Run notes:');
+    for (const note of honesty) lines.push(`  ${c.yellow('!')} ${note}`);
+    lines.push('');
+  }
+
+  lines.push(FOOTER_CTA);
+  return lines.join('\n');
+}
+
 /** Human-readable honesty notes for a partial/degraded run (rule #6). */
 export function honestyNotes(env: VisibilityEnvelope): string[] {
   if (!isPartialRun(env)) return [];

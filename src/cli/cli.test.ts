@@ -2,8 +2,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createFetcher, type FetchLike } from '../core/fetcher/index.js';
 import type { EngineAdapter } from '../core/engines/index.js';
 import { profilePath, type ProfileFs } from '../core/discovery/index.js';
-import { queriesPath, toYaml, type QueryFs } from '../core/queries/index.js';
-import type { SnapshotFs } from '../core/output/index.js';
+import {
+  queriesPath,
+  saveQueryPack,
+  toYaml,
+  type QueryFs,
+} from '../core/queries/index.js';
+import {
+  saveSnapshot,
+  type SnapshotFs,
+  type VisibilityEnvelope,
+} from '../core/output/index.js';
 import type { RunCheckDeps } from '../core/run/index.js';
 import {
   SCHEMA_VERSION,
@@ -106,10 +115,14 @@ function memFs(
 }
 
 /** A runtime capturing output, with the check pipeline fully mocked. */
-function testRuntime(over: Partial<Runtime> = {}): Runtime & {
+function testRuntime(
+  over: Partial<Runtime> = {},
+  seed: Record<string, string> = {},
+): Runtime & {
   output: string[];
   errors: string[];
   reports: Map<string, string>;
+  fs: ReturnType<typeof memFs>;
 } {
   const output: string[] = [];
   const errors: string[] = [];
@@ -117,6 +130,7 @@ function testRuntime(over: Partial<Runtime> = {}): Runtime & {
   const fs = memFs({
     [profilePath(STATE)]: JSON.stringify(PROFILE),
     [queriesPath(STATE)]: toYaml(PACK),
+    ...seed,
   });
   const checkDeps = (): RunCheckDeps => ({
     fetcher: createFetcher({ fetchImpl: fakeFetch }),
@@ -131,6 +145,7 @@ function testRuntime(over: Partial<Runtime> = {}): Runtime & {
     output,
     errors,
     reports,
+    fs,
     out: (s) => output.push(s),
     err: (s) => errors.push(s),
     env: {},
@@ -143,6 +158,8 @@ function testRuntime(over: Partial<Runtime> = {}): Runtime & {
       reports.set(p, d);
     },
     fetcher: createFetcher({ fetchImpl: fakeFetch }),
+    snapshotFs: fs,
+    queryFs: fs,
     checkDeps,
     ...over,
   };
@@ -250,6 +267,148 @@ describe('check command', () => {
     ]);
     expect(rt.output.join('')).toContain('AI Visibility Score');
     expect(rt.errors.join('').toLowerCase()).toContain('report');
+  });
+});
+
+// The domain-scoped state dir the inspect commands resolve for acme.example
+// (cwd /proj, project writable): `<cwd>/.optifeed/<domain>`.
+const DSTATE = '/proj/.optifeed/acme.example';
+
+function snapEnvelope(
+  over: Partial<VisibilityEnvelope> = {},
+): VisibilityEnvelope {
+  return {
+    schema_version: SCHEMA_VERSION,
+    generatedAt: '2026-07-15T00:00:00.000Z',
+    domain: 'acme.example',
+    profile: PROFILE,
+    score: 57,
+    engines: [
+      {
+        engine: 'openai',
+        kind: 'parametric',
+        score: 60,
+        mentionRate: 0.5,
+        avgPosition: 1,
+        answers: 2,
+        mentions: 1,
+      },
+    ],
+    shareOfVoice: [
+      { name: 'Acme', isBrand: true, mentions: 2, sharePct: 66.7 },
+      { name: 'Globex', isBrand: false, mentions: 1, sharePct: 33.3 },
+    ],
+    sources: [{ domain: 'eater.com', count: 2 }],
+    mentions: [],
+    answers: [],
+    findings: [],
+    sampling: { nPrompts: 1, nAnswers: 2, judged: 0, varianceNote: 'note' },
+    ...over,
+  };
+}
+
+describe('diff command', () => {
+  it('diffs the latest two snapshots and prints the signed score delta', async () => {
+    const rt = testRuntime();
+    await saveSnapshot(
+      snapEnvelope({ generatedAt: '2026-07-10T00:00:00.000Z', score: 50 }),
+      DSTATE,
+      rt.fs,
+    );
+    await saveSnapshot(snapEnvelope({ score: 57 }), DSTATE, rt.fs);
+
+    await run(rt, ['diff', 'acme.example']);
+    const out = rt.output.join('');
+    expect(out).toContain('+7'); // 57 - 50
+    expect(out).toContain('acme.example');
+    expect(out).toContain('optifeed.com');
+  });
+
+  it('emits the diff as JSON under --json (carries schema_version)', async () => {
+    const rt = testRuntime();
+    await saveSnapshot(
+      snapEnvelope({ generatedAt: '2026-07-10T00:00:00.000Z', score: 50 }),
+      DSTATE,
+      rt.fs,
+    );
+    await saveSnapshot(snapEnvelope({ score: 57 }), DSTATE, rt.fs);
+
+    await run(rt, ['diff', 'acme.example', '--json']);
+    const parsed = JSON.parse(rt.output.join(''));
+    expect(parsed.schema_version).toBe(SCHEMA_VERSION);
+    expect(parsed.scoreDelta).toBe(7);
+  });
+
+  it('errors when fewer than two snapshots exist (exit 1)', async () => {
+    const rt = testRuntime();
+    await saveSnapshot(snapEnvelope(), DSTATE, rt.fs);
+
+    await run(rt, ['diff', 'acme.example']);
+    expect(process.exitCode).toBe(1);
+    expect(rt.errors.join('').toLowerCase()).toContain('two snapshots');
+  });
+});
+
+describe('sources command', () => {
+  it('shows cited sources and share of voice from the latest snapshot', async () => {
+    const rt = testRuntime();
+    await saveSnapshot(snapEnvelope(), DSTATE, rt.fs);
+
+    await run(rt, ['sources', 'acme.example']);
+    const out = rt.output.join('');
+    expect(out).toContain('eater.com');
+    expect(out).toContain('(you)');
+    expect(out).toContain('optifeed.com');
+  });
+
+  it('errors when no snapshot exists yet (exit 1)', async () => {
+    const rt = testRuntime();
+    await run(rt, ['sources', 'acme.example']);
+    expect(process.exitCode).toBe(1);
+    expect(rt.errors.join('').toLowerCase()).toContain('check acme.example');
+  });
+});
+
+describe('queries command', () => {
+  it('prints the persisted query pack for the domain', async () => {
+    const rt = testRuntime();
+    await saveQueryPack(PACK, DSTATE, rt.fs);
+
+    await run(rt, ['queries', 'acme.example']);
+    expect(rt.output.join('')).toContain('best widgets brand?');
+  });
+
+  it('exports the pack to a file under --export', async () => {
+    const rt = testRuntime();
+    await saveQueryPack(PACK, DSTATE, rt.fs);
+
+    await run(rt, ['queries', 'acme.example', '--export', 'pack.yml']);
+    expect(rt.reports.get('pack.yml')).toContain('best widgets brand?');
+  });
+
+  it('errors when no pack exists for the domain (exit 1)', async () => {
+    const rt = testRuntime();
+    await run(rt, ['queries', 'acme.example']);
+    expect(process.exitCode).toBe(1);
+    expect(rt.errors.join('').toLowerCase()).toContain('check acme.example');
+  });
+});
+
+describe('config command', () => {
+  it('shows which engine keys are set without printing the key values (rule #4)', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-secret-123' } });
+    await run(rt, ['config']);
+    const out = rt.output.join('');
+    expect(out).toContain('openai');
+    expect(out.toLowerCase()).toContain('set');
+    expect(out).not.toContain('sk-secret-123'); // never leak the key
+    expect(out).toContain('.optifeed'); // shows the state directory
+  });
+
+  it('reports no engines configured when the env is empty', async () => {
+    const rt = testRuntime({ env: {} });
+    await run(rt, ['config']);
+    expect(rt.output.join('').toLowerCase()).toContain('not set');
   });
 });
 

@@ -11,6 +11,8 @@ import { writeFile as fsWriteFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import process from 'node:process';
 import { createFetcher, type Fetcher } from '../core/fetcher/index.js';
+import { nodeQueryFs, type QueryFs } from '../core/queries/index.js';
+import { nodeSnapshotFs, type SnapshotFs } from '../core/output/index.js';
 import type { RunCheckDeps } from '../core/run/index.js';
 
 /** Parsed `check` flags, normalized from commander options. */
@@ -45,6 +47,10 @@ export interface Runtime {
   writeFile(path: string, data: string): Promise<void>;
   /** Shared fetcher for audit + check. */
   fetcher: Fetcher;
+  /** Snapshot fs for the read-only inspect commands (`diff`, `sources`). */
+  snapshotFs: SnapshotFs;
+  /** Query-pack fs for the `queries` command. */
+  queryFs: QueryFs;
   /** Override the check pipeline's injected deps (tests bypass real adapters). */
   checkDeps?: (flags: CheckFlags) => RunCheckDeps;
 }
@@ -71,5 +77,7 @@ export function defaultRuntime(): Runtime {
     now: () => new Date().toISOString(),
     writeFile: (path, data) => fsWriteFile(path, data, 'utf8'),
     fetcher: createFetcher(),
+    snapshotFs: nodeSnapshotFs(),
+    queryFs: nodeQueryFs(),
   };
 }

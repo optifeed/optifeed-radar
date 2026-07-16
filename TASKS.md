@@ -8,7 +8,7 @@ changes, edit the plan first, then reflect it here.
 > This is the canonical, in-repo copy (moved here when M0 scaffolded the repo).
 > The planning-workspace copy is superseded.
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-16.
 
 ## Legend
 
@@ -178,10 +178,11 @@ Owner: setup · PR: (M9) · needs M8
 
 Owner: setup · PR: (M11) · thin over M10 + M9
 
-- [~] commands: `audit` [x] `check` [x] · `compare` `sources` `queries` `diff` `config` deferred (CLI-native, own follow-up); `shopping` (M12) `lint-feed` (M14) `mcp` (M15) land with their modules
+- [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `shopping` (M12) `lint-feed` (M14) `mcp` (M15) land with their modules
 - [x] all interactive prompts bypassable (`--yes` + flags); ship `audit` first
 - [x] Acceptance e2e mocked: audit no-key, check 1-key, full, clean `--json` (no ANSI)
 - Module report: `check <domain>` is the M11 headline - THIN over `runCheck` (M10) then an M9 renderer (hard rule #1: no orchestration in cli/). Flags: `--yes`, `--json` (clean envelope, no ANSI), `--report <file>` (HTML), `--quick` (8 prompts), `--engines a,b`, `--max-cost`/`--max-setup-cost` (CostGuard caps), `--refresh`/`--regenerate`/`--brand`/`--category`/`--queries`. Introduced a `Runtime` seam (`cli/runtime.ts`): every process effect (stdout/stderr, env, cwd, home, isTTY, clock, writeFile, fetcher) plus a `checkDeps` override behind one injectable object, so the 6 command e2e tests run with no process globals and no network. `defaultCheckDeps` builds the concrete deps (adapters from env, judge via `resolveJudgeModel` cheapest+notice → `createJudgeClient`, guard from cost flags, node fs, and a confirm gate that aborts off a TTY - agents pass `--yes`, hard rule #8). No-key `check` prints guidance to run `audit` and exits 1. `audit` now takes an injected fetcher via the runtime (offline-testable). Added `renderCheckJson` (M9). Deps added (M11-owned): `@inquirer/prompts` (lazy-imported inside the confirm gate). 6 new tests (239→245); verified the built CLI live: `--version`, `--help` (both commands), no-key `check` guidance+exit 1, and a real zero-key `audit example.com` over the network. Deferred to a follow-up: `compare`/`sources`/`queries`/`diff`/`config` (plus a `diff` renderer M9 did not build), and live `check` verification with a real key (M17 smoke test).
+- Follow-up (2026-07-16): built the four read-only inspect commands - `diff`, `sources`, `queries`, `config` - in `cli/inspect.ts`, each THIN over existing core (no spend). `diff <domain>` compares the two most recent snapshots (`listSnapshots`/`loadSnapshot`/`diffEnvelopes`) through a NEW M9 diff renderer (`render-diff.ts`: `renderDiffText`/`renderDiffJson`, honest about the promptSetChanged/engineSetChanged/partial caveats, single footer CTA). `sources <domain>` renders cited domains + share of voice from the latest snapshot via a new `renderSourcesText` (honest empty state when a parametric-only run cited nothing). `queries <domain>` prints/`--export`s the persisted pack (`toYaml`). `config` shows engine-key presence (never the value - rule #4), the resolved judge model, and the state dir. `Runtime` gained `snapshotFs`/`queryFs` (mirroring `fetcher`) so all four test with an in-memory fs and zero disk. 20 new tests (279→299; the validation-helper pass took 269→279 separately); verified all four live against the built CLI. Still deferred: `compare` (design first) and live `check` with a real key (M17).
 
 ### [ ] M12 - Shopping beta (after M10)
 
