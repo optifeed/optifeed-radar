@@ -46,6 +46,18 @@ report, `--max-cost 0.50` to cap spend, `--quick` for a smaller prompt pack, and
 Verifying `check` live against each engine's production API is the last step
 before the npm release, so treat it as pre-release.
 
+Every `check` saves a local snapshot, so you can inspect a run without spending
+again:
+
+```bash
+npx tsx src/cli/index.ts diff yourbrand.com      # what changed between your last two runs
+npx tsx src/cli/index.ts sources yourbrand.com   # domains the AI cited, and your share of voice
+npx tsx src/cli/index.ts queries yourbrand.com   # show or --export your buyer-prompt pack
+npx tsx src/cli/index.ts config                  # which engine keys are set, where state is stored
+```
+
+`config` reports only whether each key is present, never the key value.
+
 ## Status
 
 Under active development; the repo is public early so you can follow along. If
@@ -53,10 +65,9 @@ this is useful to you, a star genuinely helps.
 
 ## On the roadmap
 
-- `compare`, `sources`, `diff`, `queries` - competitors, cited domains,
-  snapshots over time, and an editable buyer-prompt pack
+- `compare` - a competitor-focused view of who AI recommends in your category
 - `shopping` (beta) - SKU-level checks for Shopify and product feeds, plus
-  `lint-feed` for ACP and UCP readiness
+  `lint-feed` for ACP and UCP feed readiness
 - an MCP server exposing the same capabilities to your AI agents
 - a published `npx optifeed-visibility` package
 
