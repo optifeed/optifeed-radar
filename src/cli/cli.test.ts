@@ -367,6 +367,25 @@ describe('sources command', () => {
     expect(process.exitCode).toBe(1);
     expect(rt.errors.join('').toLowerCase()).toContain('check acme.example');
   });
+
+  it('surfaces honesty flags under --json for a partial run (rule #6)', async () => {
+    const rt = testRuntime();
+    await saveSnapshot(
+      snapEnvelope({
+        degraded: true,
+        skippedEngines: [{ engine: 'gemini', reason: 'no key' }],
+      }),
+      DSTATE,
+      rt.fs,
+    );
+
+    await run(rt, ['sources', 'acme.example', '--json']);
+    const parsed = JSON.parse(rt.output.join(''));
+    expect(parsed.degraded).toBe(true);
+    expect(parsed.skippedEngines).toEqual([
+      { engine: 'gemini', reason: 'no key' },
+    ]);
+  });
 });
 
 describe('queries command', () => {

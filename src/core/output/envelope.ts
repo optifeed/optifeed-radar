@@ -56,6 +56,12 @@ export interface VisibilityEnvelope {
   profile: BrandProfile;
   /** THE headline AI Visibility Score, 0-100 (hard rule #6). */
   score: number;
+  /**
+   * Scoring methodology version, so a diff can flag cross-version deltas
+   * (rule #2). Optional because snapshots written before this field existed
+   * still load (and read as "changed" against a versioned run).
+   */
+  scoringVersion?: number;
   /** Per-engine scores (M7). */
   engines: EngineScore[];
   /** Share-of-voice vs competitors (M7). */
@@ -122,6 +128,7 @@ export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
     domain: profile.domain,
     profile,
     score: score.score,
+    scoringVersion: score.scoringVersion,
     engines: score.engines,
     shareOfVoice: score.shareOfVoice,
     sources: score.sources,

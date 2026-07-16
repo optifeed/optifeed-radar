@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, type QueryPack } from '../types.js';
+import { SchemaVersionError } from '../validation.js';
 import {
   QueryPackError,
   loadQueryPack,
@@ -74,9 +75,18 @@ describe('query pack persistence', () => {
     expect(() => parseQueryPack(bad)).toThrow(QueryPackError);
   });
 
-  it('throws QueryPackError on an incompatible schema_version, not just a missing one (rule #2)', () => {
+  it('parseQueryPack throws SchemaVersionError on an incompatible schema_version (rule #2)', () => {
+    // The pure parser (also used for an explicit --queries file) surfaces the
+    // mismatch; only the cache loader below recovers from it.
     const bad = toYaml({ ...PACK, schema_version: '0.2' });
-    expect(() => parseQueryPack(bad)).toThrow(QueryPackError);
+    expect(() => parseQueryPack(bad)).toThrow(SchemaVersionError);
+  });
+
+  it('loadQueryPack treats an incompatible cached pack as absent (regenerate, not abort)', async () => {
+    const { fs } = memFs({
+      [queriesPath('/state')]: toYaml({ ...PACK, schema_version: '0.2' }),
+    });
+    expect(await loadQueryPack('/state', fs)).toBeNull();
   });
 
   it('throws QueryPackError when queries is missing', () => {

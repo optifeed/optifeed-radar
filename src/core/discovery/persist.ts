@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { BrandProfile } from '../types.js';
-import { createValidator } from '../validation.js';
+import { createValidator, SchemaVersionError } from '../validation.js';
 
 /** The minimal fs surface discovery needs, injectable for tests. */
 export interface ProfileFs {
@@ -74,7 +74,15 @@ export async function loadProfile(
   } catch (err) {
     throw new ProfileParseError(path, err);
   }
-  return validateProfile(parsed, path);
+  try {
+    return validateProfile(parsed, path);
+  } catch (err) {
+    // A stale-version cache is rebuildable: treat it as absent so the caller
+    // re-discovers (and overwrites with the current schema) instead of aborting
+    // the run. Genuine corruption still surfaces as ProfileParseError.
+    if (err instanceof SchemaVersionError) return null;
+    throw err;
+  }
 }
 
 /** Validate a parsed profile's required shape (a hand edit can break it). */

@@ -66,16 +66,17 @@ describe('profile persistence', () => {
     );
   });
 
-  it('throws ProfileParseError on an incompatible schema_version, not just a missing one (rule #2)', async () => {
+  it('treats a cached profile with an incompatible schema_version as absent (re-discover, not abort)', async () => {
+    // rule #2: never USE an incompatible cache - but a stale-version profile is
+    // rebuildable, so the loader returns null (the caller re-discovers) rather
+    // than throwing and aborting a whole run after a future schema bump.
     const { fs } = memFs({
       [profilePath('/state')]: JSON.stringify({
         ...PROFILE,
         schema_version: '0.2',
       }),
     });
-    await expect(loadProfile('/state', fs)).rejects.toBeInstanceOf(
-      ProfileParseError,
-    );
+    expect(await loadProfile('/state', fs)).toBeNull();
   });
 
   it('throws ProfileParseError on a structurally invalid profile', async () => {

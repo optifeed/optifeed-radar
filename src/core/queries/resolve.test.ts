@@ -104,6 +104,28 @@ describe('resolveQueries', () => {
     expect(j.calls).toBe(0);
   });
 
+  it('regenerates (does not abort) when the cached pack has an incompatible schema_version', async () => {
+    const stale = {
+      schema_version: '0.2', // from a prior, incompatible version
+      domain: 'acme.example',
+      generatedAt: AT,
+      queries: [{ id: 'q1', intent: 'best-of', prompt: 'Old cached prompt?' }],
+    };
+    const { fs } = memFs({
+      [queriesPath('/state')]: toYaml(stale as unknown as QueryPack),
+    });
+    const j = judge();
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', count: 4 },
+    );
+
+    expect(result.fromCache).toBeUndefined(); // did NOT reuse the stale cache
+    expect(j.calls).toBe(1); // regenerated
+  });
+
   it('never reuses a cached pack from a different domain (shared state dir)', async () => {
     // A flat, writable-project state dir holds another brand's queries.yml; a
     // run for THIS profile's domain must regenerate, not ask another brand's

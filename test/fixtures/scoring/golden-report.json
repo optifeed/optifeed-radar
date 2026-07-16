@@ -2,6 +2,7 @@
   "schema_version": "0.1",
   "domain": "caferio.example",
   "score": 46,
+  "scoringVersion": 2,
   "engines": [
     {
       "engine": "openai",

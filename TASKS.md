@@ -300,6 +300,28 @@ Owner: ___ · PR: ___
   "surfaced unprompted" - M7/M8/M9 + optional envelope field, schema unchanged
   (`9be899d`). All five verified live against wefood.com.tr.
 
+- 2026-07-16: high-effort workflow review of `21f0f94..HEAD` (the buyer-prompt/
+  score/meta fixes + the validation-helper and M11-inspect-command work), 18
+  agents (finder angles + adversarial verify). 9 verified findings (1 refuted),
+  all fixed test-first (+ ~24 tests, 290→308). Headliners: (1) the score formula
+  changed meaning while snapshots stayed `schema_version` 0.1, so `diff` reported
+  methodology deltas as real regressions - added `SCORING_VERSION` (=2) to
+  `ScoreReport`/envelope and a `scoringChanged` flag `diffEnvelopes` sets +
+  `render-diff` warns on (decision: version-tag over a schema bump, keeps
+  history). (2) coverage-aware position scored a mentioned-but-unranked answer as
+  absent (0) - now earns a mid-list default (rank 4); METHODOLOGY updated. (3)
+  `sources --json` dropped honesty flags - now carries costCapped/skipped/degraded
+  (rule #6). (4) the OG case-insensitive fix stored the key as-authored while
+  consumers read lowercase - key now normalized. (5) the validation helper's new
+  schema-version throw aborted a run uncaught - introduced a distinct
+  `SchemaVersionError` so cache loaders (`loadProfile`/`loadQueryPack`) recover
+  and re-discover while parsers/historical snapshots still surface it. Cleanups:
+  validator error text distinguishes absent vs mis-typed; `diff` loads its two
+  snapshots concurrently; shared `renderShareOfVoice`/`renderNoteBlock` helpers
+  de-duplicate three renderers. Refuted: a false alarm about the `config` judge
+  line. Verified live against the built CLI (diff scoring-change warning; sources
+  --json honesty).
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`

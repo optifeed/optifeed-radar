@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, type BrandProfile } from '../types.js';
+import { SchemaVersionError } from '../validation.js';
 import { VARIANCE_NOTE, type VisibilityEnvelope } from './envelope.js';
 import {
   SnapshotParseError,
@@ -140,6 +141,8 @@ describe('loadSnapshot failure modes', () => {
   });
 
   it('throws on an incompatible schema_version, not just a missing one (rule #2)', async () => {
+    // A snapshot is historical (not rebuildable), so an incompatible version
+    // surfaces as a SchemaVersionError rather than being silently ignored.
     const fs = fakeFs();
     await fs.mkdir(snapshotsDir('/state'));
     const path = `${snapshotsDir('/state')}/future.json`;
@@ -149,7 +152,7 @@ describe('loadSnapshot failure modes', () => {
     };
     await fs.writeFile(path, JSON.stringify(future));
     await expect(loadSnapshot(path, fs)).rejects.toBeInstanceOf(
-      SnapshotParseError,
+      SchemaVersionError,
     );
   });
 

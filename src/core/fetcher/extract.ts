@@ -35,7 +35,9 @@ export function extractPage(html: string): ExtractedPage {
     const property = $(el).attr('property');
     const content = $(el).attr('content');
     if (property && content) {
-      og[property.slice('og:'.length)] = content;
+      // Normalize the key to lowercase: the selector matches case-varying tags
+      // (og:Site_Name, OG:Locale), but consumers read lowercase (og.site_name).
+      og[property.slice('og:'.length).toLowerCase()] = content;
     }
   });
 

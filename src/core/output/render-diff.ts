@@ -8,7 +8,7 @@
 import pc from 'picocolors';
 import type { SnapshotDiff } from './diff.js';
 import { FOOTER_CTA } from './footer.js';
-import type { TextRenderOptions } from './terminal.js';
+import { renderNoteBlock, type TextRenderOptions } from './terminal.js';
 
 /** A score delta with an explicit sign, e.g. `+7`, `-4`, `+0`. */
 function signed(n: number): string {
@@ -55,16 +55,17 @@ export function renderDiffText(
       'An engine appeared in only one run, so the headline delta partly reflects an engine entering or leaving the sample.',
     );
   }
+  if (diff.scoringChanged) {
+    caveats.push(
+      'The two runs used different scoring methodologies, so this delta is methodology-driven, not a real change in visibility.',
+    );
+  }
   if (diff.partial) {
     caveats.push(
       'At least one run was partial (cost-capped, degraded, or skipped engines), so this change is not full-confidence.',
     );
   }
-  if (caveats.length > 0) {
-    lines.push('Notes:');
-    for (const note of caveats) lines.push(`  ${c.yellow('!')} ${note}`);
-    lines.push('');
-  }
+  lines.push(...renderNoteBlock('Notes', caveats, c));
 
   lines.push(FOOTER_CTA);
   return lines.join('\n');

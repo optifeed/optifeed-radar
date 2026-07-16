@@ -58,6 +58,19 @@ describe('extractPage', () => {
     expect(page.canonical).toBe('https://acme.example/');
   });
 
+  it('normalizes case-varying og keys to lowercase (consumers read og.site_name)', () => {
+    // The case-insensitive selector matches og:Site_Name, but the key must be
+    // stored lowercase or discovery (which reads p.og.site_name) never sees it.
+    const page = extractPage(
+      '<html><head>' +
+        '<meta property="og:Site_Name" content="Acme Corp">' +
+        '<meta property="OG:Locale" content="en_GB">' +
+        '</head><body></body></html>',
+    );
+    expect(page.og.site_name).toBe('Acme Corp');
+    expect(page.og.locale).toBe('en_GB');
+  });
+
   it('skips invalid JSON-LD blocks without failing', () => {
     const page = extractPage(
       '<html><head><script type="application/ld+json">{ not json }</script></head><body></body></html>',

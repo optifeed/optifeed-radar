@@ -13,6 +13,22 @@
  */
 import { SCHEMA_VERSION } from './types.js';
 
+/**
+ * Thrown when a persisted artifact's `schema_version` is present but not the
+ * supported one. A DISTINCT type (not each loader's generic parse error) so a
+ * caller can tell "incompatible version" from "corrupt/malformed" and choose to
+ * recover: a rebuildable cache (profile/queries) treats it as absent and
+ * rebuilds, while a historical snapshot or an explicit file lets it surface.
+ */
+export class SchemaVersionError extends Error {
+  constructor(public readonly found: unknown) {
+    super(
+      `schema_version ${String(found)} is not supported (expected ${SCHEMA_VERSION})`,
+    );
+    this.name = 'SchemaVersionError';
+  }
+}
+
 /** A record of parsed-but-unvalidated fields. */
 export type Unvalidated = Record<string, unknown>;
 
@@ -37,6 +53,17 @@ function isPlainObject(v: unknown): v is Unvalidated {
 }
 
 /**
+ * A type-failure message that distinguishes an absent field ("missing X") from
+ * one that is present but the wrong type ("X must be a string"), so a user
+ * fixing a hand-edited file is not misdirected.
+ */
+function typed(obj: Unvalidated, key: string, expected: string): string {
+  return obj[key] === undefined
+    ? `missing ${key}`
+    : `${key} must be ${expected}`;
+}
+
+/**
  * Build a {@link StructValidator} that reports every failure through `fail`.
  * `fail` must not return (it throws the caller's domain-specific error), which
  * lets the assertions narrow types for the code that follows them.
@@ -50,23 +77,24 @@ export function createValidator(fail: (why: string) => never): StructValidator {
     schemaVersion(obj) {
       if (typeof obj.schema_version !== 'string')
         fail('missing schema_version');
+      // A distinct, catchable type (thrown directly, not via the generic fail
+      // sink) so cache loaders can recover from a stale version while parsers
+      // and historical snapshots surface it.
       if (obj.schema_version !== SCHEMA_VERSION) {
-        fail(
-          `schema_version ${String(obj.schema_version)} is not supported (expected ${SCHEMA_VERSION})`,
-        );
+        throw new SchemaVersionError(obj.schema_version);
       }
     },
     string(obj, key) {
-      if (typeof obj[key] !== 'string') fail(`missing ${key}`);
+      if (typeof obj[key] !== 'string') fail(typed(obj, key, 'a string'));
     },
     number(obj, key) {
-      if (typeof obj[key] !== 'number') fail(`missing ${key}`);
+      if (typeof obj[key] !== 'number') fail(typed(obj, key, 'a number'));
     },
     array(obj, key) {
-      if (!Array.isArray(obj[key])) fail(`${key} must be an array`);
+      if (!Array.isArray(obj[key])) fail(typed(obj, key, 'an array'));
     },
     objectField(obj, key) {
-      if (!isPlainObject(obj[key])) fail(`missing ${key}`);
+      if (!isPlainObject(obj[key])) fail(typed(obj, key, 'an object'));
     },
   };
 }

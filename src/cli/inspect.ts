@@ -54,14 +54,11 @@ function registerDiff(program: Command, rt: Runtime): void {
         return;
       }
       // listSnapshots is chronological (oldest first): last two are the newest.
-      const baseline = await loadSnapshot(
-        paths[paths.length - 2]!,
-        rt.snapshotFs,
-      );
-      const latest = await loadSnapshot(
-        paths[paths.length - 1]!,
-        rt.snapshotFs,
-      );
+      // The two reads are independent I/O, so load them concurrently (lesson #6).
+      const [baseline, latest] = await Promise.all([
+        loadSnapshot(paths[paths.length - 2]!, rt.snapshotFs),
+        loadSnapshot(paths[paths.length - 1]!, rt.snapshotFs),
+      ]);
       const diff = diffEnvelopes(baseline, latest);
       rt.out(`${options.json ? renderDiffJson(diff) : renderDiffText(diff)}\n`);
     });
@@ -84,6 +81,8 @@ function registerSources(program: Command, rt: Runtime): void {
       }
       const env = await loadSnapshot(paths[paths.length - 1]!, rt.snapshotFs);
       if (options.json) {
+        // Carry the run's honesty flags through the JSON path too - a partial
+        // run must never read as complete in any derived artifact (rule #6).
         rt.out(
           `${JSON.stringify(
             {
@@ -91,6 +90,11 @@ function registerSources(program: Command, rt: Runtime): void {
               domain: env.domain,
               sources: env.sources,
               shareOfVoice: env.shareOfVoice,
+              ...(env.costCapped ? { costCapped: true } : {}),
+              ...(env.degraded ? { degraded: true } : {}),
+              ...(env.skippedEngines
+                ? { skippedEngines: env.skippedEngines }
+                : {}),
             },
             null,
             2,

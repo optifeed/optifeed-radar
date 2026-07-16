@@ -169,6 +169,8 @@ export interface ScoreReport {
   domain: string;
   /** The one headline AI Visibility Score, 0-100 (hard rule #6). */
   score: number;
+  /** Scoring methodology version, so a diff can flag cross-version deltas (rule #2). */
+  scoringVersion: number;
   engines: EngineScore[];
   mentions: MentionResult[];
   shareOfVoice: ShareOfVoiceRow[];

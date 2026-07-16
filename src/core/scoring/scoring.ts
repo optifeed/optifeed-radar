@@ -26,6 +26,7 @@ import {
   compositeScore,
   scoreEngine,
   shareOfVoice,
+  SCORING_VERSION,
 } from './score.js';
 
 export interface ScoreDeps {
@@ -95,6 +96,7 @@ export async function scoreAnswers(
     schema_version: SCHEMA_VERSION,
     domain: profile.domain,
     score,
+    scoringVersion: SCORING_VERSION,
     engines,
     mentions: discoveryResults,
     shareOfVoice: shareOfVoice(discoveryResults, profile),

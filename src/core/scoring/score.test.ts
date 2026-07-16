@@ -55,6 +55,22 @@ describe('scoreEngine (published formula)', () => {
     expect(s.score).toBe(53);
   });
 
+  it('gives a mentioned-but-unranked answer mid-rank position credit, not zero', () => {
+    // Prose praise with no numbered rank: position parses to null, but the
+    // brand IS present. It must not be scored as absent (position 0) - it earns
+    // the mid-rank default (rank 4 -> 1/4 credit).
+    const results = [
+      mention({ mentioned: true, position: null, sentiment: 'neutral' }),
+      mention({ mentioned: true, position: null, sentiment: 'neutral' }),
+    ];
+    const s = scoreEngine('openai', 'parametric', results);
+    expect(s.mentionRate).toBe(1);
+    expect(s.avgPosition).toBeNull(); // no parsed ranks to average (display)
+    // positionScore = (1/4 + 1/4) / 2 = 0.25; raw = 0.6*1 + 0.4*0.25 = 0.7 -> 70
+    // (would be 60 if unranked mentions scored as absent).
+    expect(s.score).toBe(70);
+  });
+
   it('scores 0 with no mentions and reports a null avg position', () => {
     const s = scoreEngine('anthropic', 'parametric', [
       mention({ mentioned: false }),

@@ -5,6 +5,7 @@
  */
 import pc from 'picocolors';
 import type { AuditReport } from '../audit/index.js';
+import type { ShareOfVoiceRow } from '../types.js';
 import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
 import { AUDIT_ONLY_NOTE, FOOTER_CTA } from './footer.js';
 
@@ -72,9 +73,46 @@ export function renderCheckJson(env: VisibilityEnvelope): string {
   return JSON.stringify(env, null, 2);
 }
 
+/** The picocolors palette shape returned by `createColors`. */
+export type Palette = ReturnType<typeof pc.createColors>;
+
 /** Right-pad to a column width for aligned tables. */
 function pad(s: string, width: number): string {
   return s.length >= width ? s : s + ' '.repeat(width - s.length);
+}
+
+/**
+ * The shared "Share of voice" block (brand marked `(you)`). Returns `[]` when
+ * there are no rows, so `check` and `sources` render it identically.
+ */
+export function renderShareOfVoice(
+  rows: ShareOfVoiceRow[],
+  c: Palette,
+): string[] {
+  if (rows.length === 0) return [];
+  const out = ['Share of voice:'];
+  for (const row of rows) {
+    const tag = row.isBrand ? c.bold(' (you)') : '';
+    out.push(`  ${pad(row.name, 20)}${`${row.sharePct}`.padStart(5)}%${tag}`);
+  }
+  out.push('');
+  return out;
+}
+
+/**
+ * A titled `! note` block (honesty notes, diff caveats). Returns `[]` when there
+ * are no notes, so every renderer presents caveats identically (rule #6).
+ */
+export function renderNoteBlock(
+  title: string,
+  notes: string[],
+  c: Palette,
+): string[] {
+  if (notes.length === 0) return [];
+  const out = [`${title}:`];
+  for (const note of notes) out.push(`  ${c.yellow('!')} ${note}`);
+  out.push('');
+  return out;
 }
 
 /** "1 prompt" / "3 prompts" - honest, grammatical count text. */
@@ -118,16 +156,7 @@ export function renderCheckText(
   }
   lines.push('');
 
-  if (env.shareOfVoice.length > 0) {
-    lines.push('Share of voice:');
-    for (const row of env.shareOfVoice) {
-      const tag = row.isBrand ? c.bold(' (you)') : '';
-      lines.push(
-        `  ${pad(row.name, 20)}${`${row.sharePct}`.padStart(5)}%${tag}`,
-      );
-    }
-    lines.push('');
-  }
+  lines.push(...renderShareOfVoice(env.shareOfVoice, c));
 
   // Reputation from branded prompts, shown apart from the score (it names the
   // brand, so it measures sentiment, not whether the AI surfaced you unprompted).
@@ -157,12 +186,7 @@ export function renderCheckText(
     lines.push('');
   }
 
-  const honesty = honestyNotes(env);
-  if (honesty.length > 0) {
-    lines.push('Run notes:');
-    for (const note of honesty) lines.push(`  ${c.yellow('!')} ${note}`);
-    lines.push('');
-  }
+  lines.push(...renderNoteBlock('Run notes', honestyNotes(env), c));
 
   if (opts.reportPath) {
     lines.push(`Report: ${opts.reportPath}`);
@@ -200,23 +224,8 @@ export function renderSourcesText(
   }
   lines.push('');
 
-  if (env.shareOfVoice.length > 0) {
-    lines.push('Share of voice:');
-    for (const row of env.shareOfVoice) {
-      const tag = row.isBrand ? c.bold(' (you)') : '';
-      lines.push(
-        `  ${pad(row.name, 20)}${`${row.sharePct}`.padStart(5)}%${tag}`,
-      );
-    }
-    lines.push('');
-  }
-
-  const honesty = honestyNotes(env);
-  if (honesty.length > 0) {
-    lines.push('Run notes:');
-    for (const note of honesty) lines.push(`  ${c.yellow('!')} ${note}`);
-    lines.push('');
-  }
+  lines.push(...renderShareOfVoice(env.shareOfVoice, c));
+  lines.push(...renderNoteBlock('Run notes', honestyNotes(env), c));
 
   lines.push(FOOTER_CTA);
   return lines.join('\n');

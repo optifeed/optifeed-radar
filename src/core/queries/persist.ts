@@ -6,7 +6,7 @@
 import { join } from 'node:path';
 import { parse, stringify } from 'yaml';
 import type { Query, QueryPack } from '../types.js';
-import { createValidator } from '../validation.js';
+import { createValidator, SchemaVersionError } from '../validation.js';
 import { QUERY_INTENTS } from './generate.js';
 
 /** The minimal fs surface query persistence needs, injectable for tests. */
@@ -124,7 +124,16 @@ export async function loadQueryPack(
     if (isNotFound(err)) return null;
     throw err;
   }
-  return parseQueryPack(raw, path);
+  try {
+    return parseQueryPack(raw, path);
+  } catch (err) {
+    // A stale-version cache is rebuildable: treat it as absent so the caller
+    // regenerates instead of aborting. A malformed pack still throws
+    // QueryPackError; an explicit --queries file (loadQueryPackFromFile) does
+    // NOT recover - a user-supplied file surfaces its version mismatch.
+    if (err instanceof SchemaVersionError) return null;
+    throw err;
+  }
 }
 
 /** Load + validate an explicit `--queries <file>` pack (must exist). */

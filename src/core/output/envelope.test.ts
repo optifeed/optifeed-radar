@@ -21,6 +21,7 @@ function score(overrides: Partial<ScoreReport> = {}): ScoreReport {
     schema_version: SCHEMA_VERSION,
     domain: 'caferio.example',
     score: 61,
+    scoringVersion: 2,
     engines: [
       {
         engine: 'openai',

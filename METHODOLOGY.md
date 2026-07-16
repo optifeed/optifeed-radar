@@ -44,20 +44,28 @@ For one engine, over its N answers:
 
 ```
 mentionRate   = mentions / N                       # 0..1
-positionScore = mean over all N answers of (1 / rank when mentioned, else 0)
+positionScore = mean over all N answers of the position credit below
 sentimentAvg  = mean(+1 positive, 0 neutral, -1 negative) over mentioned answers
 sentimentMod  = 1 + 0.15 * sentimentAvg            # 0.85 .. 1.15
 
 raw   = (0.60 * mentionRate + 0.40 * positionScore) * sentimentMod
 score = round(clamp(raw, 0, 1) * 100)
+
+# position credit per answer:
+#   mentioned with a parsed rank R  ->  1 / R
+#   mentioned but no rank parsed     ->  1 / 4   (mid-list default)
+#   not mentioned                    ->  0
 ```
 
-Weights: mention rate 0.60, position 0.40, sentiment swing +/- 15%.
+Weights: mention rate 0.60, position 0.40, sentiment swing +/- 15%, unranked
+mid-list rank 4.
 
-`positionScore` is coverage-aware: it averages `1 / rank` over **all** answers,
-not only the ones that mention you, so an answer that never mentions your brand
-contributes 0. Being ranked first when you do appear cannot mask being absent
-from half the conversation.
+`positionScore` is coverage-aware: it averages the per-answer position credit
+over **all** answers, not only the ones that mention you, so an answer that
+never mentions your brand contributes 0. Being ranked first when you do appear
+cannot mask being absent from half the conversation. An answer that mentions you
+in prose without a numbered rank is not absent, so it earns a conservative
+mid-list credit (rank 4) rather than 0.
 
 Worked example. An engine with 5 answers, mentioned in 3 of them at positions
 1, 2, and 3, with sentiments positive, neutral, neutral:
@@ -95,6 +103,13 @@ Share of voice counts how often your brand and each competitor are mentioned
 across all answers, as a percentage of the total. Sources aggregate the domains
 that grounded engines cite, most-cited first. Both are descriptive; only the
 composite is the headline score.
+
+## Scoring version
+
+This methodology is version 2 (`SCORING_VERSION` in `src/core/scoring/score.ts`).
+The score is not comparable across a methodology change, so each run records its
+scoring version and `diff` flags a comparison whose two runs used different
+versions (or one predates versioning) as methodology-driven, not a real change.
 
 ## Honesty notes
 

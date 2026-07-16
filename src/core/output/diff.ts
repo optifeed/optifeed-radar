@@ -55,6 +55,12 @@ export interface SnapshotDiff {
    */
   engineSetChanged: boolean;
   /**
+   * True when the two runs used different scoring methodologies (or one predates
+   * scoring versioning). The `scoreDelta` is then methodology-driven, not a real
+   * visibility move (rule #2).
+   */
+  scoringChanged: boolean;
+  /**
    * True when either compared run was partial (cost-capped, degraded, or
    * skipped engines). The delta is then not a full-confidence change (rule #6).
    */
@@ -145,6 +151,7 @@ export function diffEnvelopes(
     engines,
     promptSetChanged,
     engineSetChanged,
+    scoringChanged: a.scoringVersion !== b.scoringVersion,
     partial: isPartialRun(a) || isPartialRun(b),
   };
 }

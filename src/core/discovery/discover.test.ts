@@ -186,6 +186,34 @@ describe('discover', () => {
     expect(calls).toContain('https://acme.example/'); // actually fetched
   });
 
+  it('re-discovers (does not abort) when the cached profile has an incompatible schema_version', async () => {
+    // After a future schema bump, a returning user's stale profile.json must
+    // not abort the run with a stack trace - it transparently re-discovers.
+    const stale = {
+      schema_version: '0.2', // from a prior, incompatible version
+      domain: 'acme.example',
+      brand: 'Old Cached Name',
+      aliases: [],
+      competitors: [],
+    };
+    const { fetcher } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const j = judge('["Estes"]');
+    const { fs } = memFs({
+      [profilePath('/state')]: JSON.stringify(stale),
+    });
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.fromCache).toBeUndefined(); // did NOT reuse the stale cache
+    expect(result.profile.brand).toBe('Acme Rockets'); // discovered fresh
+  });
+
   it('--refresh re-discovers but preserves user-edited fields', async () => {
     const existing: BrandProfile = {
       schema_version: SCHEMA_VERSION,

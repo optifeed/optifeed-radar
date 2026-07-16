@@ -218,6 +218,21 @@ describe('diffEnvelopes surfaces honesty gaps (rule #6)', () => {
     };
     expect(diffEnvelopes(skippedA, B).partial).toBe(true);
   });
+
+  it('flags scoringChanged when the two runs used different scoring versions (rule #2)', () => {
+    // The score formula can change between releases; a delta across that change
+    // is methodology-driven, not a real visibility move. Same version (incl.
+    // both absent) is not flagged; a mismatch (e.g. a pre-versioning snapshot
+    // vs a versioned one) is.
+    expect(diffEnvelopes(A, B).scoringChanged).toBe(false);
+    expect(
+      diffEnvelopes({ ...A, scoringVersion: 1 }, { ...B, scoringVersion: 2 })
+        .scoringChanged,
+    ).toBe(true);
+    expect(diffEnvelopes(A, { ...B, scoringVersion: 2 }).scoringChanged).toBe(
+      true,
+    );
+  });
 });
 
 describe('diffEnvelopes guards against comparing different brands', () => {

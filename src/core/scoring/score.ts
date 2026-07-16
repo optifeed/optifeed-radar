@@ -14,6 +14,16 @@ import type {
 } from '../types.js';
 
 /**
+ * The scoring methodology version. Bump this whenever the formula or a weight
+ * that changes the number is touched, so a `diff` across releases can flag that
+ * a delta is methodology-driven, not a real visibility move (rule #2). Snapshots
+ * from before this field existed carry no version and read as "changed" against
+ * a versioned run. History: v1 = 1/avgPosition; v2 = coverage-aware position +
+ * mid-rank credit for unranked mentions.
+ */
+export const SCORING_VERSION = 2;
+
+/**
  * Published scoring weights (source of truth for `METHODOLOGY.md`). Update the
  * date when you touch a number, and update the doc + its worked example.
  */
@@ -28,7 +38,14 @@ export const SCORE_WEIGHTS = {
   groundedWeight: 1.5,
   /** Composite weight of a parametric engine. */
   parametricWeight: 1.0,
-  lastUpdated: '2026-07-15',
+  /**
+   * Default rank credited to a mention with no parsed numbered position (prose
+   * praise). A conservative mid-list rank: present in the conversation, but not
+   * asserted as the top pick. Keeps "mentioned-without-a-rank" from scoring the
+   * same as "absent".
+   */
+  unrankedMentionRank: 4,
+  lastUpdated: '2026-07-16',
 };
 
 function round1(n: number): number {
@@ -64,8 +81,14 @@ export function scoreEngine(
   // that never mentions the brand contributes 0. A brand absent from half the
   // answers cannot earn full position credit from the half where it leads
   // (being #1-when-present must not mask being missing from the conversation).
+  // A mentioned answer whose rank did not parse (prose praise) is NOT absent -
+  // it earns the mid-rank default so presence-without-a-number is not scored 0.
+  const rankedCredit = positions.reduce((sum, p) => sum + 1 / p, 0);
+  const unrankedMentions = mentions - positions.length;
+  const unrankedCredit =
+    unrankedMentions * (1 / SCORE_WEIGHTS.unrankedMentionRank);
   const positionScore =
-    answers === 0 ? 0 : positions.reduce((sum, p) => sum + 1 / p, 0) / answers;
+    answers === 0 ? 0 : (rankedCredit + unrankedCredit) / answers;
 
   const sentimentAvg =
     mentions === 0

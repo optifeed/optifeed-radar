@@ -15,6 +15,7 @@
     ]
   },
   "score": 46,
+  "scoringVersion": 2,
   "engines": [
     {
       "engine": "openai",

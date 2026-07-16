@@ -26,6 +26,7 @@ const DIFF: SnapshotDiff = {
   ],
   promptSetChanged: false,
   engineSetChanged: false,
+  scoringChanged: false,
   partial: false,
 };
 
@@ -66,6 +67,14 @@ describe('renderDiffText', () => {
     expect(out.toLowerCase()).toContain('prompt set');
     expect(out.toLowerCase()).toContain('engine');
     expect(out.toLowerCase()).toContain('partial');
+  });
+
+  it('warns when the two runs used different scoring methodologies (rule #2)', () => {
+    const out = renderDiffText(
+      { ...DIFF, scoringChanged: true },
+      { color: false },
+    );
+    expect(out.toLowerCase()).toContain('scoring');
   });
 });
 
