@@ -74,6 +74,11 @@ describe('query pack persistence', () => {
     expect(() => parseQueryPack(bad)).toThrow(QueryPackError);
   });
 
+  it('throws QueryPackError on an incompatible schema_version, not just a missing one (rule #2)', () => {
+    const bad = toYaml({ ...PACK, schema_version: '0.2' });
+    expect(() => parseQueryPack(bad)).toThrow(QueryPackError);
+  });
+
   it('throws QueryPackError when queries is missing', () => {
     expect(() => parseQueryPack('schema_version: "0.1"\ndomain: x')).toThrow(
       QueryPackError,

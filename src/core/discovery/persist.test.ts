@@ -66,6 +66,18 @@ describe('profile persistence', () => {
     );
   });
 
+  it('throws ProfileParseError on an incompatible schema_version, not just a missing one (rule #2)', async () => {
+    const { fs } = memFs({
+      [profilePath('/state')]: JSON.stringify({
+        ...PROFILE,
+        schema_version: '0.2',
+      }),
+    });
+    await expect(loadProfile('/state', fs)).rejects.toBeInstanceOf(
+      ProfileParseError,
+    );
+  });
+
   it('throws ProfileParseError on a structurally invalid profile', async () => {
     // Valid JSON but missing required fields / wrong types.
     const { fs } = memFs({

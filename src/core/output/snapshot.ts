@@ -10,7 +10,7 @@
  * sortable in chronological order.
  */
 import { join } from 'node:path';
-import { SCHEMA_VERSION } from '../types.js';
+import { createValidator } from '../validation.js';
 import type { VisibilityEnvelope } from './envelope.js';
 
 /** The minimal fs surface snapshot persistence needs, injectable for tests. */
@@ -74,10 +74,6 @@ function isNotFound(err: unknown): boolean {
   return (err as NodeJS.ErrnoException)?.code === 'ENOENT';
 }
 
-function isObject(v: unknown): boolean {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 /**
  * Persist an envelope as pretty JSON, ensuring the snapshots dir exists.
  *
@@ -118,30 +114,24 @@ export async function loadSnapshot(
 
 /** Validate a parsed snapshot's required envelope shape (a hand edit can break it). */
 function validateEnvelope(raw: unknown, path: string): VisibilityEnvelope {
-  const fail = (why: string): never => {
+  const v = createValidator((why) => {
     throw new SnapshotParseError(path, new Error(why));
-  };
-  if (!raw || typeof raw !== 'object') fail('expected an object');
-  const obj = raw as Record<string, unknown>;
-  if (typeof obj.schema_version !== 'string') fail('missing schema_version');
+  });
+  const obj = v.object(raw, 'snapshot');
   // Reject an incompatible schema outright rather than diff mismatched shapes
   // (hard rule #2: a breaking change bumps the version).
-  if (obj.schema_version !== SCHEMA_VERSION) {
-    fail(
-      `schema_version ${String(obj.schema_version)} is not supported (expected ${SCHEMA_VERSION})`,
-    );
-  }
-  if (typeof obj.domain !== 'string') fail('missing domain');
-  if (typeof obj.generatedAt !== 'string') fail('missing generatedAt');
-  if (typeof obj.score !== 'number') fail('missing score');
-  if (!isObject(obj.profile)) fail('missing profile');
-  if (!Array.isArray(obj.engines)) fail('engines must be an array');
-  if (!Array.isArray(obj.shareOfVoice)) fail('shareOfVoice must be an array');
-  if (!Array.isArray(obj.sources)) fail('sources must be an array');
-  if (!Array.isArray(obj.mentions)) fail('mentions must be an array');
-  if (!Array.isArray(obj.answers)) fail('answers must be an array');
-  if (!Array.isArray(obj.findings)) fail('findings must be an array');
-  if (!isObject(obj.sampling)) fail('missing sampling');
+  v.schemaVersion(obj);
+  v.string(obj, 'domain');
+  v.string(obj, 'generatedAt');
+  v.number(obj, 'score');
+  v.objectField(obj, 'profile');
+  v.array(obj, 'engines');
+  v.array(obj, 'shareOfVoice');
+  v.array(obj, 'sources');
+  v.array(obj, 'mentions');
+  v.array(obj, 'answers');
+  v.array(obj, 'findings');
+  v.objectField(obj, 'sampling');
   return obj as unknown as VisibilityEnvelope;
 }
 

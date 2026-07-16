@@ -6,6 +6,7 @@
 import { join } from 'node:path';
 import { parse, stringify } from 'yaml';
 import type { Query, QueryPack } from '../types.js';
+import { createValidator } from '../validation.js';
 import { QUERY_INTENTS } from './generate.js';
 
 /** The minimal fs surface query persistence needs, injectable for tests. */
@@ -49,21 +50,15 @@ export function parseQueryPack(text: string, source?: string): QueryPack {
       source,
     );
   }
-  if (!raw || typeof raw !== 'object') {
-    throw new QueryPackError('expected a mapping', source);
-  }
-  const obj = raw as Record<string, unknown>;
-  if (typeof obj.schema_version !== 'string') {
-    throw new QueryPackError('missing schema_version', source);
-  }
-  if (typeof obj.domain !== 'string') {
-    throw new QueryPackError('missing domain', source);
-  }
-  if (!Array.isArray(obj.queries)) {
-    throw new QueryPackError('missing queries array', source);
-  }
+  const v = createValidator((why) => {
+    throw new QueryPackError(why, source);
+  });
+  const obj = v.object(raw, 'query pack');
+  v.schemaVersion(obj);
+  v.string(obj, 'domain');
+  v.array(obj, 'queries');
 
-  const queries: Query[] = obj.queries.map((q, i) => {
+  const queries: Query[] = (obj.queries as unknown[]).map((q, i) => {
     if (!q || typeof q !== 'object') {
       throw new QueryPackError(`query ${i} is not a mapping`, source);
     }
@@ -85,8 +80,8 @@ export function parseQueryPack(text: string, source?: string): QueryPack {
   });
 
   return {
-    schema_version: obj.schema_version,
-    domain: obj.domain,
+    schema_version: obj.schema_version as string,
+    domain: obj.domain as string,
     queries,
     ...(typeof obj.generatedAt === 'string'
       ? { generatedAt: obj.generatedAt }

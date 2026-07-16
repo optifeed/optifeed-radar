@@ -5,6 +5,7 @@
  */
 import { join } from 'node:path';
 import type { BrandProfile } from '../types.js';
+import { createValidator } from '../validation.js';
 
 /** The minimal fs surface discovery needs, injectable for tests. */
 export interface ProfileFs {
@@ -78,16 +79,15 @@ export async function loadProfile(
 
 /** Validate a parsed profile's required shape (a hand edit can break it). */
 function validateProfile(raw: unknown, path: string): BrandProfile {
-  const fail = (why: string): never => {
+  const v = createValidator((why) => {
     throw new ProfileParseError(path, new Error(why));
-  };
-  if (!raw || typeof raw !== 'object') fail('expected an object');
-  const obj = raw as Record<string, unknown>;
-  if (typeof obj.schema_version !== 'string') fail('missing schema_version');
-  if (typeof obj.domain !== 'string') fail('missing domain');
-  if (typeof obj.brand !== 'string') fail('missing brand');
-  if (!Array.isArray(obj.aliases)) fail('aliases must be an array');
-  if (!Array.isArray(obj.competitors)) fail('competitors must be an array');
+  });
+  const obj = v.object(raw, 'profile');
+  v.schemaVersion(obj);
+  v.string(obj, 'domain');
+  v.string(obj, 'brand');
+  v.array(obj, 'aliases');
+  v.array(obj, 'competitors');
   return obj as unknown as BrandProfile;
 }
 
