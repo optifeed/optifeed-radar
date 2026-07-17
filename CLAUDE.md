@@ -2,14 +2,21 @@
 
 Open-source AI visibility checker: CLI + MCP server that asks real AI engines
 (OpenAI, Gemini, Perplexity, Claude) real buyer questions and scores whether a
-brand - and in the shopping beta, individual SKUs - gets recommended. Runs
-locally, BYO API keys, MIT.
+brand gets recommended. Runs locally, BYO API keys, MIT.
+
+**Scope (revised 2026-07-15): launch #1 is brand visibility only.** The
+commerce modules - M12 (shopping/SKU), M13 (protocol spike), M14 (lint-feed) -
+are DEFERRED to launch #2. Build scope = M0-M11 + M15-M17. Do not implement,
+stub, or scaffold M12-M14. M13/M14 were built and then removed on 2026-07-17
+(recoverable at `faf351f`); do not reintroduce them. SKU-level visibility and
+ACP/UCP feed checks are FUTURE tense in all copy, with a waitlist link only.
 
 **The module plan in `docs/dev-plan.md` is authoritative** (modules M0-M17 +
-the Global decisions section - read it before writing any code). `TASKS.md`
-tracks status only. Implement one module per session unless told otherwise.
-Where this file and the plan disagree, the plan wins. Fuller product strategy
-and the messaging guide live in the source-of-truth strategy doc (external).
+the Global decisions section - read it before writing any code; it carries the
+same scope revision). `TASKS.md` tracks status only. Implement one module per
+session unless told otherwise. Where this file and the plan disagree, the plan
+wins. Fuller product strategy and the messaging guide live in the
+source-of-truth strategy doc (external).
 
 ## Commands
 

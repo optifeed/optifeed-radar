@@ -58,21 +58,6 @@ npx tsx src/cli/index.ts config                  # which engine keys are set, wh
 
 `config` reports only whether each key is present, never the key value.
 
-### Feed linting (no keys needed)
-
-`lint-feed` checks a product feed against the field requirements AI shopping
-agents read, from the Agentic Commerce Protocol (ACP) and the Universal
-Commerce Protocol (UCP). It uses no API keys and queries no AI engines:
-
-```bash
-npx tsx src/cli/index.ts lint-feed https://yourshop.com/feed.xml
-```
-
-It reads Google Shopping RSS/XML and ACP-style JSON feeds, and reports
-per-product findings, a feed quality score, and a per-protocol readiness
-verdict. It exits non-zero only when the feed could not be assessed at all
-(unreachable, malformed, or empty), so findings alone will not fail your build.
-
 ## Status
 
 Under active development; the repo is public early so you can follow along. If
@@ -81,10 +66,13 @@ this is useful to you, a star genuinely helps.
 ## On the roadmap
 
 - `compare` - a competitor-focused view of who AI recommends in your category
-- `shopping` (beta) - SKU-level checks for Shopify and product feeds, which
-  will cross-reference the `lint-feed` findings above
 - an MCP server exposing the same capabilities to your AI agents
 - a published `npx optifeed-visibility` package
+
+Optifeed Shopping will extend this to SKU-level visibility and product-feed
+checks against the Agentic Commerce Protocol (ACP) and the Universal Commerce
+Protocol (UCP). It is a separate, later release - join the waitlist at
+optifeed.com.
 
 Scores are estimates and say so. Engines vary between runs, and grounded engines
 (which cite sources) are reported separately from parametric ones (which answer

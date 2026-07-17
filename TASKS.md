@@ -8,7 +8,15 @@ changes, edit the plan first, then reflect it here.
 > This is the canonical, in-repo copy (moved here when M0 scaffolded the repo).
 > The planning-workspace copy is superseded.
 
-Last updated: 2026-07-16.
+> **SCOPE REVISION (2026-07-17): launch #1 is brand visibility only.** The
+> commerce modules - M12 (shopping), M13 (protocol spike), M14 (lint-feed) -
+> are deferred to a separate launch #2 (~4-8 weeks post-launch). Current build
+> scope = M0-M11 + M15 (MCP) + M16 (agent surfaces) + M17 (release). M13's and
+> M14's shipped code was **removed from the build** on 2026-07-17; their
+> entries below are retained as history for launch #2 planning, not as status.
+> The dev plan (`docs/dev-plan.md`) is authoritative and carries the same note.
+
+Last updated: 2026-07-17.
 
 ## Legend
 
@@ -26,9 +34,9 @@ Last updated: 2026-07-16.
 
 - [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Still pending for full M9/M10/M11: HTML report, colorized output, and wiring M8's snapshots + `--fail-under` into the `check` CLI (the M8 contract itself now exists).
 - [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. Live end-to-end with a real engine key (spend) is deferred to the M17 smoke test.
-- [ ] **`shopping` beta ships** - Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 - [ ] **MCP ships** - stdio server over the same core (M15)
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
+- [ ] **`shopping` beta ships** - DEFERRED to launch #2 (not a launch #1 gate): Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 
 ---
 
@@ -96,17 +104,29 @@ Owner: setup · PR: (M6)
 - [x] Acceptance: mocked HTTP throughout, retry/backoff paths, partial-run shape, cost accumulation, JudgeClient conformance. 18 new tests; 72 total green.
 - Module report: `createAdapter(spec, deps)` wraps a provider spec with shared retry/cost/clock; `httpPost`, `sleep`, `now`, `apiKey` all injected so every path tests with no network and deterministic timestamps. Wire shapes for parametric endpoints match real APIs; OpenAI grounded (Responses) and Gemini grounding use simplified shapes to be firmed up at the M17 smoke test. `defaultHttpPost` wraps global fetch for production.
 
-### [x] M13 - ACP/UCP protocol spike (do before M14)
+### [ ] M13 - ACP/UCP protocol spike - DEFERRED to launch #2
 
 Owner: setup · PR: (M13)
+
+> Built 2026-07-16, then **removed from the launch #1 build** (scope revision,
+> 2026-07-17). No code was involved; the research doc survives at
+> `docs/PROTOCOL-NOTES.md`, moved out of the repo root and re-headed as launch
+> #2 planning input. The report below is history. Re-verify every source before
+> launch #2 - these notes go stale fast.
 
 - [x] `PROTOCOL-NOTES.md` - verified ACP + UCP field requirements with source URLs + dates (retrieved 2026-07-16, from PRIMARY sources only)
 - [x] Acceptance: every requirement cites source + date; maps to future M14 rules (section 6 starter rule-map)
 - Module report: research spike (no code). Went to primary sources only - OpenAI developer docs + the `agentic-commerce-protocol` and `universal-commerce-protocol` GitHub repos (spec + JSON schema files via `gh api`), never the community mirrors/vendor blogs. Key findings that shape M14: (1) there are THREE feed surfaces, not one - ACP/OpenAI ChatGPT flat feed (in production, 15 strict required fields; THE lint target), the ACP Product Feeds RFC (Status: Proposal/unreleased, minimal MUSTs, nested shape; advisory only), and UCP which is an API catalog capability (search/lookup over REST/MCP/A2A), NOT a static feed - its concrete feed surface is Google Merchant Center product data + a `native_commerce` eligibility attribute. (2) Debunked the widely-repeated "MPN required when GTIN absent" claim - NOT in the OpenAI spec (both optional; `brand` is the required identifier); verified against the source so M14 does not encode a phantom rule. (3) Pulled UCP required-field arrays straight from the JSON schemas (Product: id/title/description/price_range/variants; Variant: id/title/description/price). Six open questions parked for M17 re-verification (return_policy condition, is_ads_eligible scope, RFC release status, UCP schema churn, exact GMC product spec, GTIN/MPN drift). Reconciled against the Rails feed-quality logic (`ai-visibility-crawler` branch, `export/agent_readiness.rb` + `description_sanitizer.rb`) - PROTOCOL-NOTES.md section 7 is the merged M14 rule set: Rails contributes the completeness/quality checks (thin/misformatted description via the shared 5000-char sanitizer, q_and_a, the manual/llm auto-fix dimension, and a per-field graded feed score); the protocols contribute conformance + format validators + the protocol tag; two severity conflicts resolved (brand = error since ACP requires it though Rails treats it as llm-fixable; gtin = info/advisory since ACP makes it optional though Rails flags it as a gap). Deferred to M14: transcribing the full Google Merchant Center product spec. `PROTOCOL-NOTES.md` at repo root alongside `METHODOLOGY.md`.
 
-### [x] M14 - lint-feed (ACP + UCP) — INDEPENDENT TRACK
+### [ ] M14 - lint-feed (ACP + UCP) - DEFERRED to launch #2
 
 Owner: setup · PR: (M14) · needs M2 + M13
+
+> Built 2026-07-16 (module + CLI command), then **removed from the launch #1
+> build** on 2026-07-17 (scope revision). Deleted: `core/lintfeed/`,
+> `cli/lintfeed.ts`, `output/render-lintfeed.ts`, the M14 block in `types.ts`,
+> and `test/fixtures/lintfeed/` (-44 tests, 352 -> 308). Recoverable from git
+> at `faf351f`. The checked boxes and report below are history, not status.
 
 - [x] rule engine (`{id, protocol, severity, field, test, message, docsUrl}`); 14-rule table ported from Rails `agent_readiness` + the M13 protocol spec (PROTOCOL-NOTES section 7)
 - [x] per-product findings + feed-level score (per-field graded, Rails model) + per-protocol readiness verdict
@@ -180,7 +200,7 @@ Owner: setup · PR: (M9) · needs M8
 
 Owner: setup · PR: (M11) · thin over M10 + M9
 
-- [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] `lint-feed` [x] (M14's surface, shipped 2026-07-16) · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `shopping` (M12) `mcp` (M15) land with their modules
+- [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) and `shopping` (M12) deferred to launch #2 - `lint-feed` shipped 2026-07-16 and was removed 2026-07-17 (scope revision)
 - [x] all interactive prompts bypassable (`--yes` + flags); ship `audit` first
 - [x] Acceptance e2e mocked: audit no-key, check 1-key, full, clean `--json` (no ANSI)
 - Module report: `check <domain>` is the M11 headline - THIN over `runCheck` (M10) then an M9 renderer (hard rule #1: no orchestration in cli/). Flags: `--yes`, `--json` (clean envelope, no ANSI), `--report <file>` (HTML), `--quick` (8 prompts), `--engines a,b`, `--max-cost`/`--max-setup-cost` (CostGuard caps), `--refresh`/`--regenerate`/`--brand`/`--category`/`--queries`. Introduced a `Runtime` seam (`cli/runtime.ts`): every process effect (stdout/stderr, env, cwd, home, isTTY, clock, writeFile, fetcher) plus a `checkDeps` override behind one injectable object, so the 6 command e2e tests run with no process globals and no network. `defaultCheckDeps` builds the concrete deps (adapters from env, judge via `resolveJudgeModel` cheapest+notice → `createJudgeClient`, guard from cost flags, node fs, and a confirm gate that aborts off a TTY - agents pass `--yes`, hard rule #8). No-key `check` prints guidance to run `audit` and exits 1. `audit` now takes an injected fetcher via the runtime (offline-testable). Added `renderCheckJson` (M9). Deps added (M11-owned): `@inquirer/prompts` (lazy-imported inside the confirm gate). 6 new tests (239→245); verified the built CLI live: `--version`, `--help` (both commands), no-key `check` guidance+exit 1, and a real zero-key `audit example.com` over the network. Deferred to a follow-up: `compare`/`sources`/`queries`/`diff`/`config` (plus a `diff` renderer M9 did not build), and live `check` verification with a real key (M17 smoke test).
@@ -205,7 +225,7 @@ Owner: ___ · PR: ___
 
 Owner: ___ · PR: ___ · thin over M10 (owns final tool names)
 
-- [ ] tools: check_visibility / compare_competitors / audit_store / generate_buyer_queries / shopping_check / lint_feed / get_snapshot_diff
+- [ ] tools: check_visibility / compare_competitors / audit_store / generate_buyer_queries / get_snapshot_diff (launch #1 list; `shopping_check` + `lint_feed` deferred to launch #2)
 - [ ] stdio + official SDK; non-interactive semantics; agent-written tool descriptions; progress notifications + disk results
 - [ ] Acceptance: MCP-over-stdio integration test; tool JSON schemas snapshot-tested
 
@@ -222,9 +242,10 @@ Owner: ___ · PR: ___
 Owner: ___ · PR: ___
 
 - [ ] npm publish workflow (provenance, `files` whitelist); changelog/weekly-release convention; `SECURITY.md`
+- [ ] Decide on the `ai-shopping` / `agentic-commerce` keywords in `package.json` before the first publish - launch #1 ships no shopping capability, so they advertise something absent. Keep (forward-looking, launch #2 adds it) or drop until then. Unpublished so far, so nothing is live yet.
+- [ ] `build` must clean `dist/` first - `tsc -p tsconfig.build.json` never removes stale output, and `files: ["dist"]` publishes whatever is there. Surfaced by the 2026-07-17 M14 removal: deleted modules stayed in `dist/` until a manual `rm -rf`, so a publish from a stale tree would ship code that is no longer in `src/` (here: deferred commerce code, at launch #1). Verified a clean rebuild emits none of it.
 - [ ] smoke-test script (3 real domains, prints cost); `npx` cold-run <60s; Win/macOS/Linux CI matrix
 - [ ] 100-brand data-run script (budgeted) for the launch article
-- [ ] Re-verify M13 protocol notes still current
 - [ ] Acceptance: `npm pack` reviewed; cold `npx` in clean container; data-run aggregate JSON produced
 
 ---
@@ -351,8 +372,8 @@ Owner: ___ · PR: ___
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
 - [ ] Confirm no orchestration logic leaks into `cli/`/`mcp/` (must live in M10) - M10 `runCheck`/`runAudit` now own the full flow; re-check when M11/M15 wrap them (commands must be thin: parse flags → call run → render)
-- [ ] ACP/UCP spec churn - M13 notes captured 2026-07-16 (`PROTOCOL-NOTES.md`); re-verify before M14 rules AND at release (M17). Six specific open questions parked in PROTOCOL-NOTES.md section 5 (return_policy condition, is_ads_eligible scope, ACP RFC release status, UCP schema churn, exact GMC product spec, GTIN/MPN interdependency drift).
-- [ ] Reserved "first" claim ("first open-source SKU-level AI shopping visibility tool") - re-verify when M12 ships
+- [ ] ACP/UCP spec churn - LAUNCH #2 RISK ONLY now that M13/M14 are deferred (nothing in the launch #1 build depends on these specs). M13 notes captured 2026-07-16 (`docs/PROTOCOL-NOTES.md`); re-verify before rebuilding the lint rules. Six open questions parked in section 5 (return_policy condition, is_ads_eligible scope, ACP RFC release status, UCP schema churn, exact GMC product spec, GTIN/MPN interdependency drift). The longer launch #2 slips, the staler these get.
+- [ ] Reserved "first" claim ("first open-source SKU-level AI shopping visibility tool") - re-verify when M12 ships at launch #2. Do NOT make this claim at launch #1, which ships no SKU-level capability.
 - [x] Shared `core` load-time validation helper: `loadProfile`, `parseQueryPack`, and `loadSnapshot` each hand-rolled schema_version-by-value + required-field checks (M8 review lesson #3). Done - `core/validation.ts` (`createValidator(fail)`, error-agnostic so each loader keeps its own error type); all three routed through it. Closed the drift the extraction exposed: `loadProfile`/`parseQueryPack` previously only string-checked `schema_version` while `loadSnapshot` compared it by value - now all three reject an incompatible version (rule #2). +10 tests (269→279).
 
 ### Dev-plan research follow-ups (Profound fanout study, as of Apr 2026)

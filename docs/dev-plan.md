@@ -11,6 +11,21 @@ orchestrator (M10) was inserted; the ACP/UCP spec spike is now its own
 module (M13) ahead of lint-feed (M14). Module numbers are labels, not a
 strict build order - the dependency graph and wave table below define order.
 
+**SCOPE REVISION (2026-07-15, later same day): launch #1 = brand visibility
+only.** M12 (shopping), M13 (protocol spike), and M14 (lint-feed) are
+DEFERRED to launch #2 (Optifeed Shopping, target 4-8 weeks post-launch,
+riding the Agentic Storefront wave as its own launch with the "NEW:" banner
+bootstrap). Launch #1 build = M0-M11 + M15-M17. The M12-M14 specs below
+stay in this doc unchanged for launch #2 planning. Consequences: the
+orchestrator (M10) keeps its entity-source seam (shopping plugs in later);
+M15 ships WITHOUT shopping_check/lint_feed tools; M16's README describes
+Shopping in future tense with the waitlist link.
+
+**Removal note (2026-07-17):** M13 and M14 had already been built when the
+revision landed. Their code was removed from the build on 2026-07-17
+(recoverable at `faf351f`); M13's research survives at
+`docs/PROTOCOL-NOTES.md` as launch #2 input. M12 was never built.
+
 ## Global decisions (apply to every module)
 
 - **Repo:** `optifeed/visibility`, single npm package `optifeed-visibility`,

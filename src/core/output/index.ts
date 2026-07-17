@@ -12,5 +12,4 @@ export * from './failunder.js';
 export * from './footer.js';
 export * from './terminal.js';
 export * from './render-diff.js';
-export * from './render-lintfeed.js';
 export * from './html.js';

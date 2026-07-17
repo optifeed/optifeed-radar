@@ -1,15 +1,21 @@
 # PROTOCOL-NOTES.md - ACP + UCP feed requirements (M13 spike)
 
+> **Launch #2 planning only - not part of the current build.** Launch #1 is
+> brand visibility only; the commerce modules (M12 shopping, M13, M14
+> lint-feed) are deferred to a separate later release. This document is
+> retained as research input for that release. Nothing here describes shipping
+> capability, and no code in this repo implements it.
+
 Verified current requirements for the two agentic-commerce protocols, captured
-so M14's `lint-feed` rule set builds against pinned facts instead of a moving
+so a future `lint-feed` rule set builds against pinned facts instead of a moving
 target. **Every requirement below cites a primary source and the date it was
-retrieved.** These specs are a live protocol war and shift; re-verify at release
-(M17). This document is the input to M14 - each future rule
+retrieved.** These specs are a live protocol war and shift. Each future rule
 (`{id, protocol, severity, test, message, docsUrl}`) should map back to a line
 here.
 
 **Retrieved:** 2026-07-16. **Status of the field:** unstable (see per-source
-notes). **Owner action at M17:** re-run every fetch below, diff, update dates.
+notes). **Owner action before launch #2:** re-run every fetch below, diff,
+update dates. These notes were captured on 2026-07-16 and go stale quickly.
 
 ---
 

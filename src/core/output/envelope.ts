@@ -9,8 +9,7 @@
  * Hard rule #6: the ONE headline number is M7's `score`. The audit's own 0-100
  * (M3) never competes with it inside `check` - audit observations arrive here
  * only as {@link Finding}s. Everything downstream (M9 renderers, M10 run, M11
- * CLI, M12 shopping, M15 MCP) reads THIS shape and never re-derives from raw
- * data. Pure: the timestamp is injected, so builds are deterministic (the
+ * CLI, M15 MCP) reads THIS shape and never re-derives from raw data. Pure: the timestamp is injected, so builds are deterministic (the
  * schema snapshot test depends on it).
  */
 import {
