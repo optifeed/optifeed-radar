@@ -140,10 +140,28 @@ export function renderCheckText(
   const c = colors(opts);
   const lines: string[] = [];
 
-  lines.push(c.bold(`AI Visibility Score: ${env.score}/100`));
+  // A null score means nothing was measured. Say so - never print a number
+  // (rule #6): "0/100" reads as "never recommended", which is a claim about the
+  // brand that this run did not earn.
+  lines.push(
+    c.bold(
+      env.score === null
+        ? 'AI Visibility Score: not assessed'
+        : `AI Visibility Score: ${env.score}/100`,
+    ),
+  );
   lines.push(`for ${env.profile.brand} (${env.domain})`);
   lines.push('');
-  lines.push(env.sampling.varianceNote);
+  if (env.score === null) {
+    // Only the "no score" explanation - the variance note ("This score is an
+    // estimate ... will vary between runs") describes a score that does not
+    // exist, so printing it here implies one was produced.
+    lines.push(
+      'No engine returned an answer, so there is no score for this run.',
+    );
+  } else {
+    lines.push(env.sampling.varianceNote);
+  }
   lines.push(samplingLine(env));
   lines.push('');
 

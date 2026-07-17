@@ -32,7 +32,13 @@ export function renderDiffText(
   lines.push(`from ${diff.from}`);
   lines.push(`to   ${diff.to}`);
   lines.push('');
-  lines.push(c.bold(`Score: ${signed(diff.scoreDelta)}`));
+  lines.push(
+    c.bold(
+      diff.scoreDelta === null
+        ? 'Score: not comparable (a run was not assessed - no score)'
+        : `Score: ${signed(diff.scoreDelta)}`,
+    ),
+  );
   lines.push('');
 
   lines.push('Per engine:');

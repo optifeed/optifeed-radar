@@ -27,7 +27,14 @@ import { buildProgram } from './index.js';
 import { defaultCheckDeps } from './check.js';
 import { type Runtime } from './runtime.js';
 
-const STATE = '/proj/.optifeed';
+// The project state dir is DOMAIN-SCOPED (commit c3cc7cc), so a run for
+// acme.example reads `<cwd>/.optifeed/acme.example`. These seeds previously
+// used the un-scoped `/proj/.optifeed`, so `check` never found them: it fell
+// through to generation, the stub judge returned `{}` = ZERO queries, and the
+// whole "mocked e2e" ran on 0 prompts / 0 answers. It looked green only because
+// the composite then fabricated a 0, which satisfied `typeof score === 'number'`.
+// Seed the scoped path so these tests exercise the real pipeline.
+const STATE = '/proj/.optifeed/acme.example';
 const NOW = () => '2026-07-15T00:00:00.000Z';
 
 function res(body: string, status = 200) {
@@ -212,6 +219,12 @@ describe('check command', () => {
     const env = JSON.parse(out);
     expect(env.schema_version).toBe(SCHEMA_VERSION);
     expect(typeof env.score).toBe('number');
+    // Assert the pipeline actually RAN. `typeof score === 'number'` alone was
+    // satisfied by a fabricated 0 over 0 answers for as long as this test has
+    // existed - a green e2e over an empty run. Pin the evidence instead.
+    expect(env.answers.length).toBeGreaterThan(0);
+    expect(env.engines.length).toBeGreaterThan(0);
+    expect(env.sampling.nPrompts).toBeGreaterThan(0);
   });
 
   it('writes an HTML report under --report', async () => {
@@ -406,10 +419,13 @@ describe('queries command', () => {
   });
 
   it('errors when no pack exists for the domain (exit 1)', async () => {
+    // Use a domain the runtime seeds nothing for: testRuntime now seeds the
+    // DOMAIN-SCOPED acme.example paths, so asking for acme.example here would
+    // find a pack and stop testing the empty case.
     const rt = testRuntime();
-    await run(rt, ['queries', 'acme.example']);
+    await run(rt, ['queries', 'nopack.example']);
     expect(process.exitCode).toBe(1);
-    expect(rt.errors.join('').toLowerCase()).toContain('check acme.example');
+    expect(rt.errors.join('').toLowerCase()).toContain('check nopack.example');
   });
 });
 

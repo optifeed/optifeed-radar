@@ -70,11 +70,16 @@ describe('envelope schema snapshot', () => {
     expect(env).toEqual(expected);
   });
 
+  // Deliberately a HARDCODED literal, never SCHEMA_VERSION: interpolating the
+  // constant would make this test follow any bump silently, which is the exact
+  // thing it exists to prevent. Changing this line must be a conscious act.
+  // 0.1 -> 0.2 on 2026-07-17: `score` became `number | null` (null = the run
+  // measured nothing) - see SCHEMA_VERSION's note.
   it('pins the schema version so a break forces a bump', () => {
     const expected = fixture<VisibilityEnvelope>(
       'output',
       'golden-envelope.json',
     );
-    expect(expected.schema_version).toBe('0.1');
+    expect(expected.schema_version).toBe('0.2');
   });
 });

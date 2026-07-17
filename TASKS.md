@@ -201,7 +201,8 @@ Owner: setup · PR: (M9) · needs M8
 Owner: setup · PR: (M11) · thin over M10 + M9
 
 - [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) and `shopping` (M12) deferred to launch #2 - `lint-feed` shipped 2026-07-16 and was removed 2026-07-17 (scope revision)
-- [ ] **A run with ZERO answers reports a confident `score: 0`, not "not assessed" (found 2026-07-17, rule #6 - the WORST bug of the session).** When the judge 400s and no engine answers, `check` still prints "AI Visibility Score: 0/100" and persists `score: 0` with `nAnswers: 0` and **no honesty flag at all** - `degraded`, `skippedEngines` and `costCapped` are all unset, so `isPartialRun()` reads it as a COMPLETE full-confidence zero. A consumer cannot tell a real 0 from a total failure: `diff` compares it as real, and `--fail-under` (once wired) would fail a build on a number that measured nothing. This is the exact bug class the M14 review already fixed for lint-feed (`feedScore: number|null` = null + "not assessed" over an unevaluated feed) - now on the HEADLINE number. Fix mirrors M14: `score` must be `number | null` (null when `nAnswers === 0`) with the renderer saying "not assessed", and/or `degraded` set with a reason. NOTE: making `score` nullable BREAKS the envelope, so it needs a `schema_version` bump (0.1 -> 0.2) + a golden-envelope snapshot update per hard rule #2 - cheap now while unpublished, expensive after launch. Reproduce: point the openai adapter at any failing config and run `check`.
+- [x] **A run with ZERO answers reported a confident `score: 0` (found + FIXED 2026-07-17, rule #6).** Fixed: `compositeScore` returns `number | null` (null when nothing was measured, replacing `totalWeight === 0 ? 0`), `score` is nullable on `ScoreReport` + `VisibilityEnvelope`, `isPartialRun` counts a null score as partial, `failUnder` never passes an unassessed run, `diffEnvelopes` returns a null `scoreDelta` rather than inventing one, and both renderers say "not assessed" (the terminal also drops the variance note, which described a score that did not exist). `schema_version` 0.1 -> 0.2 with all four goldens updated (hard rule #2). Verified live both ways: a broken key now prints "not assessed"/persists `score: null`, while a healthy run still reports a real 0/100 over 6 answers.
+- [ ] `check` exits **0** when the run measured nothing (found 2026-07-17, follow-up to the above). The report now honestly says "not assessed", but the process still signals success, so a CI job or agent that only checks the exit code treats a total failure as a passing run. `failUnder` already returns exitCode 1 for a null score, but nothing calls it (see the `--fail-under` gap above) - fix both together: wire the gate, and make a not-assessed `check` exit non-zero on its own.
 - [ ] Judge selection is still purely by PRICE, which now fights the quality fix (found 2026-07-17). `resolveJudgeModel` picks the cheapest default across available engines. With openai's judge now `gpt-5.4` ($2.50/$15) and anthropic's `claude-haiku-4-5` ($1/$5), **adding an Anthropic key silently swaps the judge back to a cheap-tier model** and may reintroduce fabricated competitors. Unverified for haiku specifically (no anthropic key), so the ranking was NOT redesigned on a guess - the current behaviour is pinned by a test so it cannot change silently. Decide once other keys exist: keep "cheapest", or rank judges by recall quality.
 - [ ] Non-OpenAI engine + judge models are stale in exactly the way `gpt-4o` was (found 2026-07-17). Only the OpenAI path was verified and updated this session (the only key available). `anthropic: claude-haiku-4-5`, `gemini: gemini-2.5-flash` remain both cheap-tier AND possibly a generation behind what Claude/Gemini users actually get - the same validity gap just fixed for OpenAI. Worse, a mixed run would then compare a flagship-measured OpenAI against a mini-measured Anthropic and fold both into ONE composite score - apples to oranges inside the headline number. Verify model ids + prices from each provider's official sheet before enabling multi-engine runs.
 - [ ] Competitor QUALITY in non-English markets is weak (found 2026-07-17, after the locale fix). With `locale: tr` now reaching the judge, `www.do-re.com.tr` returns Turkish names instead of US chains - but the list is mixed: "Müzik Aletleri" is the common noun "musical instruments", not a brand, and Zuhal Müzik (the obvious real rival) is absent. The plumbing is fixed; `gpt-4o-mini` simply does not know Turkish retailers well. This is a judge-quality issue, not a wiring one - consider a stronger judge or a grounded competitor call, and re-check at the M17 smoke test on a non-English domain.
@@ -395,6 +396,34 @@ Owner: ___ · PR: ___
   payload proves it.** (2) The grounded path is unreachable from the CLI
   anyway - no flag sets `mode` (logged under M11). (3) A run never reports what
   it spent (logged under M17).
+
+- 2026-07-17: **fixed the zero-answer honesty bug, and it exposed that the M11
+  e2e tests never ran the pipeline.** A run measuring nothing printed
+  "0/100" and persisted `score: 0` with no honesty flag. Root cause was one
+  expression - `compositeScore`'s `totalWeight === 0 ? 0 : ...` - and, worse,
+  **a test asserting that fabricated 0 as correct** (`it('is 0 when there are
+no engines')`), which locked the bug in. Now `number | null` end to end:
+  nullable on `ScoreReport`/`VisibilityEnvelope`, `isPartialRun` treats null as
+  partial (so no derived artifact relaunders it), `failUnder` never passes an
+  unassessed run, `diffEnvelopes` yields a null `scoreDelta` instead of
+  inventing one, both renderers say "not assessed". `schema_version` 0.1 -> 0.2
+  - 4 goldens (rule #2); the pin test stays a hardcoded literal on purpose, so
+    a bump can never be silent. +6 tests (318 -> 324).
+    **The bigger find:** making the fabricated 0 impossible turned the `check`
+    e2e tests red - and they were red for a REAL reason. `testRuntime` seeded
+    `profile.json`/`queries.yml` at `/proj/.optifeed`, but the state dir became
+    DOMAIN-SCOPED in c3cc7cc (`/proj/.optifeed/acme.example`), so the seeds were
+    never found; `check` fell through to generation, the stub judge returned `{}`
+    = zero queries, and the "mocked e2e" ran on **0 prompts, 0 answers, 0
+    engines**. It passed because `typeof score === 'number'` was satisfied by the
+    fabricated 0. So M11's "all mocked-e2e covered" was, for these tests,
+    covering an empty run. Seeds now use the scoped path and the test asserts
+    `answers`/`engines`/`nPrompts` are non-zero. Lesson: **a green e2e that only
+    asserts the SHAPE of an output cannot tell you the pipeline ran** - assert
+    the evidence (counts), not just types. Two more tests were rotted by the
+    bump: several hardcoded `'0.2'` as their "incompatible version" example (now
+    current), and one needed the CURRENT version to reach its missing-field path
+  * it now interpolates `SCHEMA_VERSION`.
 
 - 2026-07-17: **the measured model was wrong, and that invalidated the headline
   number.** `check` asked `gpt-4o-mini` - both the wrong TIER (nobody chats with

@@ -212,20 +212,29 @@ describe('buildEnvelope', () => {
 
 describe('isPartialRun', () => {
   it('is false for a clean run', () => {
-    expect(isPartialRun({})).toBe(false);
+    expect(isPartialRun({ score: 61 })).toBe(false);
   });
 
   it('is true for any single honesty flag (cost-capped, degraded, or skipped)', () => {
-    expect(isPartialRun({ costCapped: true })).toBe(true);
-    expect(isPartialRun({ degraded: true })).toBe(true);
+    expect(isPartialRun({ score: 61, costCapped: true })).toBe(true);
+    expect(isPartialRun({ score: 61, degraded: true })).toBe(true);
     expect(
       isPartialRun({
+        score: 61,
         skippedEngines: [{ engine: 'gemini', reason: 'no key' }],
       }),
     ).toBe(true);
   });
 
+  // A run that measured nothing is the most partial run there is. It arrives
+  // with NO other flag set (live 2026-07-17: the failed run had costCapped,
+  // degraded and skippedEngines all unset), so without this the shared
+  // predicate would call a total failure a clean, complete run.
+  it('is true when the run was not assessed (score null), even with no other flag', () => {
+    expect(isPartialRun({ score: null })).toBe(true);
+  });
+
   it('is false when skippedEngines is present but empty', () => {
-    expect(isPartialRun({ skippedEngines: [] })).toBe(false);
+    expect(isPartialRun({ score: 61, skippedEngines: [] })).toBe(false);
   });
 });

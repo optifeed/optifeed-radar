@@ -184,7 +184,7 @@ describe('resolveQueries', () => {
 
   it('regenerates (does not abort) when the cached pack has an incompatible schema_version', async () => {
     const stale = {
-      schema_version: '0.2', // from a prior, incompatible version
+      schema_version: '0.1', // from a prior, incompatible version
       domain: 'acme.example',
       generatedAt: AT,
       queries: [{ id: 'q1', intent: 'best-of', prompt: 'Old cached prompt?' }],

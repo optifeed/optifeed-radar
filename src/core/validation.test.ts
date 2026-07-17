@@ -40,7 +40,7 @@ describe('createValidator', () => {
     // A DISTINCT type (not the generic fail sink) so cache loaders can catch it
     // and rebuild, while parsers/historical snapshots let it surface.
     const v = createValidator(sink());
-    expect(() => v.schemaVersion({ schema_version: '0.2' })).toThrow(
+    expect(() => v.schemaVersion({ schema_version: '0.1' })).toThrow(
       SchemaVersionError,
     );
   });

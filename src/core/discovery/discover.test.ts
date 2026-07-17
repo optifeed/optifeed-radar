@@ -197,7 +197,7 @@ describe('discover', () => {
     // After a future schema bump, a returning user's stale profile.json must
     // not abort the run with a stack trace - it transparently re-discovers.
     const stale = {
-      schema_version: '0.2', // from a prior, incompatible version
+      schema_version: '0.1', // from a prior, incompatible version
       domain: 'acme.example',
       brand: 'Old Cached Name',
       aliases: [],

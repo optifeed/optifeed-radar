@@ -1,4 +1,4 @@
-schema_version: "0.1"
+schema_version: "0.2"
 domain: acme.example
 queries:
   - id: q1

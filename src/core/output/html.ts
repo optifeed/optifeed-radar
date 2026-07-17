@@ -146,7 +146,11 @@ export function renderCheckHtml(env: VisibilityEnvelope): string {
   <header>
     <h1>AI Visibility Report</h1>
     <p class="muted">${esc(env.profile.brand)} &middot; ${esc(env.domain)} &middot; ${esc(date)}</p>
-    <div class="score">${env.score}<span>/100</span></div>
+    <div class="score">${
+      env.score === null
+        ? '<span>not assessed - no engine returned an answer</span>'
+        : `${env.score}<span>/100</span>`
+    }</div>
     <p class="muted">${esc(env.sampling.varianceNote)}</p>
     <p class="muted">${esc(samplingLine(env))}</p>
   </header>

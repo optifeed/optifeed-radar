@@ -53,8 +53,14 @@ export interface VisibilityEnvelope {
   domain: string;
   /** The buyer profile this run scored against (M4). */
   profile: BrandProfile;
-  /** THE headline AI Visibility Score, 0-100 (hard rule #6). */
-  score: number;
+  /**
+   * THE headline AI Visibility Score, 0-100 (hard rule #6).
+   *
+   * `null` when the run measured nothing (no engine answered) - rendered as
+   * "not assessed", never as a 0. See {@link isPartialRun}, which treats a null
+   * score as partial so no derived artifact relaunders it as a real result.
+   */
+  score: number | null;
   /**
    * Scoring methodology version, so a diff can flag cross-version deltas
    * (rule #2). Optional because snapshots written before this field existed
@@ -88,12 +94,20 @@ export interface VisibilityEnvelope {
  * present a partial run as complete (hard rule #6).
  */
 export function isPartialRun(
-  run: Pick<VisibilityEnvelope, 'costCapped' | 'degraded' | 'skippedEngines'>,
+  run: Pick<
+    VisibilityEnvelope,
+    'costCapped' | 'degraded' | 'skippedEngines' | 'score'
+  >,
 ): boolean {
   return (
     run.costCapped === true ||
     run.degraded === true ||
-    (run.skippedEngines?.length ?? 0) > 0
+    (run.skippedEngines?.length ?? 0) > 0 ||
+    // A run that measured nothing is the MOST partial run there is. Counting it
+    // here (rather than at each call site) is why `failUnder` and `diff` cannot
+    // present an unassessed run as a complete one - the M8 lesson: one shared
+    // predicate, every flag, no hand-rolled subsets.
+    run.score === null
   );
 }
 

@@ -78,20 +78,23 @@ describe('query pack persistence', () => {
   it('parseQueryPack throws SchemaVersionError on an incompatible schema_version (rule #2)', () => {
     // The pure parser (also used for an explicit --queries file) surfaces the
     // mismatch; only the cache loader below recovers from it.
-    const bad = toYaml({ ...PACK, schema_version: '0.2' });
+    const bad = toYaml({ ...PACK, schema_version: '0.1' });
     expect(() => parseQueryPack(bad)).toThrow(SchemaVersionError);
   });
 
   it('loadQueryPack treats an incompatible cached pack as absent (regenerate, not abort)', async () => {
     const { fs } = memFs({
-      [queriesPath('/state')]: toYaml({ ...PACK, schema_version: '0.2' }),
+      [queriesPath('/state')]: toYaml({ ...PACK, schema_version: '0.1' }),
     });
     expect(await loadQueryPack('/state', fs)).toBeNull();
   });
 
   it('throws QueryPackError when queries is missing', () => {
-    expect(() => parseQueryPack('schema_version: "0.1"\ndomain: x')).toThrow(
-      QueryPackError,
-    );
+    // Must carry the CURRENT version, or this trips SchemaVersionError first and
+    // silently stops testing the missing-field path. Interpolated so a future
+    // bump cannot rot it (a hardcoded literal here broke on the 0.1 -> 0.2 bump).
+    expect(() =>
+      parseQueryPack(`schema_version: "${SCHEMA_VERSION}"\ndomain: x`),
+    ).toThrow(QueryPackError);
   });
 });

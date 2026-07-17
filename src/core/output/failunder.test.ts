@@ -12,7 +12,7 @@ const PROFILE: BrandProfile = {
 };
 
 function envelope(
-  score: number,
+  score: number | null,
   honesty: Partial<
     Pick<VisibilityEnvelope, 'costCapped' | 'degraded' | 'skippedEngines'>
   > = {},
@@ -93,5 +93,23 @@ describe('failUnder', () => {
 
   it('is not partial on a clean run', () => {
     expect(failUnder(envelope(90), 70).partial).toBe(false);
+  });
+
+  // An unassessed run (score null - nothing measured) must NEVER pass a CI gate.
+  // Passing would mean a total failure silently green-lights a deploy; the old
+  // fabricated 0 would instead have FAILED every gate for the opposite wrong
+  // reason. Both are lies - the honest answer is "not assessed" (rule #6).
+  it('never passes the gate when the run was not assessed (score null)', () => {
+    const r = failUnder(envelope(null), 70);
+    expect(r.passed).toBe(false);
+    expect(r.exitCode).toBe(1);
+    expect(r.partial).toBe(true);
+    expect(r.reason.toLowerCase()).toContain('not assessed');
+  });
+
+  it('reports "not assessed" rather than a score when no threshold is set', () => {
+    const r = failUnder(envelope(null));
+    expect(r.reason.toLowerCase()).toContain('not assessed');
+    expect(r.partial).toBe(true);
   });
 });

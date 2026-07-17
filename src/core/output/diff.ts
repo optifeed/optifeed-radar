@@ -39,8 +39,14 @@ export interface SnapshotDiff {
   from: string;
   /** `generatedAt` of the later snapshot. */
   to: string;
-  /** Headline AI Visibility Score delta (`b.score - a.score`). */
-  scoreDelta: number;
+  /**
+   * Headline AI Visibility Score delta (`b.score - a.score`).
+   *
+   * `null` when either side was not assessed (no score). A delta against a
+   * missing score is meaningless - inventing one (e.g. treating null as 0)
+   * would report a dramatic drop or recovery that never happened (rule #6).
+   */
+  scoreDelta: number | null;
   /** Per-engine changes, for engines present in BOTH runs (sorted by id). */
   engines: EngineDiff[];
   /**
@@ -147,7 +153,7 @@ export function diffEnvelopes(
     domain: b.domain,
     from: a.generatedAt,
     to: b.generatedAt,
-    scoreDelta: b.score - a.score,
+    scoreDelta: a.score === null || b.score === null ? null : b.score - a.score,
     engines,
     promptSetChanged,
     engineSetChanged,

@@ -73,7 +73,7 @@ describe('profile persistence', () => {
     const { fs } = memFs({
       [profilePath('/state')]: JSON.stringify({
         ...PROFILE,
-        schema_version: '0.2',
+        schema_version: '0.1',
       }),
     });
     expect(await loadProfile('/state', fs)).toBeNull();

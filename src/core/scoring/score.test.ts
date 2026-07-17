@@ -108,8 +108,16 @@ describe('compositeScore', () => {
     expect(compositeScore(engines)).toBe(52);
   });
 
-  it('is 0 when there are no engines', () => {
-    expect(compositeScore([])).toBe(0);
+  // Live 2026-07-17: when the judge 400'd and no engine answered, `check` still
+  // printed "AI Visibility Score: 0/100" and persisted score: 0 with NO honesty
+  // flag - a total failure was indistinguishable from a real zero. The
+  // laundering started here: `totalWeight === 0 ? 0 : ...` invented a 0 for an
+  // empty engine list, and THIS TEST asserted that 0 as correct, locking the
+  // bug in. Same class M14 already fixed for lint-feed (feedScore:
+  // number|null): an unmeasured brand has NO score - it is not a brand that
+  // scored zero (rule #6).
+  it('is null (not a fabricated 0) when no engine produced a score', () => {
+    expect(compositeScore([])).toBeNull();
   });
 });
 

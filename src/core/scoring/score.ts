@@ -108,8 +108,15 @@ export function scoreEngine(
   return { engine, kind, score, mentionRate, avgPosition, answers, mentions };
 }
 
-/** Weighted mean of engine scores; grounded engines weight higher. */
-export function compositeScore(engines: EngineScore[]): number {
+/**
+ * Weighted mean of engine scores; grounded engines weight higher.
+ *
+ * `null` when nothing was measured (no engines scored). An unmeasured brand has
+ * NO score - it is not a brand that scored zero, and a fabricated 0 is
+ * indistinguishable from "never recommended" (rule #6). Mirrors M14's
+ * `feedScore: number | null` over an unevaluated feed.
+ */
+export function compositeScore(engines: EngineScore[]): number | null {
   let weighted = 0;
   let totalWeight = 0;
   for (const e of engines) {
@@ -120,7 +127,7 @@ export function compositeScore(engines: EngineScore[]): number {
     weighted += e.score * weight;
     totalWeight += weight;
   }
-  return totalWeight === 0 ? 0 : Math.round(weighted / totalWeight);
+  return totalWeight === 0 ? null : Math.round(weighted / totalWeight);
 }
 
 /** Share-of-voice over brand + profile competitors, most-mentioned first. */

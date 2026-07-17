@@ -148,7 +148,7 @@ describe('loadSnapshot failure modes', () => {
     const path = `${snapshotsDir('/state')}/future.json`;
     const future = {
       ...envelope('2026-07-15T00:00:00.000Z'),
-      schema_version: '0.2',
+      schema_version: '0.1',
     };
     await fs.writeFile(path, JSON.stringify(future));
     await expect(loadSnapshot(path, fs)).rejects.toBeInstanceOf(

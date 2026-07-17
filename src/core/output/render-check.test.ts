@@ -236,3 +236,55 @@ describe('renderCheckHtml', () => {
     expect(renderCheckHtml(envelope())).not.toContain('—');
   });
 });
+
+// The live 2026-07-17 failure a user would actually have seen: every engine
+// failed, and the report still opened with a confident "AI Visibility Score:
+// 0/100" over "0 buyer prompts ... (0 answers)". A reader cannot tell that from
+// a brand that genuinely is never recommended. Both renderers must say the run
+// was not assessed and must NOT print a number (rule #6).
+describe('renderers over an unassessed run (score null)', () => {
+  const unassessed = (over: Partial<VisibilityEnvelope> = {}) =>
+    envelope({
+      score: null,
+      engines: [],
+      answers: [],
+      mentions: [],
+      shareOfVoice: [],
+      sources: [],
+      sampling: { nPrompts: 0, nAnswers: 0, judged: 0, varianceNote: '' },
+      degraded: true,
+      ...over,
+    });
+
+  it('the terminal report says not assessed and never prints "0/100"', () => {
+    const out = renderCheckText(unassessed(), { color: false });
+    expect(out.toLowerCase()).toContain('not assessed');
+    expect(out).not.toContain('0/100');
+    expect(out).toContain(FOOTER_CTA);
+  });
+
+  it('does not print the variance note, which describes a score that does not exist', () => {
+    // The note must be genuinely PRESENT on the envelope, else "not rendered"
+    // is vacuous - buildEnvelope always sets VARIANCE_NOTE, so that is the real
+    // input. (An empty-string fixture here would make this test pass for free.)
+    const out = renderCheckText(
+      unassessed({
+        sampling: {
+          nPrompts: 0,
+          nAnswers: 0,
+          judged: 0,
+          varianceNote: VARIANCE_NOTE,
+        },
+      }),
+      { color: false },
+    );
+    expect(VARIANCE_NOTE).toContain('estimate'); // guard: the note is non-empty
+    expect(out).not.toContain(VARIANCE_NOTE);
+  });
+
+  it('the HTML report says not assessed and never prints a 0 score', () => {
+    const html = renderCheckHtml(unassessed());
+    expect(html.toLowerCase()).toContain('not assessed');
+    expect(html).not.toContain('>0<');
+  });
+});

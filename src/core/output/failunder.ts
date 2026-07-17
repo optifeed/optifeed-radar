@@ -33,6 +33,20 @@ export function failUnder(
     ? ' Note: this run was partial (cost-capped, degraded, or missing engines), so the score is an incomplete sample.'
     : '';
 
+  // Nothing was measured. Never pass a gate on a run that produced no score:
+  // passing would green-light a deploy off a total failure, and the fabricated
+  // 0 this replaces would have failed every gate for the opposite wrong reason.
+  // Say what is true instead - the run was not assessed (rule #6).
+  if (envelope.score === null) {
+    return {
+      passed: false,
+      exitCode: 1,
+      partial: true,
+      reason:
+        'Not assessed: no engine returned an answer, so this run has no score. Nothing was measured, so the gate cannot pass.',
+    };
+  }
+
   if (threshold === undefined) {
     return {
       passed: true,

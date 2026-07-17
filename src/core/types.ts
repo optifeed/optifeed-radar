@@ -10,8 +10,17 @@
  * module (e.g. `BrandProfile` by M4, `AuditReport` by M3); they will grow.
  */
 
-/** Bump on any breaking change to a persisted/JSON shape. */
-export const SCHEMA_VERSION = '0.1';
+/**
+ * Bump on any breaking change to a persisted/JSON shape.
+ *
+ * 0.2 (2026-07-17): `score` became `number | null` on `ScoreReport` and
+ * `VisibilityEnvelope` - null means the run measured nothing. A 0.1 consumer
+ * reading a 0.2 snapshot would do arithmetic on null, so this is breaking.
+ * Bumped deliberately while unpublished, when it is still free: after launch,
+ * every reader in the wild would have to handle both. Cached 0.1 profiles and
+ * query packs are re-discovered rather than trusted (SchemaVersionError).
+ */
+export const SCHEMA_VERSION = '0.2';
 
 /** The engines v1 supports (all BYO-key). */
 export type EngineId = 'openai' | 'anthropic' | 'gemini' | 'perplexity';
@@ -167,8 +176,15 @@ export interface Reputation {
 export interface ScoreReport {
   schema_version: string;
   domain: string;
-  /** The one headline AI Visibility Score, 0-100 (hard rule #6). */
-  score: number;
+  /**
+   * The one headline AI Visibility Score, 0-100 (hard rule #6).
+   *
+   * `null` when the run measured NOTHING (no engine answered). Not a 0: a
+   * fabricated zero reads exactly like a brand that is never recommended, so a
+   * failed run would libel the brand and, once `--fail-under` is wired, fail a
+   * build over a number that measured nothing.
+   */
+  score: number | null;
   /** Scoring methodology version, so a diff can flag cross-version deltas (rule #2). */
   scoringVersion: number;
   engines: EngineScore[];
