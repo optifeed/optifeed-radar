@@ -71,4 +71,12 @@ describe('createValidator', () => {
     expect(() => v.number(ok, 's')).toThrow(ValidationError);
     expect(() => v.objectField(ok, 'a')).toThrow(ValidationError); // array is not an object field
   });
+
+  it('numberOrNull() accepts a number or null but not other types', () => {
+    const v = createValidator(sink());
+    expect(() => v.numberOrNull({ x: 5 }, 'x')).not.toThrow();
+    expect(() => v.numberOrNull({ x: null }, 'x')).not.toThrow(); // the not-assessed case
+    expect(() => v.numberOrNull({ x: 'nope' }, 'x')).toThrow(ValidationError);
+    expect(() => v.numberOrNull({}, 'x')).toThrow(ValidationError); // absent != null
+  });
 });

@@ -151,7 +151,11 @@ export function renderCheckHtml(env: VisibilityEnvelope): string {
         ? '<span>not assessed - no engine returned an answer</span>'
         : `${env.score}<span>/100</span>`
     }</div>
-    <p class="muted">${esc(env.sampling.varianceNote)}</p>
+    ${
+      env.score === null
+        ? ''
+        : `<p class="muted">${esc(env.sampling.varianceNote)}</p>`
+    }
     <p class="muted">${esc(samplingLine(env))}</p>
   </header>
 

@@ -167,6 +167,21 @@ describe('resolveQueries', () => {
     expect(result.fromFile).toBe(true);
     expect(result.pack.queries).toHaveLength(8);
     expect(result.note).toMatch(/8 of 20/);
+    // Review 2026-07-17: on the explicit-file path, step 1 returns before the
+    // --regenerate check, so advising --regenerate is a dead instruction; and
+    // an explicit input file is not a "saved" pack.
+    expect(result.note).not.toMatch(/--regenerate/);
+    expect(result.note).not.toMatch(/saved/);
+  });
+
+  it('the cached-pack note still advises --regenerate (where it actually works)', async () => {
+    const { fs } = memFs({ [queriesPath('/state')]: toYaml(pack(20)) });
+    const result = await resolveQueries(
+      profile(),
+      { judge: judge(), guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', count: 8 },
+    );
+    expect(result.note).toMatch(/--regenerate/);
   });
 
   it('reuses the whole cached pack when no count is given', async () => {

@@ -482,6 +482,32 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   `void prompt`, discarding the very thing that needed asserting - no test
   could have caught this bug.
 
+- 2026-07-17: high-effort workflow review of this session's code
+  (`faf351f..HEAD`, 6 commits: grounded-parser fix, locale + --quick, model
+  defaults, null-score, --fail-under, stray-args). 4 finders + per-location
+  adversarial verify; 3 verified findings (1 refuted), all fixed test-first
+  (+4 tests, 331 -> 335). (1) CORRECTNESS, the serious one: the null-score
+  change (0.2) made `saveSnapshot` WRITE `score: null`, but the loader's
+  `validateEnvelope` still asserted `v.number(obj,'score')` - so every
+  not-assessed snapshot the tool wrote was permanently UNLOADABLE, crashing
+  `inspect`/`sources`/`diff` on that domain. Exactly the "honesty must
+  propagate to every derived artifact" path the change was meant to cover, and
+  the M8 lesson that a validator must vouch for the real type of every field a
+  consumer reads. Added `validator.numberOrNull` (null valid, absent still a
+  failure) and used it in the loader; verified live: `sources` now reads a
+  null-score snapshot instead of throwing. (2) HONESTY: fixed `terminal.ts` to
+  drop the variance note under a null score but missed `html.ts` - the HTML
+  report printed "not assessed" then the variance note right below, claiming a
+  score. (3) CLEANUP: `capPack`'s note told users to `pass --regenerate`, but
+  on the explicit `--queries` file path resolveQueries returns before
+  --regenerate is consulted, so the advice was dead (and an input file is not a
+  "saved" pack); the note is now path-specific. Refuted (correctly, not a bug):
+  `ResponsesShape.action` is declared+documented but not read yet - a
+  deliberate, logged forward-hook for the M6 fanout follow-up, not dead code.
+  Lesson banked: a type change that a runtime validator also guards needs the
+  validator updated in the same commit - `tsc` cannot see hand-rolled
+  validation, so it stayed green over an unloadable format.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`

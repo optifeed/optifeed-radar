@@ -287,4 +287,21 @@ describe('renderers over an unassessed run (score null)', () => {
     expect(html.toLowerCase()).toContain('not assessed');
     expect(html).not.toContain('>0<');
   });
+
+  it('the HTML report does not print the variance note under a null score', () => {
+    // terminal.ts was fixed to suppress this; html.ts must match, or the
+    // report claims a score exists right below "not assessed" (rule #6).
+    const html = renderCheckHtml(
+      unassessed({
+        sampling: {
+          nPrompts: 0,
+          nAnswers: 0,
+          judged: 0,
+          varianceNote: VARIANCE_NOTE,
+        },
+      }),
+    );
+    expect(VARIANCE_NOTE).toContain('estimate');
+    expect(html).not.toContain(VARIANCE_NOTE);
+  });
 });

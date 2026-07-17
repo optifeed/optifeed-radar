@@ -123,7 +123,7 @@ function validateEnvelope(raw: unknown, path: string): VisibilityEnvelope {
   v.schemaVersion(obj);
   v.string(obj, 'domain');
   v.string(obj, 'generatedAt');
-  v.number(obj, 'score');
+  v.numberOrNull(obj, 'score'); // null = a not-assessed run (schema 0.2)
   v.objectField(obj, 'profile');
   v.array(obj, 'engines');
   v.array(obj, 'shareOfVoice');

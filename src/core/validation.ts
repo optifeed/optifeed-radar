@@ -42,6 +42,8 @@ export interface StructValidator {
   string(obj: Unvalidated, key: string): void;
   /** Assert `obj[key]` is a number. */
   number(obj: Unvalidated, key: string): void;
+  /** Assert `obj[key]` is a number or `null` (an intentionally nullable field). */
+  numberOrNull(obj: Unvalidated, key: string): void;
   /** Assert `obj[key]` is an array. */
   array(obj: Unvalidated, key: string): void;
   /** Assert `obj[key]` is a non-null, non-array object. */
@@ -89,6 +91,14 @@ export function createValidator(fail: (why: string) => never): StructValidator {
     },
     number(obj, key) {
       if (typeof obj[key] !== 'number') fail(typed(obj, key, 'a number'));
+    },
+    numberOrNull(obj, key) {
+      // `null` is a valid, meaningful value here (e.g. a not-assessed score),
+      // distinct from an ABSENT field, which is still a failure.
+      if (!(key in obj)) fail(`missing ${key}`);
+      const val = obj[key];
+      if (val !== null && typeof val !== 'number')
+        fail(`${key} must be a number or null`);
     },
     array(obj, key) {
       if (!Array.isArray(obj[key])) fail(typed(obj, key, 'an array'));

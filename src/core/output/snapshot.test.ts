@@ -109,6 +109,23 @@ describe('saveSnapshot / loadSnapshot round-trip', () => {
     expect(loaded).toEqual(env);
   });
 
+  // Review 2026-07-17: the null-score change (0.2) let `saveSnapshot` WRITE a
+  // not-assessed snapshot (score: null), but the loader's validator still
+  // asserted `v.number(obj,'score')`, so the tool could never read back a file
+  // it had just written - inspect/sources/diff crashed on that domain. The
+  // honesty must propagate to the loader too, not just the renderers.
+  it('round-trips a not-assessed run (score null)', async () => {
+    const fs = fakeFs();
+    const env: VisibilityEnvelope = {
+      ...envelope('2026-07-15T00:00:00.000Z'),
+      score: null,
+    };
+    const path = await saveSnapshot(env, '/state', fs);
+    const loaded = await loadSnapshot(path, fs);
+    expect(loaded.score).toBeNull();
+    expect(loaded).toEqual(env);
+  });
+
   it('persists no API keys (envelope carries none by contract)', async () => {
     const fs = fakeFs();
     await saveSnapshot(envelope('2026-07-15T00:00:00.000Z'), '/state', fs);

@@ -60,16 +60,22 @@ export interface ResolveQueriesResult {
  */
 function capPack(
   pack: QueryPack,
-  count?: number,
+  count: number | undefined,
+  source: 'cache' | 'file',
 ): { pack: QueryPack; note?: string } {
   if (count === undefined || count <= 0 || pack.queries.length <= count) {
     return { pack };
   }
   const total = pack.queries.length;
-  return {
-    pack: { ...pack, queries: pack.queries.slice(0, count) },
-    note: `using ${count} of ${total} saved prompts (--quick); pass --regenerate for a fresh ${count}-prompt pack`,
-  };
+  // The advice must match the path. On the cached path --regenerate produces a
+  // fresh smaller pack; on the explicit --queries file path resolveQueries
+  // returns before --regenerate is ever consulted, so pointing there would be a
+  // dead instruction - and an input file is not a "saved" pack.
+  const note =
+    source === 'cache'
+      ? `using ${count} of ${total} saved prompts (--quick); pass --regenerate for a fresh ${count}-prompt pack`
+      : `using the first ${count} of ${total} prompts in the --queries file (--quick)`;
+  return { pack: { ...pack, queries: pack.queries.slice(0, count) }, note };
 }
 
 /** Resolve the query pack for a run: explicit file, cached, or generated. */
@@ -86,7 +92,7 @@ export async function resolveQueries(
   // 1. Explicit --queries file wins outright (still bound by --quick).
   if (opts.queriesFile) {
     const loadedFile = await loadQueryPackFromFile(opts.queriesFile, fs);
-    const { pack, note } = capPack(loadedFile, opts.count);
+    const { pack, note } = capPack(loadedFile, opts.count, 'file');
     return { pack, fromFile: true, ...(note ? { note } : {}) };
   }
 
@@ -96,7 +102,7 @@ export async function resolveQueries(
   const loaded = await loadQueryPack(opts.stateDir, fs);
   const existing = loaded?.domain === profile.domain ? loaded : undefined;
   if (existing && !opts.regenerate) {
-    const { pack, note } = capPack(existing, opts.count);
+    const { pack, note } = capPack(existing, opts.count, 'cache');
     return { pack, fromCache: true, ...(note ? { note } : {}) };
   }
 
