@@ -23,6 +23,11 @@ npm install
 npx tsx src/cli/index.ts audit yourbrand.com
 ```
 
+The examples call `npx tsx src/cli/index.ts` directly so flags reach the CLI
+unchanged. If you prefer the `npm run dev` script, put `--` before the
+arguments (`npm run dev -- check yourbrand.com --report out.html`); without it,
+npm keeps the flags for itself and the CLI never sees them.
+
 It checks AI-crawler access (robots.txt), llms.txt, schema.org structured data,
 meta basics, and your sitemap, then prints a 0-100 AI-readiness score. No API
 keys, no AI calls.

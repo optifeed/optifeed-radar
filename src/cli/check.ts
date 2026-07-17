@@ -35,6 +35,33 @@ import { createProgressReporter } from './progress.js';
 import type { CheckFlags, Runtime } from './runtime.js';
 
 /**
+ * Fail loudly on stray positional arguments. Commander already rejects excess
+ * args, but with a raw `process.exit` and a generic message; this routes the
+ * error through the injected runtime (testable, keeps `--json` stdout clean)
+ * and names the offending token. Returns true when a stray arg was found.
+ *
+ * The common cause (live 2026-07-17): `npm run dev check <domain> --report x`,
+ * where npm swallows `--report` and leaves `x` as a bare positional - so the
+ * `hint` points back at the flag the user almost certainly meant.
+ */
+export function rejectStrayArgs(
+  rt: Runtime,
+  command: Command,
+  hint?: string,
+): boolean {
+  const extra = command.args.slice(command.registeredArguments.length);
+  if (extra.length === 0) return false;
+  const label = extra.map((a) => `"${a}"`).join(', ');
+  rt.err(
+    `Unexpected extra argument: ${label}.${hint ? ` ${hint}` : ''}\n` +
+      'If you ran this via `npm run dev`, put `--` before the command so npm ' +
+      'passes flags through: `npm run dev -- check <domain> --report file.html`.\n',
+  );
+  process.exitCode = 1;
+  return true;
+}
+
+/**
  * Parse `--engines a,b` into known engine ids. Unknown tokens are dropped; an
  * all-unknown value yields `[]`, which the action treats as an error (rather
  * than silently querying - and billing - every engine).
@@ -138,6 +165,9 @@ export function registerCheck(program: Command, rt: Runtime): void {
   program
     .command('check')
     .argument('<domain>', 'the brand site to check, e.g. example.com')
+    // Let parsing reach the action so a stray arg gets a helpful, injectable
+    // error (rejectStrayArgs) instead of commander's raw process.exit.
+    .allowExcessArguments(true)
     .description(
       'Ask real AI engines real buyer questions and score your brand',
     )
@@ -163,8 +193,21 @@ export function registerCheck(program: Command, rt: Runtime): void {
     .option('--brand <name>', 'set the brand name (skips discovery fetch)')
     .option('--category <name>', 'set the category (skips discovery fetch)')
     .option('--queries <file>', 'use an explicit query pack file')
-    .action(async (domain: string, options: Record<string, unknown>) => {
-      const flags = toFlags(options);
+    .action(async (domain: string, options, command: Command) => {
+      // A stray positional is almost always a flag npm swallowed (e.g.
+      // `check <domain> file.html` meaning `--report file.html`). Fail before
+      // spending, and point at the likely intent.
+      if (
+        rejectStrayArgs(
+          rt,
+          command,
+          'Did you mean to pass it to a flag such as --report?',
+        )
+      ) {
+        return;
+      }
+
+      const flags = toFlags(options as Record<string, unknown>);
 
       // `--engines` was given but nothing in it was recognized: error rather
       // than silently falling back to querying (and billing) every engine.

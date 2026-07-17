@@ -331,6 +331,31 @@ describe('check command', () => {
     });
   });
 
+  // Live 2026-07-17: `npm run dev check <domain> dore.html` - the user meant
+  // `--report dore.html` but npm swallowed the flag, leaving `dore.html` as a
+  // stray positional. `check` accepted it, ran, and SPENT money while silently
+  // ignoring the argument. A stray arg is a mistake; fail loudly, before spend.
+  describe('rejects stray arguments', () => {
+    it('errors (exit 1) and does not run when given an extra positional', async () => {
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      await run(rt, ['check', 'acme.example', 'dore.html']);
+      expect(process.exitCode).toBe(1);
+      const err = rt.errors.join('').toLowerCase();
+      expect(err).toContain('dore.html'); // name the offending arg
+      expect(err).toContain('--report'); // point at the likely intent
+      // It must NOT have produced a report: no spend, no output.
+      expect(rt.output.join('')).not.toContain('AI Visibility Score');
+    });
+
+    it('audit also rejects a stray positional', async () => {
+      const rt = testRuntime();
+      await run(rt, ['audit', 'acme.example', 'extra']);
+      expect(process.exitCode).toBe(1);
+      expect(rt.errors.join('').toLowerCase()).toContain('extra');
+      expect(rt.output.join('')).not.toContain('/100');
+    });
+  });
+
   it('writes an HTML report under --report', async () => {
     const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
     await run(rt, ['check', 'acme.example', '--yes', '--report', 'out.html']);

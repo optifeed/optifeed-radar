@@ -6,7 +6,7 @@ import process from 'node:process';
 import { Command } from 'commander';
 import { renderAuditJson, renderAuditText } from '../core/output/index.js';
 import { runAudit } from '../core/run/index.js';
-import { registerCheck } from './check.js';
+import { registerCheck, rejectStrayArgs } from './check.js';
 import { registerInspect } from './inspect.js';
 import { type Runtime, defaultRuntime } from './runtime.js';
 
@@ -30,15 +30,19 @@ function registerAudit(program: Command, rt: Runtime): void {
   program
     .command('audit')
     .argument('<domain>', 'the site to audit, e.g. example.com')
+    .allowExcessArguments(true) // handled by rejectStrayArgs for a clean error
     .description('Static AI-readiness audit (no API keys, no AI calls)')
     .option('--json', 'output the raw JSON report')
-    .action(async (domain: string, options: { json?: boolean }) => {
-      const report = await runAudit(domain, { fetcher: rt.fetcher });
-      const out = options.json
-        ? renderAuditJson(report)
-        : renderAuditText(report);
-      rt.out(`${out}\n`);
-    });
+    .action(
+      async (domain: string, options: { json?: boolean }, command: Command) => {
+        if (rejectStrayArgs(rt, command)) return;
+        const report = await runAudit(domain, { fetcher: rt.fetcher });
+        const out = options.json
+          ? renderAuditJson(report)
+          : renderAuditText(report);
+        rt.out(`${out}\n`);
+      },
+    );
 }
 
 /**
