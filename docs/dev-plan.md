@@ -416,11 +416,10 @@ audit findings; `--yes`, `--engines`, `--max-cost`, `--max-setup-cost`,
 --competitors a,b` · `sources <domain>`
 · `queries <domain>` · `diff <domain>` · `shopping <domain>` (M12) ·
 `lint-feed <url>` (M14) · `mcp` (M15) · `config`.
-Interactive prompts via `@inquirer/prompts`, ALWAYS bypassable (`--yes`
-
-- flags) - agents are first-class users of the CLI too.
-  **Acceptance:** e2e tests with mocked adapters: audit-only run with no
-  keys; check with 1 key; full run; `--json` piped output clean (no ANSI).
+Interactive prompts via `@inquirer/prompts`, ALWAYS bypassable (`--yes` plus
+explicit flags) - agents are first-class users of the CLI too.
+**Acceptance:** e2e tests with mocked adapters: audit-only run with no
+keys; check with 1 key; full run; `--json` piped output clean (no ANSI).
 
 ## M12 - Shopping beta
 
