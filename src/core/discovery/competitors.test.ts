@@ -35,6 +35,37 @@ describe('discoverCompetitors', () => {
     expect(judge.prompts[0]).toContain('Acme Rockets');
   });
 
+  // Live 2026-07-17 (www.do-re.com.tr, a Turkish music retailer): the profile
+  // correctly extracted locale "tr", but the competitor prompt never received
+  // it, so the judge returned 8 US chains (Guitar Center, Sam Ash, Sweetwater
+  // ...). NONE of them appeared even once across 20 Turkish answers, so the
+  // whole share-of-voice table read 0%. Lesson #7: do not extract a signal and
+  // then discard it at the one call site that needs it.
+  it('passes the locale to the judge so competitors match the brand market', async () => {
+    const judge = recordingJudge('["Zuhal Müzik", "Mydukkan"]');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'doremusic', category: 'Musical instruments', locale: 'tr' },
+      { judge, guard },
+    );
+
+    expect(result.competitors).toEqual(['Zuhal Müzik', 'Mydukkan']);
+    // Assert a DISTINCTIVE marker, not a bare "tr" (which matches "insTRuments"
+    // in the category) or "market" (the base prompt already says "map a market").
+    // A loose assertion here passes against the buggy prompt - false green.
+    expect(judge.prompts[0]).toContain('Primary market (locale): tr');
+  });
+
+  it('omits the locale line entirely when the profile has no locale', async () => {
+    const judge = recordingJudge('["Estes"]');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await discoverCompetitors({ brand: 'Acme' }, { judge, guard });
+
+    expect(judge.prompts[0]).not.toMatch(/Primary market/i);
+  });
+
   it('parses a JSON array even when a later bracket appears in prose', () => {
     expect(parseCompetitors('["Estes","Quest"] (see ref [1])')).toEqual([
       'Estes',

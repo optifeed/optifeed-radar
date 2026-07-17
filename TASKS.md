@@ -201,6 +201,8 @@ Owner: setup · PR: (M9) · needs M8
 Owner: setup · PR: (M11) · thin over M10 + M9
 
 - [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) and `shopping` (M12) deferred to launch #2 - `lint-feed` shipped 2026-07-16 and was removed 2026-07-17 (scope revision)
+- [ ] Competitor QUALITY in non-English markets is weak (found 2026-07-17, after the locale fix). With `locale: tr` now reaching the judge, `www.do-re.com.tr` returns Turkish names instead of US chains - but the list is mixed: "Müzik Aletleri" is the common noun "musical instruments", not a brand, and Zuhal Müzik (the obvious real rival) is absent. The plumbing is fixed; `gpt-4o-mini` simply does not know Turkish retailers well. This is a judge-quality issue, not a wiring one - consider a stronger judge or a grounded competitor call, and re-check at the M17 smoke test on a non-English domain.
+- [ ] For RETAIL brands the share-of-voice axis is structurally mismatched (found 2026-07-17). `doremusic` is a retailer, so buyer prompts like "2026 için en iyi akustik piyanolar hangileri?" elicit MANUFACTURERS - across 20 Turkish answers: Yamaha 9, Kawai 4, Roland 4, Fender 4, Casio 2 - never rival retailers. So even with correct Turkish competitors, a retailer scores 0 and learns little: the answers simply are not about shops. Retailers are a core segment, so decide before launch whether retail brands need retailer-seeking prompts ("Türkiye'de piyano nereden alınır?") and/or a manufacturer-vs-retailer competitor axis. Product decision, not a bug.
 - [ ] **No flag selects grounded mode - the grounded variants are unreachable from the CLI (found 2026-07-17).** `runCheck` accepts `opts.mode` and passes it to the runner, but no command sets it, so every engine runs at its spec default `kind`: openai/anthropic/gemini parametric, perplexity grounded. OpenAI's Responses/`web_search` path and Gemini's grounding path are therefore dead code at runtime. With only an OpenAI key configured, a `check` cites NO sources at all - the grounded-vs-parametric split the product is built around never happens. Third instance of build-without-a-call-site (after `CostGuard.authorize` and `failUnder`). Decide the surface: a `--grounded` flag, per-engine mode config, or run both modes and merge.
 - [ ] **`--fail-under <n>` on `check` - NOT WIRED (open gap, found 2026-07-17).** The plan requires it (dev-plan M8: "Exit codes: `--fail-under <n>` (CI mode)"). `failUnder()` is built, tested, and exported from `core/output`, but **no call site exists** - no `.option('--fail-under')`, no consumer anywhere outside its own test. So the CI gate silently does not exist: a user passing the flag gets a commander unknown-option error, and nothing ever gates on score. Fell through a handoff crack - M8 built the pure function and deferred the surface to "M10/M11 wiring", and M11's checklist never listed it. This is review lesson #3 repeating verbatim (`CostGuard.authorize` existed but nothing called it, so `--max-cost` was silently unenforced): an enforcement API must land with its call site in the same change.
 - [x] all interactive prompts bypassable (`--yes` + flags); ship `audit` first
@@ -390,6 +392,36 @@ Owner: ___ · PR: ___
   payload proves it.** (2) The grounded path is unreachable from the CLI
   anyway - no flag sets `mode` (logged under M11). (3) A run never reports what
   it spent (logged under M17).
+
+- 2026-07-17: live test on a **Turkish** site (`www.do-re.com.tr`, a music
+  retailer) - the first non-English run. What works: locale detection (`tr`,
+  extracted from markup) and query generation, which produced genuinely
+  idiomatic Turkish buyer prompts. Mention detection is correct too - the score
+  of 0/15 is honest (every brand mention was in a branded prompt, which
+  scoring excludes by design). Two bugs found and fixed test-first (+6 tests,
+  309->315): (1) **`--quick` was silently ignored whenever a pack was cached.**
+  `resolveQueries` returned the cached pack without ever reading `opts.count`,
+  so a run asking for 8 prompts ran all 20 - 2.5x the requested cost, no
+  warning. `count` is a cost control and must bind however the pack was
+  obtained; `capPack` now truncates cached AND explicit-file packs, with a note
+  (truncate, not regenerate: costs nothing and keeps prompts stable so `diff`
+  stays valid). Verified live: 15 buyer prompts -> 6, with "using 8 of 20 saved
+  prompts". (2) **Competitor discovery ignored locale.** The profile extracted
+  `locale: tr` correctly but `buildPrompt` never received it, so a Turkish
+  retailer got 8 US chains (Guitar Center, Sam Ash, Sweetwater...) - and ALL 8
+  had zero mentions across 20 Turkish answers, making the entire share-of-voice
+  table read 0%. Lesson #7 (fetch-and-discard) with teeth: the signal was
+  extracted, stored, and dropped at the one call site that needed it. Verified
+  live via `--refresh`: Turkish names now. Two follow-ups logged, NOT fixed:
+  non-English competitor quality is still weak (a model limit, not wiring), and
+  the retailer-vs-manufacturer share-of-voice mismatch (a product decision).
+  Testing lesson worth keeping: **my first version of the locale test passed
+  against the buggy code** - `toContain('tr')` matched "insTRuments" in the
+  category and `/market/` matched the prompt's existing "map a market". A loose
+  assertion is a false green; assert a distinctive marker
+  (`Primary market (locale): tr`). The `discover` test helper also did
+  `void prompt`, discarding the very thing that needed asserting - no test
+  could have caught this bug.
 
 ## Carried risks / decisions to watch
 

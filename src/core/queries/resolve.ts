@@ -49,6 +49,29 @@ export interface ResolveQueriesResult {
   note?: string;
 }
 
+/**
+ * Cap a REUSED pack (cached or explicit file) to `count`.
+ *
+ * `count` (`--quick`) is a cost control, so it must bind however the pack was
+ * obtained - generation is not the only path that spends. Truncating rather
+ * than regenerating is deliberate: it costs nothing, and keeping the first N in
+ * file order means reruns ask the same prompts, so a `diff` stays meaningful.
+ * Returns a note whenever prompts were dropped - never cap silently (rule #6).
+ */
+function capPack(
+  pack: QueryPack,
+  count?: number,
+): { pack: QueryPack; note?: string } {
+  if (count === undefined || count <= 0 || pack.queries.length <= count) {
+    return { pack };
+  }
+  const total = pack.queries.length;
+  return {
+    pack: { ...pack, queries: pack.queries.slice(0, count) },
+    note: `using ${count} of ${total} saved prompts (--quick); pass --regenerate for a fresh ${count}-prompt pack`,
+  };
+}
+
 /** Resolve the query pack for a run: explicit file, cached, or generated. */
 export async function resolveQueries(
   profile: BrandProfile,
@@ -60,10 +83,11 @@ export async function resolveQueries(
   const guard = deps.guard ?? new CostGuard();
   const persist = opts.persist ?? true;
 
-  // 1. Explicit --queries file wins outright.
+  // 1. Explicit --queries file wins outright (still bound by --quick).
   if (opts.queriesFile) {
-    const pack = await loadQueryPackFromFile(opts.queriesFile, fs);
-    return { pack, fromFile: true };
+    const loadedFile = await loadQueryPackFromFile(opts.queriesFile, fs);
+    const { pack, note } = capPack(loadedFile, opts.count);
+    return { pack, fromFile: true, ...(note ? { note } : {}) };
   }
 
   // 2. Reuse a persisted pack unless asked to regenerate (hand edits survive).
@@ -72,7 +96,8 @@ export async function resolveQueries(
   const loaded = await loadQueryPack(opts.stateDir, fs);
   const existing = loaded?.domain === profile.domain ? loaded : undefined;
   if (existing && !opts.regenerate) {
-    return { pack: existing, fromCache: true };
+    const { pack, note } = capPack(existing, opts.count);
+    return { pack, fromCache: true, ...(note ? { note } : {}) };
   }
 
   // 3. Generate via one guarded judge call.

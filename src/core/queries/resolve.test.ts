@@ -104,6 +104,84 @@ describe('resolveQueries', () => {
     expect(j.calls).toBe(0);
   });
 
+  // Live 2026-07-17 (www.do-re.com.tr): a 20-prompt pack was already cached, so
+  // `check --quick` (count 8) silently ran all 20 - 2.5x the cost the flag
+  // asked for, with no warning. `count` is a COST CONTROL; reusing a pack must
+  // still respect it. Truncation (not regeneration) is deliberate: it spends
+  // nothing and keeps the prompts stable across runs, so a diff stays valid.
+  function pack(n: number, domain = 'acme.example'): QueryPack {
+    return {
+      schema_version: SCHEMA_VERSION,
+      domain,
+      generatedAt: AT,
+      queries: Array.from({ length: n }, (_, i) => ({
+        id: `q${i + 1}`,
+        intent: 'best-of' as const,
+        prompt: `Cached prompt ${i + 1}?`,
+      })),
+    };
+  }
+
+  it('caps a larger cached pack to count (--quick) and says so', async () => {
+    const { fs } = memFs({ [queriesPath('/state')]: toYaml(pack(20)) });
+    const j = judge();
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', count: 8 },
+    );
+
+    expect(result.fromCache).toBe(true);
+    expect(result.pack.queries).toHaveLength(8);
+    // Deterministic + stable: the first N in file order, so reruns compare.
+    expect(result.pack.queries[0]!.prompt).toBe('Cached prompt 1?');
+    expect(result.pack.queries[7]!.prompt).toBe('Cached prompt 8?');
+    // Never silent - the user asked for 8 and must see that 12 were dropped.
+    expect(result.note).toMatch(/8 of 20/);
+    expect(j.calls).toBe(0); // capping must not spend
+  });
+
+  it('leaves a cached pack alone when it already fits within count', async () => {
+    const { fs } = memFs({ [queriesPath('/state')]: toYaml(pack(5)) });
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: judge(), guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', count: 8 },
+    );
+
+    expect(result.pack.queries).toHaveLength(5);
+    expect(result.note).toBeUndefined(); // nothing dropped, nothing to report
+  });
+
+  it('caps an explicit --queries file to count too', async () => {
+    const { fs } = memFs({ '/custom/pack.yml': toYaml(pack(20)) });
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: judge(), guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', queriesFile: '/custom/pack.yml', count: 8 },
+    );
+
+    expect(result.fromFile).toBe(true);
+    expect(result.pack.queries).toHaveLength(8);
+    expect(result.note).toMatch(/8 of 20/);
+  });
+
+  it('reuses the whole cached pack when no count is given', async () => {
+    const { fs } = memFs({ [queriesPath('/state')]: toYaml(pack(20)) });
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: judge(), guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.pack.queries).toHaveLength(20);
+    expect(result.note).toBeUndefined();
+  });
+
   it('regenerates (does not abort) when the cached pack has an incompatible schema_version', async () => {
     const stale = {
       schema_version: '0.2', // from a prior, incompatible version

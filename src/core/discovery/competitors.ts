@@ -16,6 +16,13 @@ export interface CompetitorInput {
   brand: string;
   category?: string;
   offerings?: string[];
+  /**
+   * The brand's primary market, from the profile's extracted `locale` (e.g.
+   * `tr`, `en-US`). Without it the judge defaults to US/global brands, which
+   * for a local retailer yields rivals that never appear in that market's
+   * answers - a share-of-voice table of all zeroes.
+   */
+  locale?: string;
 }
 
 export interface CompetitorDeps {
@@ -38,12 +45,21 @@ function buildPrompt(input: CompetitorInput): string {
   if (input.offerings?.length) {
     parts.push(`Offerings: ${input.offerings.join(', ')}`);
   }
+  if (input.locale) parts.push(`Primary market (locale): ${input.locale}`);
   return [
     'You are helping map a market. Given the brand below, list its main direct',
     'competitors (rival brands a shopper would compare it against).',
     '',
     parts.join('\n'),
     '',
+    ...(input.locale
+      ? [
+          'Rank rivals that actually compete in that primary market first,',
+          'including local and regional ones. Do NOT default to US or global',
+          'brands unless they genuinely compete there.',
+          '',
+        ]
+      : []),
     'Return ONLY a JSON array of competitor brand names, e.g. ["Foo", "Bar"].',
     'No commentary. Do not include the brand itself.',
   ].join('\n');

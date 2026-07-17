@@ -177,6 +177,7 @@ export async function discover(
         brand: signals.brand,
         category: signals.category,
         offerings: signals.offerings,
+        locale: signals.locale,
       },
       { judge: deps.judge, guard },
     );

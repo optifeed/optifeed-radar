@@ -59,13 +59,17 @@ function fakeFetcher(
   return { fetcher, calls };
 }
 
-function judge(text: string): JudgeClient & { calls: number } {
+function judge(text: string): JudgeClient & {
+  calls: number;
+  prompts: string[];
+} {
   return {
     calls: 0,
+    prompts: [],
     model: 'gpt-4o-mini',
     async complete(prompt) {
       this.calls += 1;
-      void prompt;
+      this.prompts.push(prompt);
       return { text, costUsd: 0.001, model: 'gpt-4o-mini' };
     },
   };
@@ -114,6 +118,9 @@ describe('discover', () => {
     expect(p.locale).toBe('en-US');
     expect(p.offerings).toEqual(['Orbit Starter Kit']);
     expect(p.competitors).toEqual(['Estes', 'Quest Aerospace']);
+    // The extracted locale must REACH the competitor call, not just the profile
+    // (live 2026-07-17: a `tr` brand got 8 US chains, 0 of which ever appeared).
+    expect(j.prompts[0]).toContain('en-US');
     expect(p.sources?.competitors).toBe('llm');
     expect(p.degraded).toBeUndefined();
 
