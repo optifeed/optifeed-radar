@@ -14,9 +14,21 @@ export const ENGINE_KEY_ENV: Record<EngineId, string> = {
   perplexity: 'PERPLEXITY_API_KEY',
 };
 
-/** Default judge model per engine (cheapest sensible option for that provider). */
+/**
+ * Default judge model per engine.
+ *
+ * NOT simply the cheapest any more. The judge does competitor discovery, which
+ * is factual RECALL, and cheap models do not recall - they fabricate. Measured
+ * 2026-07-17 on a Turkish retailer (doremusic; ground truth verified on the
+ * web): `gpt-4o-mini` returned 0/10 real rivals and missed Zuhal Müzik, the
+ * obvious one, inventing a different plausible-sounding list on every run.
+ * `gpt-5.4` returned Zuhal Müzik, MyDukkan and Cangöz Müzik, ranked first.
+ * The judge is cheap to upgrade: 2 one-shot setup calls per brand (cached),
+ * and the scoring judge only fires on ambiguous answers, capped at
+ * `JUDGE_RATE_CAP` (it fired 0 times across every live run so far).
+ */
 export const DEFAULT_JUDGE_MODELS: Record<EngineId, string> = {
-  openai: 'gpt-4o-mini',
+  openai: 'gpt-5.4',
   anthropic: 'claude-haiku-4-5',
   gemini: 'gemini-2.5-flash',
   perplexity: 'sonar',

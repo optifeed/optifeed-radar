@@ -37,7 +37,11 @@ interface ResponsesShape {
 export const openaiSpec: ProviderSpec = {
   id: 'openai',
   kind: 'parametric',
-  defaultModel: 'gpt-4o-mini',
+  // The model ChatGPT actually serves. This is the measurement subject: asking
+  // a cheaper/older model answers a question no buyer asked. `-chat-latest` is
+  // OpenAI's alias for ChatGPT's current default, so it tracks automatically -
+  // at the cost of floating (see MODEL_PRICING's note and the M17 follow-up).
+  defaultModel: 'gpt-5.3-chat-latest',
   supportsGrounded: true,
   endpoint: (mode) =>
     mode === 'grounded'
@@ -59,7 +63,10 @@ export const openaiSpec: ProviderSpec = {
       body: {
         model,
         messages: [{ role: 'user', content: prompt }],
-        ...(maxTokens ? { max_tokens: maxTokens } : {}),
+        // `max_completion_tokens`, never `max_tokens`: GPT-5 models reject the
+        // latter outright (unsupported_parameter -> HTTP 400), while the legacy
+        // gpt-4o pair accepts both. Verified live against all four 2026-07-17.
+        ...(maxTokens ? { max_completion_tokens: maxTokens } : {}),
       },
     };
   },

@@ -20,6 +20,9 @@ describe('createJudgeClient', () => {
       httpPost,
       apiKey: 'k',
       now: () => 'ts',
+      // Pinned: the contract under test is "the judge exposes ITS adapter's
+      // model", not whatever today's default happens to be.
+      model: 'gpt-4o-mini',
     });
     const judge = createJudgeClient(adapter);
 

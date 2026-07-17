@@ -201,6 +201,9 @@ Owner: setup · PR: (M9) · needs M8
 Owner: setup · PR: (M11) · thin over M10 + M9
 
 - [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) and `shopping` (M12) deferred to launch #2 - `lint-feed` shipped 2026-07-16 and was removed 2026-07-17 (scope revision)
+- [ ] **A run with ZERO answers reports a confident `score: 0`, not "not assessed" (found 2026-07-17, rule #6 - the WORST bug of the session).** When the judge 400s and no engine answers, `check` still prints "AI Visibility Score: 0/100" and persists `score: 0` with `nAnswers: 0` and **no honesty flag at all** - `degraded`, `skippedEngines` and `costCapped` are all unset, so `isPartialRun()` reads it as a COMPLETE full-confidence zero. A consumer cannot tell a real 0 from a total failure: `diff` compares it as real, and `--fail-under` (once wired) would fail a build on a number that measured nothing. This is the exact bug class the M14 review already fixed for lint-feed (`feedScore: number|null` = null + "not assessed" over an unevaluated feed) - now on the HEADLINE number. Fix mirrors M14: `score` must be `number | null` (null when `nAnswers === 0`) with the renderer saying "not assessed", and/or `degraded` set with a reason. NOTE: making `score` nullable BREAKS the envelope, so it needs a `schema_version` bump (0.1 -> 0.2) + a golden-envelope snapshot update per hard rule #2 - cheap now while unpublished, expensive after launch. Reproduce: point the openai adapter at any failing config and run `check`.
+- [ ] Judge selection is still purely by PRICE, which now fights the quality fix (found 2026-07-17). `resolveJudgeModel` picks the cheapest default across available engines. With openai's judge now `gpt-5.4` ($2.50/$15) and anthropic's `claude-haiku-4-5` ($1/$5), **adding an Anthropic key silently swaps the judge back to a cheap-tier model** and may reintroduce fabricated competitors. Unverified for haiku specifically (no anthropic key), so the ranking was NOT redesigned on a guess - the current behaviour is pinned by a test so it cannot change silently. Decide once other keys exist: keep "cheapest", or rank judges by recall quality.
+- [ ] Non-OpenAI engine + judge models are stale in exactly the way `gpt-4o` was (found 2026-07-17). Only the OpenAI path was verified and updated this session (the only key available). `anthropic: claude-haiku-4-5`, `gemini: gemini-2.5-flash` remain both cheap-tier AND possibly a generation behind what Claude/Gemini users actually get - the same validity gap just fixed for OpenAI. Worse, a mixed run would then compare a flagship-measured OpenAI against a mini-measured Anthropic and fold both into ONE composite score - apples to oranges inside the headline number. Verify model ids + prices from each provider's official sheet before enabling multi-engine runs.
 - [ ] Competitor QUALITY in non-English markets is weak (found 2026-07-17, after the locale fix). With `locale: tr` now reaching the judge, `www.do-re.com.tr` returns Turkish names instead of US chains - but the list is mixed: "Müzik Aletleri" is the common noun "musical instruments", not a brand, and Zuhal Müzik (the obvious real rival) is absent. The plumbing is fixed; `gpt-4o-mini` simply does not know Turkish retailers well. This is a judge-quality issue, not a wiring one - consider a stronger judge or a grounded competitor call, and re-check at the M17 smoke test on a non-English domain.
 - [ ] For RETAIL brands the share-of-voice axis is structurally mismatched (found 2026-07-17). `doremusic` is a retailer, so buyer prompts like "2026 için en iyi akustik piyanolar hangileri?" elicit MANUFACTURERS - across 20 Turkish answers: Yamaha 9, Kawai 4, Roland 4, Fender 4, Casio 2 - never rival retailers. So even with correct Turkish competitors, a retailer scores 0 and learns little: the answers simply are not about shops. Retailers are a core segment, so decide before launch whether retail brands need retailer-seeking prompts ("Türkiye'de piyano nereden alınır?") and/or a manufacturer-vs-retailer competitor axis. Product decision, not a bug.
 - [ ] **No flag selects grounded mode - the grounded variants are unreachable from the CLI (found 2026-07-17).** `runCheck` accepts `opts.mode` and passes it to the runner, but no command sets it, so every engine runs at its spec default `kind`: openai/anthropic/gemini parametric, perplexity grounded. OpenAI's Responses/`web_search` path and Gemini's grounding path are therefore dead code at runtime. With only an OpenAI key configured, a `check` cites NO sources at all - the grounded-vs-parametric split the product is built around never happens. Third instance of build-without-a-call-site (after `CostGuard.authorize` and `failUnder`). Decide the surface: a `--grounded` flag, per-engine mode config, or run both modes and merge.
@@ -392,6 +395,32 @@ Owner: ___ · PR: ___
   payload proves it.** (2) The grounded path is unreachable from the CLI
   anyway - no flag sets `mode` (logged under M11). (3) A run never reports what
   it spent (logged under M17).
+
+- 2026-07-17: **the measured model was wrong, and that invalidated the headline
+  number.** `check` asked `gpt-4o-mini` - both the wrong TIER (nobody chats with
+  mini) and the wrong GENERATION (`gpt-4o` is legacy; it is no longer even on
+  OpenAI's price sheet, and ChatGPT serves GPT-5.x). The product claims to
+  answer "does the AI your buyers use recommend you?", so measuring a cheap
+  legacy model answered a question no buyer asked. Verified against the live
+  `/v1/models` endpoint (the key exposes the full GPT-5 line incl.
+  `gpt-5.3-chat-latest`, OpenAI's alias for what ChatGPT currently serves) and
+  the official price sheet. Now: engine = `gpt-5.3-chat-latest`, judge =
+  `gpt-5.4`, with GPT-5 pricing added (`lastUpdated` 2026-07-17 + source +
+  the two caveats: the chat-latest price is inherited from a generic row, and
+  the alias FLOATS). Cost moved as expected: a `--quick` run went $0.0024 ->
+  $0.0926. Judge choice was measured, not assumed - on the Turkish competitor
+  task `gpt-4o-mini` scored 0/10 real, `gpt-4o` 2/8, `gpt-5.4-mini` 1/8,
+  `gpt-5.4` 3/5 with Zuhal Müzik / MyDukkan / Cangöz Müzik ranked FIRST. Live
+  after the change, doremusic's competitor list is finally real. Two things the
+  switch flushed out: (1) **GPT-5 models reject `max_tokens`**
+  (unsupported_parameter -> HTTP 400) and require `max_completion_tokens`;
+  legacy gpt-4o accepts both, so the new name is now used unconditionally
+  (verified live across all four ids). (2) That 400 exposed the zero-answer
+  honesty bug logged under M11 - the failed run still printed "0/100". Testing
+  note: three tests broke on the default change purely because they asserted
+  the DEFAULT's value while testing something else (parsing, the JudgeClient
+  contract, configured-vs-echoed pricing). They now pin `model:` explicitly -
+  a test should not re-target itself when a default moves.
 
 - 2026-07-17: live test on a **Turkish** site (`www.do-re.com.tr`, a music
   retailer) - the first non-English run. What works: locale detection (`tr`,

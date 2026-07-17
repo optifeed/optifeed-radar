@@ -53,6 +53,9 @@ describe('adapter cost pricing', () => {
       httpPost: fn,
       apiKey: 'k',
       now: () => FIXED,
+      // Pin the model: this asserts the CONFIGURED-vs-echoed principle, so it
+      // must not silently re-target whenever the default model changes.
+      model: 'gpt-4o-mini',
     }).ask('q');
 
     expect(answer.model).toBe('gpt-4o-mini-2024-07-18'); // reports the actual id

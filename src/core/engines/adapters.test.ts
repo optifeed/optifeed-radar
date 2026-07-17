@@ -30,6 +30,37 @@ function fakePost(body: unknown) {
 }
 
 describe('createAdapter', () => {
+  // The product's claim is "does the AI your buyers use recommend you?", so the
+  // engine we ASK must be the model those buyers actually get. `gpt-4o-mini` was
+  // both the wrong generation (gpt-4o is legacy; ChatGPT serves GPT-5.x) and the
+  // wrong tier (nobody chats with mini). `-chat-latest` is OpenAI's alias for
+  // whatever ChatGPT currently serves - verified live 2026-07-17.
+  it('asks OpenAI with the model ChatGPT actually serves, and prices it', () => {
+    const { fn } = fakePost({});
+    const adapter = createAdapter(openaiSpec, { httpPost: fn, apiKey: 'k' });
+    expect(adapter.model).toBe('gpt-5.3-chat-latest');
+    expect(MODEL_PRICING.models[adapter.model]).toBeDefined();
+  });
+
+  // Verified live 2026-07-17 against all four ids: GPT-5 models REJECT
+  // `max_tokens` with unsupported_parameter and require `max_completion_tokens`;
+  // the legacy gpt-4o pair accepts BOTH. So the new name is used unconditionally
+  // - no per-model branching. Sending `max_tokens` to gpt-5.3-chat-latest is an
+  // HTTP 400, which the guard surfaces as a skipped engine (a whole run of no
+  // answers).
+  it('sends max_completion_tokens (GPT-5 rejects max_tokens)', async () => {
+    const { fn, calls } = fakePost({
+      choices: [{ message: { content: 'x' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    await createAdapter(openaiSpec, { httpPost: fn, apiKey: 'k' }).ask('q', {
+      maxTokens: 256,
+    });
+    const body = JSON.parse(calls[0]!.body) as Record<string, unknown>;
+    expect(body.max_completion_tokens).toBe(256);
+    expect(body.max_tokens).toBeUndefined();
+  });
+
   it('reports availability from the presence of an API key', () => {
     const { fn } = fakePost({});
     expect(
@@ -53,6 +84,7 @@ describe('createAdapter', () => {
       httpPost: fn,
       apiKey: 'sk-test',
       now: () => FIXED,
+      model: 'gpt-4o-mini', // pinned: this test is about parsing, not the default
     });
     const answer = await adapter.ask('best espresso machine?');
 

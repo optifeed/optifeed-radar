@@ -24,6 +24,10 @@ describe('MODEL_PRICING', () => {
   it('carries a lastUpdated date and known models', () => {
     expect(MODEL_PRICING.lastUpdated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(MODEL_PRICING.models['gpt-4o-mini']).toBeDefined();
+    // Every model this tool asks or judges with BY DEFAULT must be priced -
+    // an unpriced default silently reports $0 spend (the M0-M6 lesson).
+    expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['gpt-5.4']).toBeDefined();
   });
 });
 

@@ -16,13 +16,33 @@ export interface ModelPricing {
  * Checked-in pricing table. `lastUpdated` flags staleness; prices are USD per
  * million tokens and are approximate - good enough for a pre-run estimate, not
  * billing. Update the date when you touch the numbers.
+ *
+ * OpenAI rows retrieved 2026-07-17 from the official sheet
+ * (https://developers.openai.com/api/docs/pricing). Two caveats an updater must
+ * know: (1) `gpt-5.3-chat-latest` is NOT itself on that sheet - the page lists a
+ * generic `chat-latest` row at $5/$30 and this inherits it, so the number is an
+ * assumption, not a quote. (2) `-chat-latest` FLOATS: OpenAI repoints it at
+ * whatever ChatGPT currently serves, so its price can change without any change
+ * here. Re-verify at release (M17). The non-OpenAI rows predate this pass and
+ * are stale in the same way `gpt-4o` was - see the TASKS follow-up.
  */
 export const MODEL_PRICING: {
   lastUpdated: string;
   models: Record<string, ModelPricing>;
 } = {
-  lastUpdated: '2026-07-15',
+  lastUpdated: '2026-07-17',
   models: {
+    // Current generation (what ChatGPT serves / what we ask + judge with).
+    'gpt-5.3-chat-latest': { inputPerMTokens: 5, outputPerMTokens: 30 },
+    'gpt-5.6-sol': { inputPerMTokens: 5, outputPerMTokens: 30 },
+    'gpt-5.6-terra': { inputPerMTokens: 2.5, outputPerMTokens: 15 },
+    'gpt-5.6-luna': { inputPerMTokens: 1, outputPerMTokens: 6 },
+    'gpt-5.5': { inputPerMTokens: 5, outputPerMTokens: 30 },
+    'gpt-5.4': { inputPerMTokens: 2.5, outputPerMTokens: 15 },
+    'gpt-5.4-mini': { inputPerMTokens: 0.75, outputPerMTokens: 4.5 },
+    'gpt-5.4-nano': { inputPerMTokens: 0.2, outputPerMTokens: 1.25 },
+    // Legacy - kept so existing snapshots and pinned --judge/--engines still
+    // price, but no longer a default: ChatGPT does not serve these.
     'gpt-4o-mini': { inputPerMTokens: 0.15, outputPerMTokens: 0.6 },
     'gpt-4o': { inputPerMTokens: 2.5, outputPerMTokens: 10 },
     'claude-haiku-4-5': { inputPerMTokens: 1, outputPerMTokens: 5 },

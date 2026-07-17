@@ -74,13 +74,30 @@ describe('resolveJudgeModel fallback matrix', () => {
   });
 
   it('falls back to the cheapest available model non-interactively, with a notice', async () => {
+    // NOTE (2026-07-17): selection is still purely by PRICE, but the judge
+    // defaults are no longer uniformly cheap - openai's is now `gpt-5.4`,
+    // chosen for factual recall (cheap models fabricate competitors). So with
+    // both keys present the cheapest is now anthropic's haiku, NOT openai.
+    // That means adding an Anthropic key silently swaps the judge back to a
+    // cheap-tier model and may reintroduce fabricated competitors. Whether
+    // "cheapest" is still the right rule is an open question logged in TASKS -
+    // it needs per-provider recall data we do not have (no anthropic key yet).
+    // This test pins the CURRENT behaviour so the swap cannot happen silently.
     const res = await resolveJudgeModel({
       interactive: false,
-      availableEngines: ['anthropic', 'openai'], // openai (gpt-4o-mini) is cheapest
+      availableEngines: ['anthropic', 'openai'],
     });
     expect(res.source).toBe('fallback');
-    expect(res.model).toBe(DEFAULT_JUDGE_MODELS.openai);
+    expect(res.model).toBe(DEFAULT_JUDGE_MODELS.anthropic);
     expect(res.notice).toBeTruthy();
+  });
+
+  it('picks the openai judge when it is the only engine available', async () => {
+    const res = await resolveJudgeModel({
+      interactive: false,
+      availableEngines: ['openai'],
+    });
+    expect(res.model).toBe('gpt-5.4');
   });
 
   it('throws when no engines are available', async () => {
