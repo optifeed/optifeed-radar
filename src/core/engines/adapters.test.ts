@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { costOfCall, MODEL_PRICING } from '../costs.js';
 import { createAdapter } from './adapter.js';
@@ -95,6 +97,47 @@ describe('createAdapter', () => {
     }).ask('q');
     expect(answer.text).toBe('Gemini answer.');
     expect(answer.tokens).toEqual({ input: 3, output: 4 });
+  });
+
+  // Lesson #1: parse the shape production ACTUALLY returns. This fixture is a
+  // real /v1/responses + web_search payload captured live on 2026-07-17 (text
+  // and annotations trimmed for review; structure untouched). The previous
+  // grounded parser read `output_text`/`citations` off the top level - both are
+  // SDK conveniences that DO NOT exist on the raw HTTP response, so a real
+  // grounded call billed ~8k input tokens and returned an empty answer with no
+  // citations, silently.
+  const groundedFixture = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL(
+          '../../../test/fixtures/engines/openai-grounded-real.json',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    ),
+  ) as unknown;
+
+  it('parses a REAL OpenAI grounded (Responses + web_search) payload', async () => {
+    const { fn, calls } = fakePost(groundedFixture);
+    const answer = await createAdapter(openaiSpec, {
+      httpPost: fn,
+      apiKey: 'sk-test',
+      now: () => FIXED,
+    }).ask('best product feed tools?', { mode: 'grounded' });
+
+    expect(answer.kind).toBe('grounded');
+    // The text lives at output[] -> message -> content[] -> output_text.text
+    expect(answer.text).toContain('product feed management tools');
+    // Citations come from that content's url_citation annotations.
+    expect(answer.citations?.length).toBeGreaterThan(0);
+    expect(answer.citations?.[0]).toMatch(/^https?:\/\//);
+    // Usage keys on this endpoint are input_tokens/output_tokens.
+    expect(answer.tokens).toEqual({ input: 8174, output: 582 });
+    expect(answer.costUsd).toBeGreaterThan(0);
+    // Providers echo a DATED model id; cost must still price (lesson #2).
+    expect(answer.model).toBe('gpt-4o-mini-2024-07-18');
+    expect(calls[0]!.url).toContain('/responses');
   });
 
   it('parses a Perplexity answer with citations and reports grounded kind', async () => {

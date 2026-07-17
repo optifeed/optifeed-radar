@@ -1,0 +1,142 @@
+{
+  "id": "resp_08e7086f4df10ae4006a5a217c4b4c819cbbee561dddad0c77",
+  "object": "response",
+  "created_at": 1784291708,
+  "status": "completed",
+  "background": false,
+  "billing": {
+    "payer": "developer"
+  },
+  "completed_at": 1784291716,
+  "error": null,
+  "frequency_penalty": 0,
+  "incomplete_details": null,
+  "instructions": null,
+  "max_output_tokens": null,
+  "max_tool_calls": null,
+  "model": "gpt-4o-mini-2024-07-18",
+  "moderation": null,
+  "output": [
+    {
+      "id": "ws_08e7086f4df10ae4006a5a217cd240819c84a256eb7b47684e",
+      "type": "web_search_call",
+      "status": "completed",
+      "action": {
+        "type": "search",
+        "queries": [
+          "best product feed management tools 2026"
+        ],
+        "query": "best product feed management tools 2026"
+      }
+    },
+    {
+      "id": "msg_08e7086f4df10ae4006a5a217e9d50819c8d556d9300789622",
+      "type": "message",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "annotations": [
+            {
+              "type": "url_citation",
+              "end_index": 390,
+              "start_index": 209,
+              "title": "Pricefy: Optimizing eCommerce with Automated Price Monitoring",
+              "url": "https://www.supermonitoring.com/blog/pricefy-optimizing-ecommerce-with-automated-price-monitoring/?utm_source=openai"
+            },
+            {
+              "type": "url_citation",
+              "end_index": 662,
+              "start_index": 559,
+              "title": "The 10 Best Product Feed Management Software & Tools (2026) - Pricefy Blog",
+              "url": "https://www.pricefy.io/articles/best-product-feed-management-software?utm_source=openai"
+            },
+            {
+              "type": "url_citation",
+              "end_index": 822,
+              "start_index": 666,
+              "title": "Channable feed management review & alternatives (2026)",
+              "url": "https://blog.effectconnect.com/en/channable-feed-management-review-alternatieven?utm_source=openai"
+            }
+          ],
+          "logprobs": [],
+          "text": "As of July 2026, several product feed management tools stand out for their capabilities in optimizing and distributing product data across various e-commerce channels. Here are some top options to consider:\n\n\n[Pricefy: Optimizing eCommerce with Automated Price Monitoring](https://www.supermonitoring [truncated for fixture]"
+        }
+      ],
+      "role": "assistant"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "presence_penalty": 0,
+  "previous_response_id": null,
+  "prompt_cache_key": null,
+  "prompt_cache_retention": "in_memory",
+  "reasoning": {
+    "context": null,
+    "effort": null,
+    "summary": null
+  },
+  "safety_identifier": null,
+  "service_tier": "default",
+  "store": true,
+  "temperature": 1,
+  "text": {
+    "format": {
+      "type": "text"
+    },
+    "verbosity": "medium"
+  },
+  "tool_choice": "auto",
+  "tool_usage": {
+    "image_gen": {
+      "input_tokens": 0,
+      "input_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "output_tokens": 0,
+      "output_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 0
+    },
+    "web_search": {
+      "num_requests": 1
+    }
+  },
+  "tools": [
+    {
+      "type": "web_search",
+      "return_token_budget": "default",
+      "search_content_types": [
+        "text"
+      ],
+      "search_context_size": "medium",
+      "user_location": {
+        "type": "approximate",
+        "city": null,
+        "country": "US",
+        "region": null,
+        "timezone": null
+      }
+    }
+  ],
+  "top_logprobs": 0,
+  "top_p": 1,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 8174,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output_tokens": 582,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 8756
+  },
+  "user": null,
+  "metadata": {}
+}

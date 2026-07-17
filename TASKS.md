@@ -33,7 +33,7 @@ Last updated: 2026-07-17.
 ## Ship milestones (the gates that matter)
 
 - [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Since shipped, closing most of this milestone: the HTML report (`--report`, `renderCheckHtml`), colorized output (`picocolors` in `terminal.ts`/`render-diff.ts`), and M8 snapshot writing (`runCheck` calls `saveSnapshot`). **Still open: `--fail-under` is not wired into any command** (see M11).
-- [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. Live end-to-end with a real engine key (spend) is deferred to the M17 smoke test.
+- [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. **LIVE-VERIFIED 2026-07-17** against real OpenAI (`check optifeed.com --quick --engines openai`): discovery → query-gen → 6 buyer prompts + 2 branded → scoring → share of voice → reputation split → snapshot, 34s, ask spend $0.0024. Confirmed live: no key material in the snapshot (rule #4), `schema_version` present, and the provider-echoed DATED model id (`gpt-4o-mini-2024-07-18`) still priced non-zero - the M0-M6 `$0`-cost bug regression-checked against reality. Still unverified live: anthropic, gemini, perplexity (no keys yet).
 - [ ] **MCP ships** - stdio server over the same core (M15)
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
 - [ ] **`shopping` beta ships** - DEFERRED to launch #2 (not a launch #1 gate): Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
@@ -201,6 +201,7 @@ Owner: setup · PR: (M9) · needs M8
 Owner: setup · PR: (M11) · thin over M10 + M9
 
 - [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) and `shopping` (M12) deferred to launch #2 - `lint-feed` shipped 2026-07-16 and was removed 2026-07-17 (scope revision)
+- [ ] **No flag selects grounded mode - the grounded variants are unreachable from the CLI (found 2026-07-17).** `runCheck` accepts `opts.mode` and passes it to the runner, but no command sets it, so every engine runs at its spec default `kind`: openai/anthropic/gemini parametric, perplexity grounded. OpenAI's Responses/`web_search` path and Gemini's grounding path are therefore dead code at runtime. With only an OpenAI key configured, a `check` cites NO sources at all - the grounded-vs-parametric split the product is built around never happens. Third instance of build-without-a-call-site (after `CostGuard.authorize` and `failUnder`). Decide the surface: a `--grounded` flag, per-engine mode config, or run both modes and merge.
 - [ ] **`--fail-under <n>` on `check` - NOT WIRED (open gap, found 2026-07-17).** The plan requires it (dev-plan M8: "Exit codes: `--fail-under <n>` (CI mode)"). `failUnder()` is built, tested, and exported from `core/output`, but **no call site exists** - no `.option('--fail-under')`, no consumer anywhere outside its own test. So the CI gate silently does not exist: a user passing the flag gets a commander unknown-option error, and nothing ever gates on score. Fell through a handoff crack - M8 built the pure function and deferred the surface to "M10/M11 wiring", and M11's checklist never listed it. This is review lesson #3 repeating verbatim (`CostGuard.authorize` existed but nothing called it, so `--max-cost` was silently unenforced): an enforcement API must land with its call site in the same change.
 - [x] all interactive prompts bypassable (`--yes` + flags); ship `audit` first
 - [x] Acceptance e2e mocked: audit no-key, check 1-key, full, clean `--json` (no ANSI)
@@ -245,7 +246,8 @@ Owner: ___ · PR: ___
 - [ ] npm publish workflow (provenance, `files` whitelist); changelog/weekly-release convention; `SECURITY.md`
 - [ ] Decide on the `ai-shopping` / `agentic-commerce` keywords in `package.json` before the first publish - launch #1 ships no shopping capability, so they advertise something absent. Keep (forward-looking, launch #2 adds it) or drop until then. Unpublished so far, so nothing is live yet.
 - [ ] `build` must clean `dist/` first - `tsc -p tsconfig.build.json` never removes stale output, and `files: ["dist"]` publishes whatever is there. Surfaced by the 2026-07-17 M14 removal: deleted modules stayed in `dist/` until a manual `rm -rf`, so a publish from a stale tree would ship code that is no longer in `src/` (here: deferred commerce code, at launch #1). Verified a clean rebuild emits none of it.
-- [ ] smoke-test script (3 real domains, prints cost); `npx` cold-run <60s; Win/macOS/Linux CI matrix
+- [ ] A run never tells the user what it SPENT (found 2026-07-17). The live `check` billed $0.0024 and reported it nowhere - the cost is only recoverable by summing `costUsd` across `answers` in the snapshot JSON. `--yes` skips the confirm gate that shows the estimate, so an agent or CI run (the documented path) sees no cost at all, before or after. A money-spending tool should print actual spend in the report footer. Cheap: the envelope already carries per-answer `costUsd`.
+- [ ] smoke-test script (3 real domains, prints cost); `npx` cold-run <60s; Win/macOS/Linux CI matrix. Pair it with the live-verification debt: only OpenAI parametric is proven (2026-07-17); anthropic/gemini/perplexity wire shapes and OpenAI grounded-in-a-real-`check` are still unexercised. Gemini's grounding shape is the same category of risk the OpenAI grounded bug came from - hand-written, untested, unreachable.
 - [ ] 100-brand data-run script (budgeted) for the launch article
 - [ ] Acceptance: `npm pack` reviewed; cold `npx` in clean container; data-run aggregate JSON produced
 
@@ -369,6 +371,26 @@ Owner: ___ · PR: ___
   (null score + acp-only readiness on malformed; truncation flag; capitalized
   wrapper).
 
+- 2026-07-17: **first live smoke test of `check`** against a real engine
+  (OpenAI; the other three have no keys yet). The full pipeline works
+  end-to-end - see the `check` ships milestone for what was confirmed. It also
+  found the bug the smoke test existed to find, plus two structural gaps:
+  (1) **OpenAI grounded parsing was broken against the real API.** The parser
+  read `output_text` and `citations` off the top level of `/v1/responses`, but
+  BOTH are SDK conveniences that do not exist on the raw HTTP body. A live
+  grounded call returned HTTP 200, billed ~8.2k input tokens, and yielded an
+  EMPTY answer with no citations - silently, no throw. Real shape (fixture:
+  `test/fixtures/engines/openai-grounded-real.json`, captured live): text at
+  `output[] -> {type:'message'}.content[] -> {type:'output_text'}.text`;
+  citations from that content's `url_citation` annotations. Fixed test-first
+  (+1 test, 308->309); the same live call now returns real text + 6 citations.
+  This is lesson #1 verbatim - the grounded path had NO test at all and its
+  `ResponsesShape` type was written from imagination, so nothing contradicted
+  it. Lesson reinforced: **a hand-written provider type is a guess until a real
+  payload proves it.** (2) The grounded path is unreachable from the CLI
+  anyway - no flag sets `mode` (logged under M11). (3) A run never reports what
+  it spent (logged under M17).
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
@@ -382,5 +404,5 @@ Owner: ___ · PR: ___
 Synced into `docs/dev-plan.md` on 2026-07-16 from the external research-updated copy. These land on ALREADY-SHIPPED modules (M5/M6/M7), so each is rework, not new-module scope. All three cite one study - frame as "per [study], as of [date]" and re-verify at release (M17), since prompt-rewriting behavior shifts as providers change retrieval stacks.
 
 - [ ] M5 retrieval-informed prompt rules: weight `best-of` highest (most rewrite-stable); generate a constrained + unconstrained variant for price/spec prompts BUT keep the pair inside `DEFAULT_QUERY_COUNT` + the setup budget (never additive spend); keep geo qualifiers; prefer concrete over thematic. Cheap, low-risk - fold in opportunistically.
-- [ ] M6 `fanoutQueries?: string[]` on `EngineAnswer` (optional, backward-compatible): capture the internal search queries an engine ran where the API exposes them (OpenAI `web_search` does; Perplexity/Gemini UNVERIFIED). Omit when absent, never fabricate (rule #6). Add the field cheaply; VERIFY per-engine support at the M17 smoke test BEFORE building any renderer UI on it.
+- [ ] M6 `fanoutQueries?: string[]` on `EngineAnswer` (optional, backward-compatible): capture the internal search queries an engine ran where the API exposes them. Omit when absent, never fabricate (rule #6). **OpenAI support VERIFIED live 2026-07-17** - the exact path is `output[] -> {type:'web_search_call'}.action.queries` (a `string[]`; `action.query` also carries the single query). Real example: prompt "What are the best product feed management tools in 2026?" -> `["best product feed management tools 2026"]`. The `ResponsesShape` type already models `action.queries`; the parser just does not read it yet. Perplexity/Gemini still UNVERIFIED (no keys) - check before building renderer UI across engines.
 - [ ] M7 per-engine retrieval-stability as HONEST FRAMING, not a numeric modifier (fake-precision copy rule): surface a qualitative confidence qualifier for high-variance engines (ChatGPT ~91% unique queries vs Perplexity ~14%); do NOT let it adjust the score. If a `stability` constant is stored, tag it approximate with `lastUpdated` + source (like `MODEL_PRICING`). Also add the METHODOLOGY honesty line: our prompts are GENERATED approximations, not real user prompt data (why the pack is editable) - this part is unconditionally worth shipping.
