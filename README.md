@@ -41,8 +41,10 @@ Score. The score reads only the unbranded buyer questions (did the AI surface
 you unprompted); questions that name your brand are reported separately as
 reputation, with a live spinner showing each prompt as it runs. Useful flags:
 `--json` for the raw envelope, `--report report.html` for a self-contained
-report, `--max-cost 0.50` to cap spend, `--quick` for a smaller prompt pack, and
-`--yes` to skip the cost confirmation (so an AI agent can run it unattended).
+report, `--max-cost 0.50` to cap spend, `--quick` for a smaller prompt pack,
+`--fail-under 50` to exit non-zero when the score is below a threshold (a CI
+gate), and `--yes` to skip the cost confirmation (so an AI agent can run it
+unattended).
 Verifying `check` live against each engine's production API is the last step
 before the npm release, so treat it as pre-release.
 

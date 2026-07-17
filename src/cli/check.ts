@@ -19,6 +19,7 @@ import {
 import { nodeProfileFs } from '../core/discovery/index.js';
 import { nodeQueryFs } from '../core/queries/index.js';
 import {
+  failUnder,
   nodeSnapshotFs,
   renderCheckHtml,
   renderCheckJson,
@@ -58,6 +59,7 @@ function toFlags(o: Record<string, unknown>): CheckFlags {
     judge: o.judge as string | undefined,
     maxCost: o.maxCost as number | undefined,
     maxSetupCost: o.maxSetupCost as number | undefined,
+    failUnder: o.failUnder as number | undefined,
     refresh: o.refresh as boolean | undefined,
     regenerate: o.regenerate as boolean | undefined,
     brand: o.brand as string | undefined,
@@ -149,6 +151,11 @@ export function registerCheck(program: Command, rt: Runtime): void {
     .option(
       '--max-setup-cost <usd>',
       'hard cap on discovery/query spend',
+      parseFloat,
+    )
+    .option(
+      '--fail-under <score>',
+      'exit non-zero if the score is under this (CI gate)',
       parseFloat,
     )
     .option('--refresh', 'rediscover the brand profile')
@@ -249,5 +256,16 @@ export function registerCheck(program: Command, rt: Runtime): void {
         if (reportWritten) rt.out(`HTML report written to ${reportWritten}\n`);
       }
       for (const note of result.notes) rt.err(`${note}\n`);
+
+      // THE gate. `failUnder` also fails a run that measured nothing (score
+      // null) with no threshold set: the report says "not assessed", but CI and
+      // agents read the exit code, and exiting 0 would tell them a total
+      // failure passed. Always to stderr, so `--json` stdout stays pure.
+      const gate = failUnder(env, flags.failUnder);
+      if (flags.failUnder !== undefined || gate.exitCode !== 0) {
+        rt.err(`${gate.reason}\n`);
+      }
+      // Only ever raise the exit code - never reset a failure set upstream.
+      if (gate.exitCode !== 0) process.exitCode = gate.exitCode;
     });
 }

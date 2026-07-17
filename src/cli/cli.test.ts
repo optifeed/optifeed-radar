@@ -227,6 +227,110 @@ describe('check command', () => {
     expect(env.sampling.nPrompts).toBeGreaterThan(0);
   });
 
+  // `--fail-under` is the CI gate the plan requires (dev-plan M8: "Exit codes:
+  // --fail-under <n> (CI mode)"). failUnder() was built, tested and exported at
+  // M8 but had NO call site until 2026-07-17, so the flag did not exist and
+  // nothing ever gated on score - review lesson #3 (an enforcement API must
+  // land with its consumer), the third instance after CostGuard.authorize and
+  // this.
+  describe('--fail-under gate', () => {
+    /** A runtime whose engine answers without ever naming the brand -> score 0. */
+    function unmentionedRuntime() {
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      const silent: EngineAdapter = {
+        id: 'openai',
+        kind: 'parametric',
+        model: 'openai-model',
+        available: () => true,
+        ask: async (prompt): Promise<EngineAnswer> => ({
+          engine: 'openai',
+          kind: 'parametric',
+          prompt,
+          text: 'Globex and Initech are the leading widget brands.',
+          model: 'openai-model',
+          costUsd: 0.0001,
+          ts: NOW(),
+        }),
+      };
+      rt.checkDeps = () => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch }),
+        adapters: [silent],
+        judge,
+        profileFs: rt.fs,
+        queryFs: rt.fs,
+        snapshotFs: rt.fs,
+        now: NOW,
+      });
+      return rt;
+    }
+
+    it('exits 1 and explains when the score is under the threshold', async () => {
+      const rt = unmentionedRuntime(); // brand never mentioned -> score 0
+      await run(rt, ['check', 'acme.example', '--yes', '--fail-under', '50']);
+      expect(process.exitCode).toBe(1);
+      expect(rt.errors.join('').toLowerCase()).toContain('under the');
+    });
+
+    it('exits 0 when the score meets the threshold', async () => {
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      await run(rt, ['check', 'acme.example', '--yes', '--fail-under', '1']);
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('exits 0 and stays quiet when no threshold is given', async () => {
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      await run(rt, ['check', 'acme.example', '--yes']);
+      expect(process.exitCode).toBe(0);
+      // No gate was requested, so do not narrate one on every healthy run.
+      expect(rt.errors.join('').toLowerCase()).not.toContain('threshold');
+    });
+
+    it('keeps --json stdout pure: the gate reason goes to stderr', async () => {
+      const rt = unmentionedRuntime();
+      await run(rt, [
+        'check',
+        'acme.example',
+        '--yes',
+        '--json',
+        '--fail-under',
+        '50',
+      ]);
+      expect(() => JSON.parse(rt.output.join(''))).not.toThrow();
+      expect(rt.errors.join('').toLowerCase()).toContain('under the');
+    });
+  });
+
+  // A run that measured nothing must not signal success. The report already
+  // says "not assessed", but CI and agents read the EXIT CODE - exiting 0 tells
+  // them a total failure passed. This holds with no --fail-under at all: it is
+  // not a threshold judgement, it is "nothing was measured".
+  describe('not-assessed runs exit non-zero', () => {
+    const deadAdapter = (): EngineAdapter => ({
+      id: 'openai',
+      kind: 'parametric',
+      model: 'openai-model',
+      available: () => true,
+      ask: () => Promise.reject(new Error('401 invalid api key')),
+    });
+
+    it('exits 1 when no engine answered, even without --fail-under', async () => {
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      rt.checkDeps = () => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch }),
+        adapters: [deadAdapter()],
+        judge,
+        profileFs: rt.fs,
+        queryFs: rt.fs,
+        snapshotFs: rt.fs,
+        now: NOW,
+      });
+      await run(rt, ['check', 'acme.example', '--yes']);
+      expect(process.exitCode).toBe(1);
+      const all = rt.output.join('') + rt.errors.join('');
+      expect(all.toLowerCase()).toContain('not assessed');
+    });
+  });
+
   it('writes an HTML report under --report', async () => {
     const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
     await run(rt, ['check', 'acme.example', '--yes', '--report', 'out.html']);
