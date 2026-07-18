@@ -1,12 +1,13 @@
 # Optifeed Visibility - Build Tracker
 
 Living checklist for the build. Source of scope: the dev plan
-(`docs/dev-plan.md`, the authoritative in-repo copy). This file tracks
-**status only** - it does not restate the plan. Keep the two in sync: if scope
-changes, edit the plan first, then reflect it here.
+(`/Users/erdem/workspace/optifeed-radar-docs/dev-plan.md`, the authoritative
+copy in the docs repo). This file tracks **status only** - it does not restate
+the plan. Keep the two in sync: if scope changes, edit the plan first, then
+reflect it here.
 
-> This is the canonical, in-repo copy (moved here when M0 scaffolded the repo).
-> The planning-workspace copy is superseded.
+> The dev plan moved to the `optifeed-radar-docs` git repo on 2026-07-18 (doc
+> consolidation). `docs/dev-plan.md` in this repo is now a pointer stub to it.
 
 > **SCOPE REVISION (2026-07-17): launch #1 is brand visibility only.** The
 > commerce modules - M12 (shopping), M13 (protocol spike), M14 (lint-feed) -
@@ -14,7 +15,8 @@ changes, edit the plan first, then reflect it here.
 > scope = M0-M11 + M15 (MCP) + M16 (agent surfaces) + M17 (release). M13's and
 > M14's shipped code was **removed from the build** on 2026-07-17; their
 > entries below are retained as history for launch #2 planning, not as status.
-> The dev plan (`docs/dev-plan.md`) is authoritative and carries the same note.
+> The dev plan (`optifeed-radar-docs/dev-plan.md`) is authoritative and carries
+> the same note.
 
 Last updated: 2026-07-18.
 
