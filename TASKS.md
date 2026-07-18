@@ -16,7 +16,7 @@ changes, edit the plan first, then reflect it here.
 > entries below are retained as history for launch #2 planning, not as status.
 > The dev plan (`docs/dev-plan.md`) is authoritative and carries the same note.
 
-Last updated: 2026-07-17.
+Last updated: 2026-07-18.
 
 ## Legend
 
@@ -32,7 +32,7 @@ Last updated: 2026-07-17.
 
 ## Ship milestones (the gates that matter)
 
-- [~] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Since shipped, closing most of this milestone: the HTML report (`--report`, `renderCheckHtml`), colorized output (`picocolors` in `terminal.ts`/`render-diff.ts`), and M8 snapshot writing (`runCheck` calls `saveSnapshot`). **Still open: `--fail-under` is not wired into any command** (see M11).
+- [x] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Everything that closed this milestone is now done: the HTML report (`--report`, `renderCheckHtml`), colorized output (`picocolors` in `terminal.ts`/`render-diff.ts`), M8 snapshot writing (`runCheck` calls `saveSnapshot`), and `--fail-under` (wired 2026-07-17, see M11).
 - [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. **LIVE-VERIFIED 2026-07-17** against real OpenAI (`check optifeed.com --quick --engines openai`): discovery → query-gen → 6 buyer prompts + 2 branded → scoring → share of voice → reputation split → snapshot, 34s, ask spend $0.0024. Confirmed live: no key material in the snapshot (rule #4), `schema_version` present, and the provider-echoed DATED model id (`gpt-4o-mini-2024-07-18`) still priced non-zero - the M0-M6 `$0`-cost bug regression-checked against reality. Still unverified live: anthropic, gemini, perplexity (no keys yet).
 - [ ] **MCP ships** - stdio server over the same core (M15)
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
