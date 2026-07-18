@@ -191,6 +191,37 @@ describe('createAdapter', () => {
     expect(calls[0]!.url).toContain('/responses');
   });
 
+  // Fanout capture (Profound study): engines rewrite the prompt heavily before
+  // searching, so "what the AI actually searched for" is evidence no free tool
+  // exposes. OpenAI surfaces it on web_search_call.action.queries (verified live
+  // 2026-07-17). Record it when present; never fabricate it (rule #6).
+  it('captures fanoutQueries from a grounded web_search_call', async () => {
+    const { fn } = fakePost(groundedFixture);
+    const answer = await createAdapter(openaiSpec, {
+      httpPost: fn,
+      apiKey: 'sk-test',
+      now: () => FIXED,
+    }).ask('best product feed tools?', { mode: 'grounded' });
+    expect(answer.fanoutQueries).toEqual([
+      'best product feed management tools 2026',
+    ]);
+  });
+
+  // Absent metadata = field omitted, never fabricated. A parametric chat answer
+  // ran no searches, so it carries no fanoutQueries at all.
+  it('omits fanoutQueries on a parametric answer', async () => {
+    const { fn } = fakePost({
+      choices: [{ message: { content: 'hi' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    const answer = await createAdapter(openaiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q');
+    expect(answer.fanoutQueries).toBeUndefined();
+  });
+
   it('parses a Perplexity answer with citations and reports grounded kind', async () => {
     const { fn } = fakePost({
       choices: [{ message: { content: 'Per Perplexity.' } }],

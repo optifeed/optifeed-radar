@@ -103,6 +103,12 @@ export interface EngineAnswer {
   prompt: string;
   text: string;
   citations?: string[];
+  /**
+   * The internal search queries the engine ran before answering, where the API
+   * exposes them (M6, Profound fanout study). Omitted when unavailable, never
+   * fabricated (rule #6).
+   */
+  fanoutQueries?: string[];
   model: string;
   tokens?: { input: number; output: number };
   costUsd: number;

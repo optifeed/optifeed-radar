@@ -16,17 +16,20 @@ import {
 
 const AT_ISO = '2026-07-15T00:00:00.000Z';
 
-/** A judge that records prompts it saw and returns a canned answer. */
+/** A judge that records prompts (and token budgets) it saw and returns a canned answer. */
 function recordingJudge(
   text: string,
   costUsd = 0.001,
-): JudgeClient & { prompts: string[] } {
+): JudgeClient & { prompts: string[]; maxTokens: (number | undefined)[] } {
   const prompts: string[] = [];
+  const maxTokens: (number | undefined)[] = [];
   return {
     prompts,
+    maxTokens,
     model: 'gpt-4o-mini',
-    async complete(prompt) {
+    async complete(prompt, opts) {
       prompts.push(prompt);
+      maxTokens.push(opts?.maxTokens);
       return { text, costUsd, model: 'gpt-4o-mini' };
     },
   };
@@ -145,32 +148,87 @@ describe('buildQueryPack', () => {
   const AT = '2026-07-15T00:00:00.000Z';
   const intents: QueryIntent[] = ['best-of', 'comparison', 'problem'];
 
-  it('takes prompts round-robin across intents and caps at the target', () => {
+  // best-of is the most rewrite-stable prompt form across engines (Profound
+  // fanout study), so it gets the largest share of a capped pack. With ample
+  // supply and target 8 over 4 intents, equal round-robin would give 2 each
+  // (best-of tied, not highest); the best-of weight (2x) must make it STRICTLY
+  // the most-represented intent.
+  it('weights best-of highest when capping the pack', () => {
+    const weighted: QueryIntent[] = [
+      'best-of',
+      'comparison',
+      'problem',
+      'trust',
+    ];
     const pack = buildQueryPack({
       domain: 'acme.example',
       byIntent: {
         'best-of': ['A1', 'A2', 'A3'],
-        comparison: ['B1', 'B2'],
-        problem: ['C1'],
-        trust: [],
+        comparison: ['B1', 'B2', 'B3'],
+        problem: ['C1', 'C2', 'C3'],
+        trust: ['D1', 'D2', 'D3'],
         local: [],
       },
-      intents,
+      intents: weighted,
       competitors: [],
-      target: 4,
+      target: 8,
       generatedAt: AT,
     });
 
-    expect(pack.queries.map((q) => q.prompt)).toEqual(['A1', 'B1', 'C1', 'A2']);
-    expect(pack.queries.map((q) => q.id)).toEqual(['q1', 'q2', 'q3', 'q4']);
-    expect(pack.queries.map((q) => q.intent)).toEqual([
-      'best-of',
-      'comparison',
-      'problem',
-      'best-of',
+    const counts = pack.queries.reduce<Record<string, number>>((m, q) => {
+      m[q.intent] = (m[q.intent] ?? 0) + 1;
+      return m;
+    }, {});
+    expect(pack.queries).toHaveLength(8);
+    for (const intent of weighted) {
+      if (intent === 'best-of') continue;
+      expect(counts[intent] ?? 0).toBeLessThan(counts['best-of']!);
+    }
+    expect(pack.queries.map((q) => q.id)).toEqual([
+      'q1',
+      'q2',
+      'q3',
+      'q4',
+      'q5',
+      'q6',
+      'q7',
+      'q8',
     ]);
     expect(pack.schema_version).toBe(SCHEMA_VERSION);
     expect(pack.generatedAt).toBe(AT);
+  });
+
+  // Balance survives truncation: best-of is over-represented but SPREAD through
+  // the pack, not clustered at the front. askAll asks prompts in pack order and
+  // a mid-run cost cap stops the rest, so a front-loaded best-of block would make
+  // a capped run's headline score all-best-of. The leading cycle must sample
+  // every intent.
+  it('spreads intents through the pack so a truncated run stays balanced', () => {
+    const weighted: QueryIntent[] = [
+      'best-of',
+      'comparison',
+      'problem',
+      'trust',
+    ];
+    const pack = buildQueryPack({
+      domain: 'acme.example',
+      byIntent: {
+        'best-of': ['A1', 'A2', 'A3'],
+        comparison: ['B1', 'B2', 'B3'],
+        problem: ['C1', 'C2', 'C3'],
+        trust: ['D1', 'D2', 'D3'],
+        local: [],
+      },
+      intents: weighted,
+      competitors: [],
+      target: 8,
+      generatedAt: AT,
+    });
+
+    // The first four prompts (one full cycle) cover all four intents - a capped
+    // run that only got this far still measured every intent.
+    const firstCycle = new Set(pack.queries.slice(0, 4).map((q) => q.intent));
+    expect(firstCycle.size).toBe(4);
   });
 
   it('excludes competitor-naming prompts and de-dupes before capping', () => {
@@ -271,6 +329,66 @@ describe('generateQueries', () => {
     expect(gen.toLowerCase()).toContain('back-reference');
     // Trust questions name the brand explicitly, not "this brand".
     expect(gen).toContain('name the brand');
+  });
+
+  // Retrieval-informed rules (Profound fanout study): the generation prompt must
+  // (1) ask for more best-of than any other intent (rewrite-stable), (2) prefer
+  // concrete/specific over broad thematic questions, and (3) pair a
+  // constraint-carrying question with an unconstrained variant (engines drop
+  // constraints) - the pair counted within the totals, never added on top.
+  it('asks the model for more best-of questions than any other intent', async () => {
+    const judge = recordingJudge(goodAnswer);
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await generateQueries(
+      profile(),
+      { judge, guard },
+      { count: 20, generatedAt: AT_ISO },
+    );
+
+    const gen = judge.prompts[0]!;
+    // Each intent line carries its own count, e.g. `"best-of" (write N)`.
+    const countFor = (intent: string): number => {
+      const line = gen.split('\n').find((l) => l.includes(`"${intent}"`)) ?? '';
+      const num = parseInt(line.split('write ')[1] ?? '', 10);
+      return Number.isNaN(num) ? 0 : num;
+    };
+    const bestOf = countFor('best-of');
+    expect(bestOf).toBeGreaterThan(0);
+    for (const intent of ['comparison', 'problem', 'trust']) {
+      expect(countFor(intent)).toBeLessThan(bestOf);
+    }
+  });
+
+  it('instructs the model to prefer concrete questions and pair constrained with unconstrained variants', async () => {
+    const judge = recordingJudge(goodAnswer);
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+
+    const gen = judge.prompts[0]!.toLowerCase();
+    expect(gen).toContain('concrete');
+    expect(gen).toContain('unconstrained');
+  });
+
+  // The ask grew (best-of weighted 2x, a +1 buffer per intent, paired
+  // constrained/unconstrained variants), so a fixed output budget could truncate
+  // a large or verbose-locale pack mid-JSON - which parses to an EMPTY pack and a
+  // not-assessed run. The token budget must scale with how many questions we ask.
+  it('scales the judge output budget with the size of the ask', async () => {
+    const small = recordingJudge(goodAnswer);
+    await generateQueries(
+      profile(),
+      { judge: small, guard: new CostGuard({ maxSetupCostUsd: 0.05 }) },
+      { count: 8, generatedAt: AT_ISO },
+    );
+    const big = recordingJudge(goodAnswer);
+    await generateQueries(
+      profile(),
+      { judge: big, guard: new CostGuard({ maxSetupCostUsd: 0.2 }) },
+      { count: 40, generatedAt: AT_ISO },
+    );
+    expect(big.maxTokens[0]!).toBeGreaterThan(small.maxTokens[0]!);
   });
 
   it('uses the current year for any time reference (never a stale/past year)', async () => {

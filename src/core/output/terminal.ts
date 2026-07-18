@@ -6,6 +6,7 @@
 import pc from 'picocolors';
 import type { AuditReport } from '../audit/index.js';
 import type { ShareOfVoiceRow } from '../types.js';
+import { VARIANCE_MARKER, isWiderEstimate, varianceNote } from './variance.js';
 import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
 import { AUDIT_ONLY_NOTE, FOOTER_CTA } from './footer.js';
 
@@ -166,11 +167,20 @@ export function renderCheckText(
   lines.push('');
 
   lines.push('Per engine:');
+  let widerCount = 0;
   for (const e of env.engines) {
     const score = `${e.score}`.padStart(3);
+    // A grounded high-variance engine's score is a wider estimate (retrieval
+    // rewriting). Mark it and explain below; framing only, not a score change.
+    const wider = isWiderEstimate(e);
+    if (wider) widerCount += 1;
+    const marker = wider ? ` ${VARIANCE_MARKER}` : '';
     lines.push(
-      `  ${pad(e.engine, 12)}${score}/100  ${pad(e.kind, 11)}mentioned ${e.mentions}/${e.answers}`,
+      `  ${pad(e.engine, 12)}${score}/100  ${pad(e.kind, 11)}mentioned ${e.mentions}/${e.answers}${marker}`,
     );
+  }
+  if (widerCount > 0) {
+    lines.push(`  ${VARIANCE_MARKER} ${varianceNote(widerCount)}`);
   }
   lines.push('');
 

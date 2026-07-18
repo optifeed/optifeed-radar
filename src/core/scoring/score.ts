@@ -48,6 +48,33 @@ export const SCORE_WEIGHTS = {
   lastUpdated: '2026-07-16',
 };
 
+/**
+ * Approximate run-to-run retrieval variance per engine (Profound fanout study,
+ * as of Apr 2026). HIGH-variance engines rewrite the prompt heavily before
+ * searching (ChatGPT ~91% unique queries per run), so a per-engine score is a
+ * wider estimate and benefits from more samples; near-stable engines (Perplexity
+ * ~14%) vary little. This is HONEST FRAMING ONLY - it never adjusts the score
+ * (fake-precision copy rule). Values are approximate and dated, like
+ * `MODEL_PRICING`; anthropic/gemini are inferred (parametric vs grounding) and
+ * least certain - re-verify at the M17 smoke test.
+ */
+export const RETRIEVAL_STABILITY = {
+  source: 'Profound fanout study',
+  asOf: '2026-04',
+  lastUpdated: '2026-07-18',
+  variance: {
+    openai: 'high',
+    gemini: 'high',
+    anthropic: 'low',
+    perplexity: 'low',
+  } as Record<EngineId, 'high' | 'low'>,
+};
+
+/** Qualitative retrieval variance for an engine; defaults to `low` if unknown. */
+export function retrievalVariance(engine: EngineId): 'high' | 'low' {
+  return RETRIEVAL_STABILITY.variance[engine] ?? 'low';
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }

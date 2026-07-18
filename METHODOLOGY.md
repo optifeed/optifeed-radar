@@ -20,6 +20,13 @@ score, since naming the brand guarantees a mention. Those are reported
 separately as a reputation summary (positive / neutral / negative sentiment) and
 never inflate the headline number.
 
+These questions are GENERATED approximations of how a buyer might ask, not real
+user prompt data. We do not have a panel of what people actually type into these
+engines (the data hosted platforms sell), so we model realistic buyer questions
+from your brand profile instead. That is why the query pack is editable: if the
+generated questions do not match how your buyers really ask, edit them and rerun.
+The score reflects the questions you ran, not the whole universe of buyer intent.
+
 ## Step 1 - mention detection (per answer)
 
 Each engine answer is analyzed for whether your brand appears.
@@ -97,6 +104,18 @@ Worked example. A grounded engine scoring 60 and a parametric engine scoring 40:
 composite = (60 * 1.5 + 40 * 1.0) / (1.5 + 1.0) = 130 / 2.5 = 52
 ```
 
+## Retrieval variance (how wide is each estimate)
+
+Engines differ in how much they rewrite your prompt before searching, so they
+differ in run-to-run stability. As of the Profound fanout study (Apr 2026),
+ChatGPT rewrites heavily (~91% unique queries per run) while Perplexity is
+near-stable (~14%). A high-variance engine's per-engine score is therefore a
+wider estimate and benefits from more samples. We surface this as a plain
+confidence qualifier next to those engines - it does NOT adjust the number
+(that would be false precision). The per-engine variance values are approximate
+and dated, like the price table, and re-verified at release; anthropic and
+gemini are inferred and least certain.
+
 ## Step 4 - share of voice and sources
 
 Share of voice counts how often your brand and each competitor are mentioned
@@ -118,3 +137,7 @@ versions (or one predates versioning) as methodology-driven, not a real change.
   single opaque number without the breakdown.
 - Partial runs (an engine skipped, the cost cap reached) are surfaced, not
   hidden. A capped run reports what it measured and flags what it did not.
+- The questions are generated approximations, not real user prompt data, and the
+  pack is editable so you can make them match how your buyers actually ask.
+- High-variance engines are flagged as wider estimates; retrieval variance is
+  framing only and never changes the score.

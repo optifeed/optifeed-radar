@@ -156,6 +156,78 @@ describe('renderCheckText', () => {
     expect(out).toContain('/x/.optifeed/snapshots/2026.json');
   });
 
+  // M7 (Profound fanout study): engines differ in run-to-run retrieval variance
+  // (ChatGPT ~91% unique queries vs Perplexity ~14%). This is surfaced as an
+  // honest confidence qualifier - a high-variance engine's score is a wider
+  // estimate - and must NEVER change the number (fake-precision copy rule).
+  // The "rewrites your prompt before searching" claim is only true when the
+  // engine actually ran GROUNDED, so the marker gates on the answer's kind.
+  const groundedHiVar = {
+    engine: 'openai' as const,
+    kind: 'grounded' as const,
+    score: 92,
+    mentionRate: 0.66,
+    avgPosition: 1,
+    answers: 3,
+    mentions: 2,
+  };
+
+  it('flags a grounded high-variance engine as a wider estimate without changing the score', () => {
+    const out = renderCheckText(envelope({ engines: [groundedHiVar] }), {
+      color: false,
+    });
+    expect(out).toMatch(/openai.*\*/);
+    expect(out.toLowerCase()).toContain('run to run');
+    expect(out.toLowerCase()).toContain('wider estimate');
+    // The score itself is untouched by the framing.
+    expect(out).toContain('92/100');
+  });
+
+  // Honesty (rule #6): a DEFAULT run answers openai parametrically - no web
+  // search happened - so it must NOT be told the engine "rewrote your prompt
+  // before searching". The marker keys on the run's actual mode, not engine id.
+  it('does not flag a high-variance engine that ran parametrically', () => {
+    const out = renderCheckText(
+      envelope({
+        engines: [{ ...groundedHiVar, kind: 'parametric' }],
+      }),
+      { color: false },
+    );
+    expect(out.toLowerCase()).not.toContain('run to run');
+    expect(out).not.toMatch(/openai.*\*/);
+  });
+
+  it('omits the variance note when every engine is near-stable', () => {
+    const out = renderCheckText(
+      envelope({
+        engines: [
+          {
+            engine: 'perplexity',
+            kind: 'grounded',
+            score: 81,
+            mentionRate: 0.5,
+            avgPosition: 1,
+            answers: 2,
+            mentions: 1,
+          },
+        ],
+      }),
+      { color: false },
+    );
+    // Perplexity is near-stable; no high-variance engine, so no marker or note.
+    expect(out.toLowerCase()).not.toContain('run to run');
+    expect(out).not.toMatch(/perplexity.*\*/);
+  });
+
+  it('uses singular copy when exactly one engine is high-variance', () => {
+    const out = renderCheckText(envelope({ engines: [groundedHiVar] }), {
+      color: false,
+    });
+    // One engine -> "this engine ... its score", not "these engines ... their".
+    expect(out.toLowerCase()).toContain('this engine');
+    expect(out.toLowerCase()).not.toContain('these engines');
+  });
+
   it('never uses an em-dash', () => {
     expect(renderCheckText(envelope(), { color: false })).not.toContain('—');
   });
@@ -230,6 +302,63 @@ describe('renderCheckHtml', () => {
     );
     expect(html.toLowerCase()).toContain('reputation');
     expect(html).toContain('positive');
+  });
+
+  // The HTML report must carry the same retrieval-variance honesty as the
+  // terminal (M8 lesson #2 / rule #6): a derived artifact must not relaunder a
+  // wide estimate as an equally-confident number.
+  it('marks a grounded high-variance engine as a wider estimate', () => {
+    const html = renderCheckHtml(
+      envelope({
+        engines: [
+          {
+            engine: 'openai',
+            kind: 'grounded',
+            score: 92,
+            mentionRate: 0.66,
+            avgPosition: 1,
+            answers: 3,
+            mentions: 2,
+          },
+        ],
+      }),
+    );
+    expect(html.toLowerCase()).toContain('run to run');
+  });
+
+  it('does not add the variance caveat for a parametric run', () => {
+    const html = renderCheckHtml(envelope()); // openai parametric by default
+    expect(html.toLowerCase()).not.toContain('run to run');
+  });
+
+  // M6 fanout capture is only useful if it reaches the output (lesson #7: use
+  // what you fetch). A grounded answer that recorded the queries the engine
+  // actually searched surfaces them in the evidence block; escaped, and omitted
+  // when absent (never fabricated).
+  it('surfaces captured fanout queries in the evidence section', () => {
+    const html = renderCheckHtml(
+      envelope({
+        answers: [
+          {
+            engine: 'openai',
+            kind: 'grounded',
+            prompt: 'best fast-casual mexican?',
+            text: 'Café Rio is a great choice.',
+            citations: ['https://eater.com/a'],
+            fanoutQueries: ['best fast casual mexican 2026'],
+            model: 'gpt-5.3-chat-latest',
+            costUsd: 0.01,
+            ts: '2026-07-15T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('best fast casual mexican 2026');
+  });
+
+  it('shows no fanout line when an answer captured none', () => {
+    const html = renderCheckHtml(envelope()); // default answer has no fanoutQueries
+    expect(html.toLowerCase()).not.toContain('searched for');
   });
 
   it('never uses an em-dash', () => {

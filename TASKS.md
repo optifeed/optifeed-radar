@@ -508,6 +508,28 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   validator updated in the same commit - `tsc` cannot see hand-rolled
   validation, so it stayed green over an unloadable format.
 
+- 2026-07-18: high-effort workflow review of the M5/M6/M7 fanout follow-ups
+  (uncommitted `git diff HEAD`), 16 agents (4 finder lenses + per-location
+  adversarial verify). 6 distinct verified findings (0 refuted), all fixed
+  test-first (+8 tests, 344 -> 352). Two were correctness/honesty: (1) the query
+  pack fill was quota BLOCKS (all best-of, then comparison, ...), which
+  front-loads best-of - a cost-capped run (askAll stops in pack order) would then
+  score almost entirely off best-of answers, skewing the headline number. Fixed
+  with smooth weighted round-robin: best-of still over-represented but spread, so
+  a truncated run stays balanced (SWRR happens to reproduce the original
+  interleave, so the golden reverted to unchanged). (2) the retrieval-variance
+  marker keyed on engine id alone, so a DEFAULT parametric openai/gemini run got
+  a false "rewrites your prompt before searching" caveat though no search ran
+  (rule #6) - now gated on `e.kind === 'grounded'` too. The rest: HTML report had
+  no variance framing at all (parity gap - added, shared `output/variance.ts`);
+  the judge token budget was pinned at 900 while the ask grew (weighted + buffer +
+  paired variants), risking a truncated -> empty pack on verbose locales (now
+  scales with the ask); "these engines"/"their scores" plural even for one engine
+  (now singular/plural aware); and `fanoutQueries` was captured but unsurfaced
+  (lesson #7 - now shown in the HTML evidence block when present). Verified live
+  by rendering both a parametric (no marker) and grounded (marked, singular copy)
+  envelope.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
@@ -520,6 +542,6 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
 
 Synced into `docs/dev-plan.md` on 2026-07-16 from the external research-updated copy. These land on ALREADY-SHIPPED modules (M5/M6/M7), so each is rework, not new-module scope. All three cite one study - frame as "per [study], as of [date]" and re-verify at release (M17), since prompt-rewriting behavior shifts as providers change retrieval stacks.
 
-- [ ] M5 retrieval-informed prompt rules: weight `best-of` highest (most rewrite-stable); generate a constrained + unconstrained variant for price/spec prompts BUT keep the pair inside `DEFAULT_QUERY_COUNT` + the setup budget (never additive spend); keep geo qualifiers; prefer concrete over thematic. Cheap, low-risk - fold in opportunistically.
-- [ ] M6 `fanoutQueries?: string[]` on `EngineAnswer` (optional, backward-compatible): capture the internal search queries an engine ran where the API exposes them. Omit when absent, never fabricate (rule #6). **OpenAI support VERIFIED live 2026-07-17** - the exact path is `output[] -> {type:'web_search_call'}.action.queries` (a `string[]`; `action.query` also carries the single query). Real example: prompt "What are the best product feed management tools in 2026?" -> `["best product feed management tools 2026"]`. The `ResponsesShape` type already models `action.queries`; the parser just does not read it yet. Perplexity/Gemini still UNVERIFIED (no keys) - check before building renderer UI across engines.
-- [ ] M7 per-engine retrieval-stability as HONEST FRAMING, not a numeric modifier (fake-precision copy rule): surface a qualitative confidence qualifier for high-variance engines (ChatGPT ~91% unique queries vs Perplexity ~14%); do NOT let it adjust the score. If a `stability` constant is stored, tag it approximate with `lastUpdated` + source (like `MODEL_PRICING`). Also add the METHODOLOGY honesty line: our prompts are GENERATED approximations, not real user prompt data (why the pack is editable) - this part is unconditionally worth shipping.
+- [x] **M5 retrieval-informed prompt rules DONE 2026-07-18.** `best-of` now weighted highest via `intentQuotas(target, intents)` (weights best-of 2, rest 1; largest-remainder rounding, best-of wins ties) - used BOTH to request more best-of from the judge (per-intent counts in the gen prompt, `quota + 1` buffer so competitor-stripping/de-dupe never shrinks the pack) AND to fill the capped pack (quota fill + round-robin backfill). The generation prompt gained the concrete-over-thematic rule, the constrained+unconstrained-variant rule (pair counts toward the intent's number, never on top - so no additive spend), and an explicit keep-geo-qualifier line. The fill is **smooth weighted round-robin** (nginx-style): best-of is over-represented but SPREAD through the pack, so a cost-capped/truncated run (askAll stops in pack order) still samples every intent and its partial score stays balanced (a review finding - the first draft used quota BLOCKS that front-loaded best-of; fixed). SWRR reproduces the original interleave for the golden, so `golden-pack.yml` is unchanged. The judge output budget now scales with the ask (`max(900, requestedQuestions * 60)`) so the bigger weighted+paired ask is not truncated into an empty pack (review finding). +5 tests.
+- [x] **M6 `fanoutQueries?: string[]` DONE 2026-07-18** (optional, backward-compatible on `EngineAnswer` + `ParsedResponse`). The OpenAI grounded parser reads `output[] -> {type:'web_search_call'}.action.queries` (falls back to `action.query`), de-duped; omitted when absent, never fabricated (rule #6). It rides in the M8 envelope automatically (the envelope carries the raw `answers`), and the HTML evidence block now surfaces it as a "Searched for: ..." line when present (review finding - closes lesson #7 fetch-and-discard; shown only when captured, escaped, never fabricated). No schema bump. +3 tests. Perplexity/Gemini still UNVERIFIED (no keys) - no cross-engine computed UI until M17.
+- [x] **M7 retrieval-stability as HONEST FRAMING DONE 2026-07-18.** `RETRIEVAL_STABILITY` constant in scoring (source `Profound fanout study`, `asOf 2026-04`, `lastUpdated`, per-engine `high|low` - openai/gemini high, anthropic/perplexity low; anthropic/gemini inferred + flagged least-certain, like `MODEL_PRICING`) + `retrievalVariance(engine)`. The `check` renderers (terminal AND HTML) mark wider-estimate engines with `*` and print a singular/plural-aware "... vary more run to run ... treat ... as wider estimate(s)" note - framing ONLY, the score is untouched. **The marker gates on `e.kind === 'grounded'` AND high variance** (fixed in the code review below): a parametric answer ran no search, so claiming it "rewrites your prompt before searching" would be false (rule #6). Verified live: a default parametric run shows NO marker; a grounded run marks openai only, singular copy. METHODOLOGY.md gained the generated-prompts honesty paragraph + a "Retrieval variance" section + two Honesty-notes bullets. Shared `output/variance.ts` (`isWiderEstimate`/`varianceNote`) keeps the two renderers consistent. Re-verify variance values at M17.

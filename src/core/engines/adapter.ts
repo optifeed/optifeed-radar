@@ -27,6 +27,8 @@ export interface EngineAdapter {
 export interface ParsedResponse {
   text: string;
   citations?: string[];
+  /** The internal search queries the engine ran, where the API exposes them. */
+  fanoutQueries?: string[];
   usage?: { input: number; output: number };
   model?: string;
 }
@@ -120,6 +122,7 @@ export function createAdapter(
         prompt,
         text: parsed.text,
         citations: parsed.citations,
+        fanoutQueries: parsed.fanoutQueries,
         model: parsed.model ?? model,
         tokens: parsed.usage,
         costUsd: computeCost(model, parsed.usage),

@@ -94,9 +94,20 @@ export const openaiSpec: ProviderSpec = {
         .map((a) => a.url)
         .filter((u): u is string => Boolean(u));
       const citations = [...new Set(urls)];
+      // Fanout: the queries the engine actually ran, on web_search_call items.
+      // `action.queries` is the array; `action.query` carries a single one.
+      // Absent = omit the field, never fabricate (rule #6).
+      const fanout = output
+        .filter((o) => o.type === 'web_search_call')
+        .flatMap(
+          (o) => o.action?.queries ?? (o.action?.query ? [o.action.query] : []),
+        )
+        .filter(Boolean);
+      const fanoutQueries = [...new Set(fanout)];
       return {
         text,
         citations: citations.length ? citations : undefined,
+        fanoutQueries: fanoutQueries.length ? fanoutQueries : undefined,
         usage: r.usage
           ? {
               input: r.usage.input_tokens ?? 0,

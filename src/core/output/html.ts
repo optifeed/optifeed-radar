@@ -11,6 +11,7 @@ import type { EngineAnswer, EngineScore, Finding } from '../types.js';
 import type { VisibilityEnvelope } from './envelope.js';
 import { FOOTER_CTA } from './footer.js';
 import { honestyNotes, samplingLine } from './terminal.js';
+import { VARIANCE_MARKER, isWiderEstimate, varianceNote } from './variance.js';
 
 /** Escape the five HTML-significant characters so untrusted text is inert. */
 function esc(s: string): string {
@@ -53,20 +54,29 @@ const STYLE = `
 `;
 
 function enginesTable(engines: EngineScore[]): string {
+  let widerCount = 0;
   const rows = engines
-    .map(
-      (e) => `<tr>
+    .map((e) => {
+      // Grounded high-variance engines are wider estimates; mark them and add
+      // the same honest caveat the terminal shows (rule #6, M8 lesson #2).
+      const wider = isWiderEstimate(e);
+      if (wider) widerCount += 1;
+      const marker = wider ? ` ${VARIANCE_MARKER}` : '';
+      return `<tr>
         <td>${esc(e.engine)}</td>
         <td>${e.kind}</td>
-        <td>${e.score}/100</td>
+        <td>${e.score}/100${marker}</td>
         <td>${e.mentions}/${e.answers}</td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join('');
+  const caveat = widerCount
+    ? `<p class="muted">${VARIANCE_MARKER} ${esc(varianceNote(widerCount))}</p>`
+    : '';
   return `<table>
     <thead><tr><th>Engine</th><th>Type</th><th>Score</th><th>Mentioned</th></tr></thead>
     <tbody>${rows}</tbody>
-  </table>`;
+  </table>${caveat}`;
 }
 
 function findingsList(findings: Finding[]): string {
@@ -89,10 +99,17 @@ function evidence(answers: EngineAnswer[]): string {
         a.citations && a.citations.length > 0
           ? `<p class="muted">Cited: ${a.citations.map(esc).join(', ')}</p>`
           : '';
+      // The internal search queries the engine actually ran (M6 fanout capture),
+      // where the API exposed them. Omitted when absent, never fabricated.
+      const fanout =
+        a.fanoutQueries && a.fanoutQueries.length > 0
+          ? `<p class="muted">Searched for: ${a.fanoutQueries.map(esc).join(', ')}</p>`
+          : '';
       return `<details>
         <summary>${esc(a.engine)} (${a.kind}) &middot; ${esc(a.prompt)}</summary>
         <p class="answer">${esc(a.text)}</p>
         ${cites}
+        ${fanout}
       </details>`;
     })
     .join('');

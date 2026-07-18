@@ -13,6 +13,8 @@ export {
   shareOfVoice,
   aggregateSources,
   SCORE_WEIGHTS,
+  RETRIEVAL_STABILITY,
+  retrievalVariance,
 } from './score.js';
 export { refineAmbiguous, parseVerdict, JUDGE_RATE_CAP } from './judge.js';
 export type { RefineDeps, RefineOptions, RefineResult } from './judge.js';

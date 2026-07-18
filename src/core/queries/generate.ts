@@ -28,9 +28,56 @@ export const QUERY_INTENTS: QueryIntent[] = [
 /** Default number of prompts in a generated pack. */
 export const DEFAULT_QUERY_COUNT = 20;
 
+/**
+ * Relative weight of each intent when allocating a capped pack. `best-of` is the
+ * most rewrite-stable prompt form across engines (Profound fanout study), so it
+ * earns the largest share; the rest are equal.
+ */
+export const INTENT_WEIGHTS: Record<QueryIntent, number> = {
+  'best-of': 2,
+  comparison: 1,
+  problem: 1,
+  trust: 1,
+  local: 1,
+};
+
 /** Which intents apply to this profile - local only when it has a geo. */
 export function activeIntents(profile: BrandProfile): QueryIntent[] {
   return QUERY_INTENTS.filter((i) => i !== 'local' || Boolean(profile.geo));
+}
+
+/**
+ * Split `target` slots across `intents` in proportion to {@link INTENT_WEIGHTS},
+ * so `best-of` gets the biggest share. Largest-remainder rounding keeps the sum
+ * exactly `target`; ties break by the intents' given order (best-of first).
+ */
+export function intentQuotas(
+  target: number,
+  intents: QueryIntent[],
+): Record<QueryIntent, number> {
+  const quotas = Object.fromEntries(intents.map((i) => [i, 0])) as Record<
+    QueryIntent,
+    number
+  >;
+  if (intents.length === 0 || target <= 0) return quotas;
+
+  const totalWeight = intents.reduce((s, i) => s + INTENT_WEIGHTS[i], 0);
+  const raw = intents.map((i) => (target * INTENT_WEIGHTS[i]) / totalWeight);
+  const floors = raw.map((r) => Math.floor(r));
+  let remainder = target - floors.reduce((s, f) => s + f, 0);
+
+  // Hand out the leftover slots to the largest fractional parts first; the
+  // stable index tiebreak keeps best-of (index 0) ahead of equal-fraction peers.
+  const order = intents
+    .map((intent, idx) => ({ intent, idx, frac: raw[idx]! - floors[idx]! }))
+    .sort((a, b) => b.frac - a.frac || a.idx - b.idx);
+  intents.forEach((intent, idx) => (quotas[intent] = floors[idx]!));
+  for (const { intent } of order) {
+    if (remainder <= 0) break;
+    quotas[intent] += 1;
+    remainder -= 1;
+  }
+  return quotas;
 }
 
 /**
@@ -101,14 +148,19 @@ export interface BuildPackInput {
 
 /**
  * Assemble a capped, competitor-free {@link QueryPack} from parsed prompts.
- * Prompts are taken round-robin across intents so a capped pack stays balanced,
- * and each gets a stable `q<n>` id.
+ *
+ * Prompts are interleaved by {@link INTENT_WEIGHTS} using smooth weighted
+ * round-robin, so best-of is over-represented but SPREAD through the pack rather
+ * than clustered. This matters because a cost-capped or otherwise truncated run
+ * asks prompts in pack order and stops partway: an interleaved pack keeps that
+ * partial run balanced across intents (a front-loaded best-of block would skew
+ * the headline score toward one intent). Each prompt gets a stable `q<n>` id.
  */
 export function buildQueryPack(input: BuildPackInput): QueryPack {
   const { domain, byIntent, intents, competitors, target, generatedAt } = input;
 
   // Competitor exclusion + de-dupe (across the whole pack), per intent.
-  const cleaned = new Map<QueryIntent, string[]>();
+  const remaining = new Map<QueryIntent, string[]>();
   const seen = new Set<string>();
   for (const intent of intents) {
     const kept: string[] = [];
@@ -120,26 +172,30 @@ export function buildQueryPack(input: BuildPackInput): QueryPack {
         kept.push(prompt);
       }
     }
-    cleaned.set(intent, kept);
+    remaining.set(intent, kept);
   }
 
-  // Round-robin across intents up to the target count.
+  // Smooth weighted round-robin (nginx-style): each round, add each intent's
+  // weight to its credit, pick the highest-credit intent that still has prompts,
+  // then subtract the total live weight. Higher-weight intents (best-of) come up
+  // more often, evenly spaced; exhausted intents drop out of the weighting, so a
+  // short intent never stalls the pack and the fill backfills automatically.
+  const credit = new Map<QueryIntent, number>(intents.map((i) => [i, 0]));
   const queries: Query[] = [];
-  const cursors = new Map<QueryIntent, number>(intents.map((i) => [i, 0]));
-  let progressed = true;
-  while (queries.length < target && progressed) {
-    progressed = false;
+  while (queries.length < target) {
+    let liveWeight = 0;
+    let pick: QueryIntent | null = null;
     for (const intent of intents) {
-      if (queries.length >= target) break;
-      const list = cleaned.get(intent) ?? [];
-      const cursor = cursors.get(intent) ?? 0;
-      const prompt = list[cursor];
-      if (prompt !== undefined) {
-        queries.push({ id: `q${queries.length + 1}`, intent, prompt });
-        cursors.set(intent, cursor + 1);
-        progressed = true;
-      }
+      if ((remaining.get(intent)?.length ?? 0) === 0) continue;
+      liveWeight += INTENT_WEIGHTS[intent];
+      const c = credit.get(intent)! + INTENT_WEIGHTS[intent];
+      credit.set(intent, c);
+      if (pick === null || c > credit.get(pick)!) pick = intent;
     }
+    if (pick === null) break; // every intent is exhausted
+    credit.set(pick, credit.get(pick)! - liveWeight);
+    const prompt = remaining.get(pick)!.shift()!;
+    queries.push({ id: `q${queries.length + 1}`, intent: pick, prompt });
   }
 
   return { schema_version: SCHEMA_VERSION, domain, queries, generatedAt };
@@ -157,11 +213,13 @@ const INTENT_GUIDANCE: Record<QueryIntent, string> = {
 /**
  * Build the generation prompt. Competitor names are deliberately withheld
  * (they are used only at scoring); the pack builder strips any that slip in.
+ * `counts` carries a per-intent target so best-of (the rewrite-stable form) is
+ * asked for more than the rest.
  */
 function buildGenPrompt(
   profile: BrandProfile,
   intents: QueryIntent[],
-  perIntent: number,
+  counts: Record<QueryIntent, number>,
   year: string,
 ): string {
   const facts = [`Brand: ${profile.brand}`];
@@ -173,12 +231,12 @@ function buildGenPrompt(
   if (profile.geo) facts.push(`Location: ${profile.geo}`);
 
   const intentLines = intents
-    .map((i) => `- "${i}": ${INTENT_GUIDANCE[i]}`)
+    .map((i) => `- "${i}" (write ${counts[i]}): ${INTENT_GUIDANCE[i]}`)
     .join('\n');
 
   return [
     'You are modeling how a real buyer talks to an AI shopping assistant.',
-    `Write ${perIntent} natural buyer questions for EACH intent below.`,
+    'Write the number of natural buyer questions shown for EACH intent below.',
     '',
     'Rules for EVERY question:',
     "- Write in the buyer's language, matching the Locale below.",
@@ -188,6 +246,15 @@ function buildGenPrompt(
     '- No dangling back-references: never write "this brand", "these products",',
     '  "this kind of product", "such products" (or their equivalents in the',
     "  buyer's language) - there is nothing for them to refer to.",
+    "- Prefer concrete, specific questions (a real buyer's exact wording, named",
+    '  use case or spec) over broad thematic ones - retrieval layers convert',
+    '  everything to fact-lookups, so a vague theme scores nothing.',
+    '- When a question carries a price or spec constraint (a budget, size, or',
+    '  compatibility), also write an UNCONSTRAINED variant of it without that',
+    '  limit - engines frequently drop constraints when they rewrite. The pair',
+    '  counts toward the number for its intent, never on top of it.',
+    '- Keep any location qualifier ("near me", a city) when the question is',
+    '  local - those survive engine rewrites.',
     '- Prefer timeless phrasing. If a question does reference a year or time',
     `  period, use the current year (${year}) and NEVER a past year - a stale`,
     '  year ("best phones in 2023") reads as out of date.',
@@ -198,7 +265,7 @@ function buildGenPrompt(
     '',
     facts.join('\n'),
     '',
-    'Intents:',
+    'Intents (with how many to write for each):',
     intentLines,
     '',
     'Return ONLY a JSON object mapping each intent string to an array of',
@@ -241,12 +308,24 @@ export async function generateQueries(
     generatedAt: opts.generatedAt,
   };
 
-  const perIntent = Math.ceil(target / intents.length);
+  // Ask per intent by its weighted quota (best-of gets the most), plus a small
+  // buffer so competitor-stripping and de-dupe do not shrink the pack below
+  // target. The pack still caps at target, so the buffer is over-generation,
+  // never extra billed prompts in the pack.
+  const quotas = intentQuotas(target, intents);
+  const counts = Object.fromEntries(
+    intents.map((i) => [i, quotas[i] + 1]),
+  ) as Record<QueryIntent, number>;
   // Current year from the injected clock (deterministic in tests), so any year
   // the model reaches for is the current one, not its training-cutoff default.
   const year = opts.generatedAt.slice(0, 4);
-  const prompt = buildGenPrompt(profile, intents, perIntent, year);
-  const maxTokens = 900;
+  const prompt = buildGenPrompt(profile, intents, counts, year);
+  // Scale the output budget with how many questions we ask (weighting + the +1
+  // buffer + paired variants all inflate it), plus headroom for JSON structure
+  // and verbose (non-English) phrasing. A fixed budget truncated a large pack
+  // mid-JSON, which parses to an EMPTY pack; ~60 tokens/question keeps room.
+  const requested = intents.reduce((sum, i) => sum + counts[i], 0);
+  const maxTokens = Math.max(900, requested * 60);
   const projected =
     deps.projectedCostUsd ??
     estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
