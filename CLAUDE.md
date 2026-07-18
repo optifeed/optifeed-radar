@@ -11,12 +11,14 @@ stub, or scaffold M12-M14. M13/M14 were built and then removed on 2026-07-17
 (recoverable at `faf351f`); do not reintroduce them. SKU-level visibility and
 ACP/UCP feed checks are FUTURE tense in all copy, with a waitlist link only.
 
-**The module plan in `docs/dev-plan.md` is authoritative** (modules M0-M17 +
+**The module plan is authoritative and lives in the docs repo:
+`/Users/erdem/workspace/optifeed-radar-docs/dev-plan.md`** (modules M0-M17 +
 the Global decisions section - read it before writing any code; it carries the
-same scope revision). `TASKS.md` tracks status only. Implement one module per
-session unless told otherwise. Where this file and the plan disagree, the plan
-wins. Fuller product strategy and the messaging guide live in the
-source-of-truth strategy doc (external).
+same scope revision). If that path is not accessible in your session, ask
+before proceeding - do not guess module scope. `TASKS.md` tracks status only.
+Implement one module per session unless told otherwise. Where this file and
+the plan disagree, the plan wins. Fuller product strategy and the messaging
+guide live in `/Users/erdem/workspace/optifeed-radar-docs/source-of-truth.html`.
 
 ## Commands
 
