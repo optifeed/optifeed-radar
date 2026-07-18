@@ -11,3 +11,5 @@
  */
 export * from './audit.js';
 export * from './check.js';
+export * from './deps.js';
+export * from './queries.js';

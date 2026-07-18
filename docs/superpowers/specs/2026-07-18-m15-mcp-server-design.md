@@ -26,12 +26,12 @@ alongside the CLI `compare` view (which M11 parked as "needs design"), and
 All names are the marketed API. Descriptions are written FOR agents: each
 includes a when-to-use line and a cost hint.
 
-| Tool | Params | Core call | Cost | Result |
-| --- | --- | --- | --- | --- |
-| `check_visibility` | `domain`, `engines?`, `quick?`, `max_cost?` | `runCheck` (`yes:true`) | spends (guarded) | JSON envelope + snapshot path |
-| `audit_store` | `domain` | `runAudit` | zero-key, $0 | `AuditReport` JSON |
-| `generate_buyer_queries` | `domain` | `resolveQueries` (regenerate) | one judge call (setup cap) | query pack JSON + path |
-| `get_snapshot_diff` | `domain` | `listSnapshots` + `diffEnvelopes` | $0 | `SnapshotDiff` JSON, or honest note if <2 snapshots |
+| Tool                     | Params                                      | Core call                         | Cost                       | Result                                              |
+| ------------------------ | ------------------------------------------- | --------------------------------- | -------------------------- | --------------------------------------------------- |
+| `check_visibility`       | `domain`, `engines?`, `quick?`, `max_cost?` | `runCheck` (`yes:true`)           | spends (guarded)           | JSON envelope + snapshot path                       |
+| `audit_store`            | `domain`                                    | `runAudit`                        | zero-key, $0               | `AuditReport` JSON                                  |
+| `generate_buyer_queries` | `domain`                                    | `resolveQueries` (regenerate)     | one judge call (setup cap) | query pack JSON + path                              |
+| `get_snapshot_diff`      | `domain`                                    | `listSnapshots` + `diffEnvelopes` | $0                         | `SnapshotDiff` JSON, or honest note if <2 snapshots |
 
 ### Result payload (all tools)
 
