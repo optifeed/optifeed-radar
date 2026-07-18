@@ -5,27 +5,19 @@
  */
 import { Command } from 'commander';
 import {
-  DEFAULT_JUDGE_MODELS,
   ENGINE_ORDER,
   detectAvailableEngines,
-  resolveJudgeModel,
   resolveStateDir,
 } from '../core/config.js';
 import { CostGuard } from '../core/costs.js';
 import {
-  createEngineAdapters,
-  createJudgeClient,
-} from '../core/engines/index.js';
-import { nodeProfileFs } from '../core/discovery/index.js';
-import { nodeQueryFs } from '../core/queries/index.js';
-import {
   failUnder,
-  nodeSnapshotFs,
   renderCheckHtml,
   renderCheckJson,
   renderCheckText,
 } from '../core/output/index.js';
 import {
+  buildCheckDeps,
   runCheck,
   type ConfirmContext,
   type RunCheckDeps,
@@ -106,31 +98,23 @@ export async function defaultCheckDeps(
   flags: CheckFlags,
   available: EngineId[],
 ): Promise<RunCheckDeps> {
-  // Default to ALL engines so keyless ones reach askAll and are surfaced as
-  // skippedEngines (honest 1-of-4 reporting); `--engines` narrows the set.
-  const wanted = flags.engines?.length ? flags.engines : ENGINE_ORDER;
-  const adapters = createEngineAdapters({ env: rt.env }).filter((a) =>
-    wanted.includes(a.id),
-  );
-
-  const judgeRes = await resolveJudgeModel({
-    interactive: false,
-    availableEngines: available,
-    savedJudgeModel: flags.judge,
-  });
-  if (judgeRes.notice) rt.err(`${judgeRes.notice}\n`);
-  const judgeEngine =
-    ENGINE_ORDER.find((e) => DEFAULT_JUDGE_MODELS[e] === judgeRes.model) ??
-    available[0]!;
-  const judgeAdapter = createEngineAdapters({
-    env: rt.env,
-    models: { [judgeEngine]: judgeRes.model },
-  }).find((a) => a.id === judgeEngine)!;
-
   const guard = new CostGuard({
     maxCostUsd: flags.maxCost,
     maxSetupCostUsd: flags.maxSetupCost,
   });
+
+  // Default to ALL engines so keyless ones reach askAll and are surfaced as
+  // skippedEngines (honest 1-of-4 reporting); `--engines` narrows the set.
+  const { deps, judgeNotice } = await buildCheckDeps({
+    env: rt.env,
+    fetcher: rt.fetcher,
+    engines: flags.engines as EngineId[] | undefined,
+    availableEngines: available,
+    judgeModel: flags.judge,
+    guard,
+    now: () => rt.now(),
+  });
+  if (judgeNotice) rt.err(`${judgeNotice}\n`);
 
   const confirm = async (ctx: ConfirmContext): Promise<boolean> => {
     const cost = ctx.estimate
@@ -148,17 +132,7 @@ export async function defaultCheckDeps(
     return ask({ message: 'Proceed?', default: false });
   };
 
-  return {
-    fetcher: rt.fetcher,
-    adapters,
-    judge: createJudgeClient(judgeAdapter),
-    guard,
-    profileFs: nodeProfileFs(),
-    queryFs: nodeQueryFs(),
-    snapshotFs: nodeSnapshotFs(),
-    now: () => rt.now(),
-    confirm,
-  };
+  return { ...deps, confirm };
 }
 
 /** Register `check <domain>` on the program. */
