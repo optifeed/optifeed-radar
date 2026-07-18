@@ -195,6 +195,52 @@ describe('MCP server failure modes', () => {
     expect((res as { isError?: boolean }).isError).toBeFalsy();
     const text = (res.content as { text: string }[])[0]!.text;
     expect(text).toMatch(/at least 2|found 0|2 saved runs/i);
+    // Even the honest "not enough history" note is a JSON payload and must
+    // carry schema_version (hard rule #2).
+    expect(JSON.parse(text).schema_version).toBeTruthy();
+    await client.close();
+  });
+
+  it('generate_buyer_queries with no engine key returns an honest error result', async () => {
+    const client = await connectedClient(auditOnlyContext()); // availableEngines() -> []
+    const res = await client.callTool({
+      name: 'generate_buyer_queries',
+      arguments: { domain: 'acme.example' },
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    const text = (res.content as { text: string }[])[0]!.text;
+    expect(text).toMatch(/api key/i);
+    await client.close();
+  });
+
+  it('check_visibility with an all-unrecognized engines array errors before spending', async () => {
+    // Keys ARE present, so the no-key guard passes; the engines array is all
+    // garbage, so it must abort rather than silently query every engine. The
+    // context's checkDeps throws if reached - proving it never is.
+    const ctx: ToolContext = {
+      ...auditOnlyContext(),
+      availableEngines: () => ['openai'],
+    };
+    const client = await connectedClient(ctx);
+    const res = await client.callTool({
+      name: 'check_visibility',
+      arguments: { domain: 'acme.example', engines: ['gpt4', 'bard'] },
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    const text = (res.content as { text: string }[])[0]!.text;
+    expect(text).toMatch(/no recognized engines/i);
+    await client.close();
+  });
+
+  it('rejects a domain with path-traversal characters before touching the filesystem', async () => {
+    const client = await connectedClient(auditOnlyContext());
+    const res = await client.callTool({
+      name: 'audit_store',
+      arguments: { domain: '../../etc/passwd' },
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    const text = (res.content as { text: string }[])[0]!.text;
+    expect(text).toMatch(/not a valid domain/i);
     await client.close();
   });
 });

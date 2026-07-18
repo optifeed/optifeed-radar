@@ -19,7 +19,7 @@ import {
   diffEnvelopes,
 } from '../core/output/index.js';
 import type { ToolContext } from './deps.js';
-import type { EngineId } from '../core/types.js';
+import { SCHEMA_VERSION, type EngineId } from '../core/types.js';
 
 /** A JSON-Schema tool definition, snapshot-tested in server.test.ts. */
 export interface ToolSpec {
@@ -140,6 +140,15 @@ export async function callTool(
 ): Promise<ToolResult> {
   const domain = typeof args.domain === 'string' ? args.domain.trim() : '';
   if (!domain) return err('A non-empty "domain" argument is required.');
+  // `domain` flows into a filesystem path (resolveStateDir joins it raw). MCP is
+  // the non-interactive, agent-relayed surface (no human keystroke in front of
+  // it), so reject anything that is not a plain hostname before it can traverse
+  // out of the state dir - path separators, `..`, whitespace, control chars.
+  if (!isPlausibleDomain(domain)) {
+    return err(
+      `"${domain}" is not a valid domain. Pass a bare hostname like example.com.`,
+    );
+  }
 
   try {
     switch (name) {
@@ -229,17 +238,13 @@ export async function callTool(
         const stateDir = ctx.resolveStateDir(domain);
         const paths = await listSnapshots(stateDir, ctx.snapshotFs);
         if (paths.length < 2) {
-          return ok(
-            JSON.stringify(
-              {
-                domain,
-                note: `Need at least 2 saved runs to diff; found ${paths.length}. Run check_visibility on ${domain} at least twice.`,
-              },
-              null,
-              2,
-            ),
-            { domain, snapshots: paths.length },
-          );
+          const payload = {
+            schema_version: SCHEMA_VERSION,
+            domain,
+            note: `Need at least 2 saved runs to diff; found ${paths.length}. Run check_visibility on ${domain} at least twice.`,
+            snapshots: paths.length,
+          };
+          return ok(JSON.stringify(payload, null, 2), payload);
         }
         // listSnapshots is chronological (oldest first): last two are newest.
         const [baseline, latest] = await Promise.all([
@@ -276,6 +281,23 @@ function parseEngines(raw: unknown): ParsedEngines {
     ENGINE_ENUM.includes(e as EngineId),
   );
   return ids.length ? { kind: 'engines', engines: ids } : { kind: 'empty' };
+}
+
+/**
+ * Conservative hostname check. `domain` is concatenated into the on-disk state
+ * path, and MCP is a non-interactive surface, so only allow letters, digits,
+ * dots, and hyphens - and never a `..` sequence (path traversal). This is a
+ * safety gate, not a strict RFC validator: it rejects `/`, `\`, whitespace,
+ * control chars, and `../` while accepting normal hosts and subdomains.
+ */
+function isPlausibleDomain(domain: string): boolean {
+  return (
+    domain.length <= 253 &&
+    /^[A-Za-z0-9.-]+$/.test(domain) &&
+    !domain.includes('..') &&
+    !domain.startsWith('.') &&
+    !domain.startsWith('-')
+  );
 }
 
 /**

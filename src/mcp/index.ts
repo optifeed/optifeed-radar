@@ -13,8 +13,14 @@ async function main(): Promise<void> {
     env: process.env,
     cwd: process.cwd(),
     homeDir: process.env.HOME ?? process.cwd(),
-    // The MCP server writes state under the home dir by default (no assumption
-    // that the launch cwd is writable); resolveStateDir handles the layout.
+    // DELIBERATE: the MCP server always writes state under the HOME dir, unlike
+    // the CLI which prefers `<cwd>/.optifeed` when cwd is writable. A server
+    // launched by a desktop client has an arbitrary, often non-project cwd (e.g.
+    // `/`), so a stable home-anchored location is predictable and avoids
+    // scattering `.optifeed` dirs wherever the client happened to start us. The
+    // trade-off: snapshots written by a CLI run in a project dir are not visible
+    // to `get_snapshot_diff` over MCP (and vice versa). Revisit if agents and
+    // humans need to share one brand's history across both entrypoints.
     isProjectWritable: false,
   });
   const server = createServer(ctx);

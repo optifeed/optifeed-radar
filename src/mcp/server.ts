@@ -35,10 +35,21 @@ export function createServer(ctx: ToolContext): Server {
     const onProgress =
       progressToken !== undefined
         ? (fraction: number, message: string): void => {
-            void server.notification({
-              method: 'notifications/progress',
-              params: { progressToken, progress: fraction, total: 1, message },
-            });
+            // A progress send can reject if the client disconnected or the
+            // stdio pipe broke mid-run. Swallow it: a dropped progress ping must
+            // never become an unhandled rejection that crashes the whole server
+            // (and the paid run in flight) - the tool result still returns.
+            server
+              .notification({
+                method: 'notifications/progress',
+                params: {
+                  progressToken,
+                  progress: fraction,
+                  total: 1,
+                  message,
+                },
+              })
+              .catch(() => undefined);
           }
         : undefined;
     const result = await callTool(ctx, name, args ?? {}, onProgress);
