@@ -5,6 +5,7 @@ import { createServer } from './server.js';
 import { createFetcher } from '../core/fetcher/index.js';
 import type { ToolContext } from './deps.js';
 import { nodeSnapshotFs } from '../core/output/index.js';
+import { TOOL_SPECS } from './tools.js';
 
 // A ToolContext wired for a zero-key audit: only the fetcher matters.
 function auditOnlyContext(): ToolContext {
@@ -75,6 +76,125 @@ describe('MCP server', () => {
     expect(
       (res as { structuredContent?: unknown }).structuredContent,
     ).toBeDefined();
+    await client.close();
+  });
+});
+
+describe('MCP tool schemas', () => {
+  it('input schemas are stable (update the snapshot on purpose when they change)', () => {
+    const schemas = Object.fromEntries(
+      TOOL_SPECS.map((t) => [t.name, t.inputSchema]),
+    );
+    expect(schemas).toMatchInlineSnapshot(`
+      {
+        "audit_store": {
+          "properties": {
+            "domain": {
+              "description": "The brand site, e.g. example.com",
+              "type": "string",
+            },
+          },
+          "required": [
+            "domain",
+          ],
+          "type": "object",
+        },
+        "check_visibility": {
+          "properties": {
+            "domain": {
+              "description": "The brand site, e.g. example.com",
+              "type": "string",
+            },
+            "engines": {
+              "description": "Engines to query; defaults to all with keys present",
+              "items": {
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "gemini",
+                  "perplexity",
+                ],
+                "type": "string",
+              },
+              "type": "array",
+            },
+            "max_cost": {
+              "description": "Hard cap on total spend in USD (default 0.50)",
+              "type": "number",
+            },
+            "quick": {
+              "description": "Use a smaller 8-prompt pack (cheaper, faster)",
+              "type": "boolean",
+            },
+          },
+          "required": [
+            "domain",
+          ],
+          "type": "object",
+        },
+        "generate_buyer_queries": {
+          "properties": {
+            "domain": {
+              "description": "The brand site, e.g. example.com",
+              "type": "string",
+            },
+          },
+          "required": [
+            "domain",
+          ],
+          "type": "object",
+        },
+        "get_snapshot_diff": {
+          "properties": {
+            "domain": {
+              "description": "The brand site, e.g. example.com",
+              "type": "string",
+            },
+          },
+          "required": [
+            "domain",
+          ],
+          "type": "object",
+        },
+      }
+    `);
+  });
+});
+
+describe('MCP server failure modes', () => {
+  it('check_visibility with no engine key returns an honest error result (no throw)', async () => {
+    const client = await connectedClient(auditOnlyContext());
+    const res = await client.callTool({
+      name: 'check_visibility',
+      arguments: { domain: 'acme.example' },
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    const text = (res.content as { text: string }[])[0]!.text;
+    expect(text).toMatch(/api key/i);
+    expect(text).toMatch(/audit_store/);
+    await client.close();
+  });
+
+  it('get_snapshot_diff with fewer than 2 snapshots returns an honest note (not a fabricated diff)', async () => {
+    const ctx = auditOnlyContext();
+    // Force a deterministic empty snapshot listing (no real disk).
+    const emptyCtx: typeof ctx = {
+      ...ctx,
+      snapshotFs: {
+        readFile: () => Promise.reject(new Error('no file')),
+        writeFile: () => Promise.resolve(),
+        mkdir: () => Promise.resolve(),
+        readdir: () => Promise.resolve([]),
+      },
+    };
+    const client = await connectedClient(emptyCtx);
+    const res = await client.callTool({
+      name: 'get_snapshot_diff',
+      arguments: { domain: 'acme.example' },
+    });
+    expect((res as { isError?: boolean }).isError).toBeFalsy();
+    const text = (res.content as { text: string }[])[0]!.text;
+    expect(text).toMatch(/at least 2|found 0|2 saved runs/i);
     await client.close();
   });
 });
