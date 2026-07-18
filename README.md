@@ -47,6 +47,7 @@ you unprompted); questions that name your brand are reported separately as
 reputation, with a live spinner showing each prompt as it runs. Useful flags:
 `--json` for the raw envelope, `--report report.html` for a self-contained
 report, `--max-cost 0.50` to cap spend, `--quick` for a smaller prompt pack,
+`--grounded` to ask engines in web-search mode where they support it,
 `--fail-under 50` to exit non-zero when the score is below a threshold (a CI
 gate), and `--yes` to skip the cost confirmation (so an AI agent can run it
 unattended).

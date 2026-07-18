@@ -61,6 +61,25 @@ describe('createAdapter', () => {
     expect(body.max_tokens).toBeUndefined();
   });
 
+  // A --grounded run must not MISLABEL an engine that cannot ground. Anthropic
+  // has no web-search mode here (`supportsGrounded` unset and native kind
+  // parametric), so a grounded request falls back to its native kind: the answer
+  // is honestly tagged `parametric` - renderers separate the two and scoring
+  // weights grounded higher, so a parametric-answer-labelled-grounded would be
+  // fake precision (rule #6).
+  it('does not label a non-grounding engine grounded when grounded is requested', async () => {
+    const { fn } = fakePost({
+      content: [{ type: 'text', text: 'hi' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    const answer = await createAdapter(anthropicSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q', { mode: 'grounded' });
+    expect(answer.kind).toBe('parametric');
+  });
+
   it('reports availability from the presence of an API key', () => {
     const { fn } = fakePost({});
     expect(

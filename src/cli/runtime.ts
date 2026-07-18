@@ -25,6 +25,8 @@ export interface CheckFlags {
   judge?: string;
   maxCost?: number;
   maxSetupCost?: number;
+  /** Ask engines in grounded (web-search) mode where they support it. */
+  grounded?: boolean;
   /** CI gate: exit non-zero when the score is under this (dev-plan M8). */
   failUnder?: number;
   refresh?: boolean;

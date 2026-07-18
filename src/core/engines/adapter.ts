@@ -87,7 +87,16 @@ export function createAdapter(
     available: () => Boolean(deps.apiKey),
     async ask(prompt, opts = {}) {
       if (!deps.apiKey) throw new Error(`${spec.id}: no API key configured`);
-      const mode: AskMode = opts.mode ?? spec.kind;
+      // A requested `grounded` mode only takes effect where the provider can
+      // actually ground (a web-search spec, or a natively grounded engine).
+      // Otherwise fall back to the spec's native kind so a parametric answer is
+      // never mislabelled grounded (rule #6; scoring weights grounded higher).
+      const canGround =
+        spec.supportsGrounded === true || spec.kind === 'grounded';
+      const mode: AskMode =
+        opts.mode === 'grounded' && !canGround
+          ? spec.kind
+          : (opts.mode ?? spec.kind);
       const req = spec.buildRequest({
         prompt,
         model,

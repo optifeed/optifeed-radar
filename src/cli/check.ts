@@ -86,6 +86,7 @@ function toFlags(o: Record<string, unknown>): CheckFlags {
     judge: o.judge as string | undefined,
     maxCost: o.maxCost as number | undefined,
     maxSetupCost: o.maxSetupCost as number | undefined,
+    grounded: o.grounded as boolean | undefined,
     failUnder: o.failUnder as number | undefined,
     refresh: o.refresh as boolean | undefined,
     regenerate: o.regenerate as boolean | undefined,
@@ -184,6 +185,10 @@ export function registerCheck(program: Command, rt: Runtime): void {
       parseFloat,
     )
     .option(
+      '--grounded',
+      'ask engines in grounded (web-search) mode where supported',
+    )
+    .option(
       '--fail-under <score>',
       'exit non-zero if the score is under this (CI gate)',
       parseFloat,
@@ -257,6 +262,7 @@ export function registerCheck(program: Command, rt: Runtime): void {
           stateDir,
           yes: flags.yes,
           count: flags.quick ? 8 : undefined,
+          mode: flags.grounded ? 'grounded' : undefined,
           refresh: flags.refresh,
           regenerate: flags.regenerate,
           brand: flags.brand,

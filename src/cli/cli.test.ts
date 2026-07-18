@@ -331,6 +331,67 @@ describe('check command', () => {
     });
   });
 
+  // --grounded is the CLI surface for grounded mode. runCheck already threads
+  // `mode` through to every adapter; without a flag setting it, OpenAI's
+  // web_search and Gemini grounding paths were dead code at runtime (third
+  // build-without-a-call-site). This asserts the flag reaches the adapter.
+  describe('--grounded selects grounded mode', () => {
+    function recordingAdapter(modes: (string | undefined)[]): EngineAdapter {
+      return {
+        id: 'openai',
+        kind: 'parametric',
+        model: 'openai-model',
+        available: () => true,
+        ask: async (prompt, opts): Promise<EngineAnswer> => {
+          modes.push(opts?.mode);
+          return {
+            engine: 'openai',
+            kind: opts?.mode ?? 'parametric',
+            prompt,
+            text: 'Acme is a great widget brand.',
+            model: 'openai-model',
+            costUsd: 0.0001,
+            ts: NOW(),
+          };
+        },
+      };
+    }
+
+    it('asks the engine in grounded mode', async () => {
+      const modes: (string | undefined)[] = [];
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      rt.checkDeps = () => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch }),
+        adapters: [recordingAdapter(modes)],
+        judge,
+        profileFs: rt.fs,
+        queryFs: rt.fs,
+        snapshotFs: rt.fs,
+        now: NOW,
+      });
+      await run(rt, ['check', 'acme.example', '--yes', '--grounded']);
+      expect(modes.length).toBeGreaterThan(0);
+      expect(modes.every((m) => m === 'grounded')).toBe(true);
+    });
+
+    it('leaves mode unset without the flag (engine default)', async () => {
+      const modes: (string | undefined)[] = [];
+      const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+      rt.checkDeps = () => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch }),
+        adapters: [recordingAdapter(modes)],
+        judge,
+        profileFs: rt.fs,
+        queryFs: rt.fs,
+        snapshotFs: rt.fs,
+        now: NOW,
+      });
+      await run(rt, ['check', 'acme.example', '--yes']);
+      expect(modes.length).toBeGreaterThan(0);
+      expect(modes.every((m) => m === undefined)).toBe(true);
+    });
+  });
+
   // Live 2026-07-17: `npm run dev check <domain> dore.html` - the user meant
   // `--report dore.html` but npm swallowed the flag, leaving `dore.html` as a
   // stray positional. `check` accepted it, ran, and SPENT money while silently
