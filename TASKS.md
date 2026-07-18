@@ -34,7 +34,7 @@ Last updated: 2026-07-18.
 
 - [x] **`audit` ships** - runnable end to end (`audit <domain>`, zero-key), verified live. Minimal slice: seeds of M9 (text/JSON renderers), M10 (`runAudit`), M11 (`audit` command). Everything that closed this milestone is now done: the HTML report (`--report`, `renderCheckHtml`), colorized output (`picocolors` in `terminal.ts`/`render-diff.ts`), M8 snapshot writing (`runCheck` calls `saveSnapshot`), and `--fail-under` (wired 2026-07-17, see M11).
 - [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. **LIVE-VERIFIED 2026-07-17** against real OpenAI (`check optifeed.com --quick --engines openai`): discovery → query-gen → 6 buyer prompts + 2 branded → scoring → share of voice → reputation split → snapshot, 34s, ask spend $0.0024. Confirmed live: no key material in the snapshot (rule #4), `schema_version` present, and the provider-echoed DATED model id (`gpt-4o-mini-2024-07-18`) still priced non-zero - the M0-M6 `$0`-cost bug regression-checked against reality. Still unverified live: anthropic, gemini, perplexity (no keys yet).
-- [ ] **MCP ships** - stdio server over the same core (M15)
+- [x] **MCP ships** - stdio server over the same M10 core (M15). 4 tools (check_visibility / audit_store / generate_buyer_queries / get_snapshot_diff), non-interactive with a default $0.50 cap; integration + schema-snapshot + failure-mode tested, and live-verified over real stdio (initialize + tools/list). Live multi-engine `check_visibility` still folds into the M17 smoke test (no non-OpenAI keys yet).
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
 - [ ] **`shopping` beta ships** - DEFERRED to launch #2 (not a launch #1 gate): Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
 
@@ -230,13 +230,14 @@ Owner: ___ · PR: ___
 
 ## Wave 5 - distribution + release
 
-### [ ] M15 - MCP server
+### [x] M15 - MCP server
 
-Owner: ___ · PR: ___ · thin over M10 (owns final tool names)
+Owner: setup · PR: (M15) · thin over M10 (owns final tool names)
 
-- [ ] tools: check_visibility / compare_competitors / audit_store / generate_buyer_queries / get_snapshot_diff (launch #1 list; `shopping_check` + `lint_feed` deferred to launch #2)
-- [ ] stdio + official SDK; non-interactive semantics; agent-written tool descriptions; progress notifications + disk results
-- [ ] Acceptance: MCP-over-stdio integration test; tool JSON schemas snapshot-tested
+- [x] tools: check_visibility / audit_store / generate_buyer_queries / get_snapshot_diff (launch #1 4-tool set). `compare_competitors` DEFERRED to launch #2 with the CLI `compare` view (M11 parked it as "needs design"); `shopping_check` + `lint_feed` are launch #2 (M12/M14). The 4 final tool names are now authoritative.
+- [x] stdio + official SDK (`@modelcontextprotocol/sdk`, low-level `Server` + raw JSON-Schema, no zod); non-interactive semantics (`yes:true`, no confirm gate, default $0.50 cap + `max_cost` override, cap -> partial not throw); agent-written tool descriptions (when-to-use + cost hints); progress notifications wired to `runCheck`'s `ProgressEvent`s (real `done/total` fraction, only when the client sends a `progressToken`); snapshot path returned so the agent can reference the on-disk report.
+- [x] Acceptance: MCP-over-stdio integration test (in-memory transport, `initialize` -> `list_tools` -> `audit_store` over a mocked fetcher, zero network); tool JSON schemas snapshot-tested; 2 failure-mode tests (no-key `check_visibility` -> honest isError; `get_snapshot_diff` <2 snapshots -> honest note, no fabricated diff). Live-verified over real stdio: `initialize` + `tools/list` return the 4 tools, stderr clean of protocol pollution.
+- Module report: `src/mcp/` is 4 thin files - `index.ts` (stdio entrypoint `optifeed-mcp`), `server.ts` (`createServer(ctx)` registers the 4 tools over the low-level SDK), `tools.ts` (`TOOL_SPECS` + `callTool` dispatch, thin over `core/run` + `core/output` renderers), `deps.ts` (`ToolContext` + `defaultToolContext`, non-interactive dep construction). Two shared orchestration pieces were extracted into `core/run` first so `mcp/` never imports `cli/` (hard rule #1): `buildCheckDeps` (the judge+adapter+fs wiring the CLI already did - `cli/check.ts` now delegates to it, behavior pinned by M11's tests) and `runGenerateQueries` (discover -> resolveQueries, the front half of `runCheck`; the CLI `queries` command is read-only so this was genuinely new). Every tool payload carries `schema_version` (rule #2) and all honesty flags ride the envelope (rule #6). Two code-review fixes applied test-first: an all-invalid `engines` array now errors instead of silently billing every engine (mirrors the CLI `--engines` guard - a money bug), and progress reports a real monotonic fraction from the ask `done/total` instead of a hardcoded 0.5. New dep `@modelcontextprotocol/sdk` (pre-authorized). Still unverified live: a real multi-engine `check_visibility` end-to-end (only the audit path and the stdio handshake were exercised without keys) - folds into the M17 smoke test.
 
 ### [ ] M16 - Agent surfaces + README (after M11/M15)
 
