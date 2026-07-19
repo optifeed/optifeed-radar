@@ -10,6 +10,11 @@ describe('findMessagingViolations', () => {
     expect(v.some((m) => m.includes('em-dash'))).toBe(true);
   });
 
+  it('flags an en-dash', () => {
+    const v = findMessagingViolations('Optifeed Radar - fast – honest', {});
+    expect(v.some((m) => m.includes('en-dash'))).toBe(true);
+  });
+
   it('flags the OptiFeed mis-casing but not correct Optifeed', () => {
     expect(
       findMessagingViolations('OptiFeed Radar', {}).some((m) =>

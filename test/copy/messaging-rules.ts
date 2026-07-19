@@ -10,6 +10,7 @@ export interface MessagingRuleOptions {
 /** Substrings that must never appear in customer-facing copy. */
 const BANNED: { needle: string; label: string; caseInsensitive?: boolean }[] = [
   { needle: '—', label: 'em-dash (use "-" instead)' },
+  { needle: '–', label: 'en-dash (use "-" instead)' },
   { needle: 'OptiFeed', label: 'OptiFeed mis-casing (brand is "Optifeed")' },
   {
     needle: 'paid tools for free',
@@ -23,7 +24,12 @@ const BANNED: { needle: string; label: string; caseInsensitive?: boolean }[] = [
   },
 ];
 
-/** Present-tense Shopping claims - Shopping is roadmap (future tense only). */
+/**
+ * Present-tense Shopping claims - Shopping is roadmap (future tense only). This
+ * list is illustrative, not exhaustive; the real structural guard is the
+ * `waitlist` requirement below (any surface that says "shopping" must gate on a
+ * waitlist). Add phrases here as they come up, but do not rely on it alone.
+ */
 const ROADMAP_PRESENT_TENSE = [
   'shopping checks',
   'shopping supports',
