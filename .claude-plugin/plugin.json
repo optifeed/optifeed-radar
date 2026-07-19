@@ -1,0 +1,19 @@
+{
+  "name": "optifeed-radar",
+  "displayName": "Optifeed Radar",
+  "version": "0.1.0",
+  "description": "Ask real AI engines real buyer questions and score whether a brand gets recommended. CLI plus an MCP server, running locally with your own API keys.",
+  "author": {
+    "name": "Optifeed",
+    "url": "https://optifeed.com"
+  },
+  "homepage": "https://optifeed.com",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": {
+    "optifeed-radar": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp/index.js"]
+    }
+  }
+}
