@@ -1,39 +1,39 @@
-# Optifeed Visibility
+# Optifeed Radar
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+<!-- Build, stars, npm version, and npm downloads badges are added at launch
+(M17), once the public repo slug and the published package exist. Shipping
+placeholder badges now would render broken images. -->
 
 **Open-source AI visibility checker. Public launch in progress.**
 
-Is your brand recommended when buyers ask AI? Optifeed Visibility checks
-whether ChatGPT, Perplexity, Gemini and Claude actually recommend you, and
-tells you where you stand against competitors. It runs locally, uses your own
-API keys, and stores nothing on a server.
+Is your brand recommended when buyers ask AI? Optifeed Radar checks whether
+ChatGPT, Perplexity, Gemini and Claude actually recommend you, and tells you
+where you stand against competitors. It runs locally, uses your own API keys,
+and stores nothing on a server.
 
 It is built for two kinds of AI agents at once: it measures how **AI agents**
 see and recommend you, and it can be **run by your own AI agents** (CLI, JSON,
-and - on the roadmap - an MCP server).
+and an MCP server). People also call this AI visibility, generative engine
+optimization (GEO), answer engine optimization (AEO), or AI-SEO.
 
-## Run it today (from a clone)
+## 60-second setup (from a clone)
 
-There is no published `npx optifeed-visibility` package yet - run from a clone
-for now.
+The npm package is not published yet, so run from a clone for now. Published
+`npx optifeed-radar` lands at launch.
 
-The zero-key `audit` is verified and runs end to end:
+The zero-key `audit` is verified and runs end to end - no API keys, no AI calls:
 
 ```bash
 npm install
 npx tsx src/cli/index.ts audit yourbrand.com
 ```
 
-The examples call `npx tsx src/cli/index.ts` directly so flags reach the CLI
-unchanged. If you prefer the `npm run dev` script, put `--` before the
-arguments (`npm run dev -- check yourbrand.com --report out.html`); without it,
-npm keeps the flags for itself and the CLI never sees them.
+It checks AI-crawler access (robots.txt), llms.txt, schema.org structured
+data, meta basics, and your sitemap, then prints a 0-100 AI-readiness score.
 
-It checks AI-crawler access (robots.txt), llms.txt, schema.org structured data,
-meta basics, and your sitemap, then prints a 0-100 AI-readiness score. No API
-keys, no AI calls.
-
-The `check` pipeline is implemented and runs from a clone once you set at least
-one engine API key:
+The `check` pipeline runs from a clone once you set at least one engine API key:
 
 ```bash
 export OPENAI_API_KEY=...   # and/or ANTHROPIC_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY
@@ -44,49 +44,185 @@ It discovers your brand, generates a buyer-prompt pack, asks the engines, and
 scores recommendation, position, and share of voice into one AI Visibility
 Score. The score reads only the unbranded buyer questions (did the AI surface
 you unprompted); questions that name your brand are reported separately as
-reputation, with a live spinner showing each prompt as it runs. Useful flags:
-`--json` for the raw envelope, `--report report.html` for a self-contained
-report, `--max-cost 0.50` to cap spend, `--quick` for a smaller prompt pack,
-`--grounded` to ask engines in web-search mode where they support it,
-`--fail-under 50` to exit non-zero when the score is below a threshold (a CI
-gate), and `--yes` to skip the cost confirmation (so an AI agent can run it
-unattended).
-Verifying `check` live against each engine's production API is the last step
-before the npm release, so treat it as pre-release.
+reputation. Verifying `check` live against each engine's production API is the
+last step before the npm release, so treat it as pre-release.
 
-Every `check` saves a local snapshot, so you can inspect a run without spending
-again:
+The examples call `npx tsx src/cli/index.ts` directly so flags reach the CLI
+unchanged. With the `npm run dev` script, put `--` before the arguments
+(`npm run dev -- check yourbrand.com --report out.html`).
+
+## What it does
+
+Optifeed Radar asks real AI engines real buyer questions and measures whether
+your brand gets recommended - not whether you rank in a search index, but
+whether the answer an AI gives a buyer names you. Grounded engines (which cite
+web sources) are reported separately from parametric ones (which answer from
+model weights alone), because they behave differently.
+
+## Use it from your AI agents (MCP)
+
+The `optifeed-mcp` server exposes the same capability to AI agents. It runs
+over stdio. Build first (`npm install && npm run build`), then point your
+client at `dist/mcp/index.js`. Replace `/path/to/optifeed-radar` with your
+clone path.
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "optifeed-radar": {
+      "command": "node",
+      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"],
+      "env": {
+        "OPENAI_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+Claude Code (`.mcp.json` in your project):
+
+```json
+{
+  "mcpServers": {
+    "optifeed-radar": {
+      "command": "node",
+      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"]
+    }
+  }
+}
+```
+
+Cursor (`.cursor/mcp.json`) and Windsurf (`mcp_config.json`) use the same
+shape:
+
+```json
+{
+  "mcpServers": {
+    "optifeed-radar": {
+      "command": "node",
+      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"]
+    }
+  }
+}
+```
+
+At launch the published package will also run via npx (no clone needed):
+
+```json
+{
+  "mcpServers": {
+    "optifeed-radar": {
+      "command": "npx",
+      "args": ["-y", "--package=optifeed-radar", "optifeed-mcp"]
+    }
+  }
+}
+```
+
+## Tools and cost
+
+| Surface | Name                     | What it does                                                    | Cost                          |
+| ------- | ------------------------ | --------------------------------------------------------------- | ----------------------------- |
+| CLI     | `audit`                  | Zero-key AI-readiness check (robots, llms.txt, schema, sitemap) | Free, no AI calls             |
+| CLI     | `check`                  | Full pipeline: buyer prompts, engines, AI Visibility Score      | BYO keys                      |
+| CLI     | `diff`                   | What changed between your last two runs                         | Free (reads a saved snapshot) |
+| CLI     | `sources`                | Domains the AI cited, and your share of voice                   | Free (reads a saved snapshot) |
+| CLI     | `queries`                | Show or export your buyer-prompt pack                           | Free                          |
+| CLI     | `config`                 | Which engine keys are set, where state is stored                | Free                          |
+| MCP     | `check_visibility`       | Run a visibility check for a domain                             | BYO keys                      |
+| MCP     | `audit_store`            | Run the zero-key readiness audit                                | Free                          |
+| MCP     | `generate_buyer_queries` | Produce the buyer-prompt pack                                   | Free                          |
+| MCP     | `get_snapshot_diff`      | Compare two saved runs                                          | Free                          |
+
+Cost transparency: `audit` queries no AI engines and costs nothing. `check`
+spends your own API credit - a `--quick` single-engine run costs roughly a few
+cents (about $0.09 measured on one run; your cost varies by engine,
+prompt-pack size, and provider pricing). Cap spend with `--max-cost 0.50`;
+hitting the cap returns a partial result flagged as capped, never an error.
+
+Useful `check` flags: `--json` (raw envelope), `--report report.html`
+(self-contained report), `--max-cost 0.50`, `--quick` (smaller prompt pack),
+`--grounded` (web-search mode where engines support it), `--fail-under 50`
+(exit non-zero below a threshold, for CI), `--yes` (skip the cost prompt so an
+AI agent can run it unattended).
+
+## Example
 
 ```bash
-npx tsx src/cli/index.ts diff yourbrand.com      # what changed between your last two runs
-npx tsx src/cli/index.ts sources yourbrand.com   # domains the AI cited, and your share of voice
-npx tsx src/cli/index.ts queries yourbrand.com   # show or --export your buyer-prompt pack
-npx tsx src/cli/index.ts config                  # which engine keys are set, where state is stored
+npx tsx src/cli/index.ts audit example.com      # free readiness score
+npx tsx src/cli/index.ts check example.com --quick --yes
+npx tsx src/cli/index.ts diff example.com        # what changed since last run
+npx tsx src/cli/index.ts sources example.com     # who the AI cited
+npx tsx src/cli/index.ts config                  # which keys are set
 ```
 
 `config` reports only whether each key is present, never the key value.
 
-## Status
+## FAQ
 
-Under active development; the repo is public early so you can follow along. If
-this is useful to you, a star genuinely helps.
+**What is AI visibility?** Whether AI engines recommend your brand when a buyer
+asks them a question, rather than whether you rank in a traditional search
+index. It is also called generative engine optimization (GEO) or answer engine
+optimization (AEO).
 
-## On the roadmap
+**Is there an MCP server?** Yes. The `optifeed-mcp` server exposes
+`check_visibility`, `audit_store`, `generate_buyer_queries`, and
+`get_snapshot_diff` to your AI agents over stdio.
 
-- `compare` - a competitor-focused view of who AI recommends in your category
-- an MCP server exposing the same capabilities to your AI agents
-- a published `npx optifeed-visibility` package
+**What does it cost?** The `audit` command is free and needs no keys. The
+`check` pipeline spends your own engine API credit - a few cents for a quick
+run. You bring your own keys; there is no Optifeed-hosted billing.
+
+**Is my data stored anywhere?** No. It runs locally, saves snapshots on your
+machine, and never sends your API keys off-device or logs them.
+
+**Which engines does it support?** OpenAI (ChatGPT), Anthropic (Claude), Google
+(Gemini), and Perplexity. Set any one key to start; set more for broader
+coverage.
+
+**How is the score computed?** From sampling real engine answers to unbranded
+buyer questions, scoring recommendation, position, and share of voice. Scores
+are estimates and vary between runs. See METHODOLOGY.md for the full method.
+
+## For directory maintainers
+
+One-liners for awesome-mcp-servers, ClawHub, and Smithery listings:
+
+- **Optifeed Radar** - Ask real AI engines real buyer questions and score
+  whether a brand gets recommended. CLI plus MCP server, runs locally, BYO keys.
+- **Optifeed Radar (MCP)** - `check_visibility`, `audit_store`,
+  `generate_buyer_queries`, and `get_snapshot_diff` for measuring brand AI
+  visibility (GEO / AEO) from your AI agents.
+
+Search intents this serves: AI visibility checker, does AI recommend my brand,
+generative engine optimization (GEO) tool, answer engine optimization (AEO),
+ChatGPT brand visibility, AI-SEO, MCP server for brand visibility.
+
+## What this does NOT do
+
+- It is a point-in-time check, not continuous monitoring.
+- Scores are estimates from sampling and vary between runs - they are not a
+  guaranteed ranking.
+- It does not check SKU-level product visibility or product feeds yet.
+- `check` spends your own API credit; only `audit` is free.
+- It is not a traditional SEO rank tracker.
 
 Optifeed Shopping will extend this to SKU-level visibility and product-feed
 checks against the Agentic Commerce Protocol (ACP) and the Universal Commerce
 Protocol (UCP). It is a separate, later release - join the waitlist at
 optifeed.com.
 
-Scores are estimates and say so. Engines vary between runs, and grounded engines
-(which cite sources) are reported separately from parametric ones (which answer
-from model weights alone). Your API keys stay on your machine and are never
-logged or stored.
+## Status
+
+Under active development; the repo is public early so you can follow along. If
+this is useful to you, a star genuinely helps. Scores are estimates and say so.
+Your API keys stay on your machine and are never logged or stored.
 
 ## License
 
 MIT
+
+More at optifeed.com
