@@ -5,10 +5,11 @@
  * so this composition stays in `core/run` and entrypoints stay thin (rule #1).
  */
 import { CostGuard } from '../costs.js';
-import { discover, nodeProfileFs, type ProfileFs } from '../discovery/index.js';
-import { resolveQueries, nodeQueryFs, type QueryFs } from '../queries/index.js';
+import type { ProfileFs } from '../discovery/index.js';
+import type { QueryFs } from '../queries/index.js';
 import { createFetcher, type Fetcher } from '../fetcher/index.js';
 import type { BrandProfile, JudgeClient, QueryPack } from '../types.js';
+import { discoverAndBuildQueries } from './discover-queries.js';
 
 export interface RunGenerateQueriesDeps {
   fetcher?: Fetcher;
@@ -43,33 +44,34 @@ export async function runGenerateQueries(
   const guard = deps.guard ?? new CostGuard();
   const now = deps.now ?? ((): string => new Date().toISOString());
   const persist = deps.persist ?? true;
-  const notes: string[] = [];
 
-  const discovery = await discover(
+  // Same discover -> resolveQueries composition `runCheck` uses. This command
+  // always regenerates the pack (that is its whole job); it needs no progress
+  // events, so the reporter is left at its no-op default.
+  const front = await discoverAndBuildQueries(
     domain,
     {
       fetcher,
       judge: deps.judge,
       guard,
-      fs: deps.profileFs ?? nodeProfileFs(),
+      profileFs: deps.profileFs,
+      queryFs: deps.queryFs,
       now,
     },
-    { stateDir: opts.stateDir, refresh: opts.refresh, persist },
+    {
+      stateDir: opts.stateDir,
+      persist,
+      refresh: opts.refresh,
+      regenerate: true,
+      count: opts.count,
+    },
   );
-  if (discovery.competitorNote) notes.push(discovery.competitorNote);
-
-  const queries = await resolveQueries(
-    discovery.profile,
-    { judge: deps.judge, guard, fs: deps.queryFs ?? nodeQueryFs(), now },
-    { stateDir: opts.stateDir, regenerate: true, count: opts.count, persist },
-  );
-  if (queries.note) notes.push(queries.note);
 
   return {
-    pack: queries.pack,
-    profile: discovery.profile,
-    path: queries.path,
-    notes,
+    pack: front.pack,
+    profile: front.profile,
+    path: front.queryPath,
+    notes: front.notes,
     costCapped: guard.costCapped ? true : undefined,
   };
 }

@@ -27,7 +27,7 @@ function auditOnlyContext(): ToolContext {
       throw new Error('not used in this test');
     },
     queryDeps: async () => ({ fetcher }),
-    fetcher,
+    newFetcher: () => fetcher,
     snapshotFs: nodeSnapshotFs(),
     availableEngines: () => [],
     now: () => '2026-07-18T00:00:00.000Z',

@@ -8,6 +8,7 @@ import {
   runAudit,
   runCheck,
   runGenerateQueries,
+  selectEngines,
   type ProgressEvent,
 } from '../core/run/index.js';
 import {
@@ -153,7 +154,7 @@ export async function callTool(
   try {
     switch (name) {
       case 'audit_store': {
-        const report = await runAudit(domain, { fetcher: ctx.fetcher });
+        const report = await runAudit(domain, { fetcher: ctx.newFetcher() });
         return ok(renderAuditJson(report), report);
       }
 
@@ -167,11 +168,21 @@ export async function callTool(
           );
         }
         const parsed = parseEngines(args.engines);
+        if (parsed.kind === 'invalid') {
+          // A present-but-mis-shaped `engines` (a number, object, etc.) must NOT
+          // fall through to "query every available engine" - the low-level MCP
+          // Server does not validate args against inputSchema, so a bad shape
+          // would silently widen the run. Reject before spending.
+          return err(
+            `"engines" must be an array of engine names (or a single name). Known engines: ${ENGINE_ENUM.join(', ')}.`,
+          );
+        }
         if (parsed.kind === 'empty') {
-          // An `engines` array whose values are ALL unrecognized must NOT fall
-          // through to "query every available engine" (that would bill for
+          // A NON-EMPTY selection whose values are ALL unrecognized must NOT
+          // fall through to "query every available engine" (that would bill for
           // engines the caller never asked for). Reject before spending, the
-          // way the CLI rejects an unrecognized --engines list.
+          // way the CLI rejects an unrecognized --engines list. (An EMPTY array
+          // means "no preference" and parses as `none`, i.e. all available.)
           return err(
             `No recognized engines in "engines". Known engines: ${ENGINE_ENUM.join(', ')}.`,
           );
@@ -187,8 +198,7 @@ export async function callTool(
         }
         const deps = await ctx.checkDeps({
           engines,
-          maxCost:
-            typeof args.max_cost === 'number' ? args.max_cost : undefined,
+          maxCost: parseMaxCost(args.max_cost),
           availableEngines: wantAvailable,
         });
         if (onProgress) {
@@ -207,11 +217,22 @@ export async function callTool(
             `check_visibility did not produce a result: ${result.notes.join('; ') || 'aborted'}.`,
           );
         }
-        const json = renderCheckJson(result.envelope);
-        const note = result.snapshotPath
-          ? `\n\nSnapshot saved at ${result.snapshotPath}`
-          : '';
-        return ok(json + note, result.envelope);
+        // content[0].text is the PURE JSON envelope (parseable, matching the
+        // CLI --json contract and the other three tools). The snapshot path is
+        // a human-readable side note in its own content block, never appended
+        // to the JSON - concatenating prose would break JSON.parse on the
+        // primary channel.
+        const result0: ToolResult = ok(
+          renderCheckJson(result.envelope),
+          result.envelope,
+        );
+        if (result.snapshotPath) {
+          result0.content.push({
+            type: 'text',
+            text: `Snapshot saved at ${result.snapshotPath}`,
+          });
+        }
+        return result0;
       }
 
       case 'generate_buyer_queries': {
@@ -225,8 +246,15 @@ export async function callTool(
         const result = await runGenerateQueries(domain, await ctx.queryDeps(), {
           stateDir: ctx.resolveStateDir(domain),
         });
+        // Wrap the pack in an envelope with ITS OWN schema_version rather than
+        // spreading pack fields at the top level (which would carry the pack's
+        // schema_version while adding notes/savedAt fields the QueryPack schema
+        // does not describe - a mislabeled artifact, hard rule #2). The pack
+        // stays intact under `pack`.
         const payload = {
-          ...result.pack,
+          schema_version: SCHEMA_VERSION,
+          domain,
+          pack: result.pack,
           notes: result.notes,
           ...(result.costCapped ? { costCapped: true } : {}),
           ...(result.path ? { savedAt: result.path } : {}),
@@ -266,21 +294,50 @@ export async function callTool(
 }
 
 /**
- * Result of interpreting the raw `engines` argument. Three distinct cases so
- * the handler never confuses "no filter requested" with "filter requested but
+ * Result of interpreting the raw `engines` argument. Distinct cases so the
+ * handler never confuses "no filter requested" with "filter requested but
  * nothing recognized" (the latter must abort, not silently query everything).
  */
 type ParsedEngines =
-  | { kind: 'none' } // no `engines` array supplied -> use all available
+  | { kind: 'none' } // absent, or an empty array -> no preference, use all available
   | { kind: 'engines'; engines: EngineId[] } // >=1 recognized engine
-  | { kind: 'empty' }; // an array was given but zero values were recognized
+  | { kind: 'empty' } // a non-empty selection, but zero values were recognized
+  | { kind: 'invalid' }; // present but not an array or a string (mis-shaped)
 
 function parseEngines(raw: unknown): ParsedEngines {
-  if (!Array.isArray(raw)) return { kind: 'none' };
-  const ids = raw.filter((e): e is EngineId =>
-    ENGINE_ENUM.includes(e as EngineId),
-  );
-  return ids.length ? { kind: 'engines', engines: ids } : { kind: 'empty' };
+  if (raw === undefined || raw === null) return { kind: 'none' };
+  // Accept an array, or a single bare string (a natural shorthand). Anything
+  // else present (number, object, boolean) is mis-shaped - never widen for it.
+  const list = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string'
+      ? [raw]
+      : undefined;
+  if (list === undefined) return { kind: 'invalid' };
+  if (list.length === 0) return { kind: 'none' }; // [] -> no preference
+  // Delegate the known-set / all-unknown policy to the shared classifier
+  // (kept identical to the CLI). Non-string entries become blanks so they are
+  // dropped, but a non-empty selection that yields nothing usable is `empty`
+  // (abort), never `none` (which would widen to every engine).
+  const tokens = list.map((t) => (typeof t === 'string' ? t : ''));
+  const selection = selectEngines(tokens);
+  return selection.kind === 'none' ? { kind: 'empty' } : selection;
+}
+
+/**
+ * Interpret the raw `max_cost` argument. Accepts a JS number OR a numeric
+ * string (some MCP clients serialize numbers as strings); a positive, finite
+ * value wins. Anything else (non-numeric, NaN, <= 0) yields `undefined` so the
+ * caller falls back to the default cap rather than running uncapped.
+ */
+function parseMaxCost(raw: unknown): number | undefined {
+  const n =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? Number(raw)
+        : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 /**

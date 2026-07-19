@@ -29,8 +29,13 @@ export interface ToolContext {
   }): Promise<RunCheckDeps>;
   /** Deps for runGenerateQueries (async: resolves the judge once). */
   queryDeps(): Promise<RunGenerateQueriesDeps>;
-  /** Fetcher for the zero-key audit. */
-  fetcher: Fetcher;
+  /**
+   * A FRESH fetcher for one tool invocation. The default fetcher's cache is a
+   * permanent per-instance Map (built for a single CLI run), so a fetcher must
+   * never be shared across calls in a long-lived MCP session - that would serve
+   * stale responses and grow unbounded. Each tool call gets its own.
+   */
+  newFetcher(): Fetcher;
   /** Snapshot fs for get_snapshot_diff. */
   snapshotFs: SnapshotFs;
   /** Engines that have keys in this environment. */
@@ -55,7 +60,8 @@ export interface DefaultToolContextInput {
 export function defaultToolContext(
   input: DefaultToolContextInput,
 ): ToolContext {
-  const fetcher = input.fetcher ?? createFetcher();
+  // A fresh fetcher per call (or the injected one, so tests can observe it).
+  const newFetcher = (): Fetcher => input.fetcher ?? createFetcher();
   const now = input.now ?? ((): string => new Date().toISOString());
   const log =
     input.log ?? ((msg: string): void => void process.stderr.write(`${msg}\n`));
@@ -77,7 +83,7 @@ export function defaultToolContext(
       });
       const { deps, judgeNotice } = await buildCheckDeps({
         env: input.env,
-        fetcher,
+        fetcher: newFetcher(),
         engines: opts.engines,
         availableEngines: opts.availableEngines,
         guard,
@@ -92,6 +98,7 @@ export function defaultToolContext(
       // Reuse buildCheckDeps for ONE judge-resolution path; runGenerateQueries
       // only needs the judge + fetcher + guard + clock from it.
       const guard = new CostGuard({ maxSetupCostUsd: DEFAULT_MCP_MAX_COST });
+      const fetcher = newFetcher();
       const { deps, judgeNotice } = await buildCheckDeps({
         env: input.env,
         fetcher,
@@ -103,7 +110,7 @@ export function defaultToolContext(
       return { fetcher, judge: deps.judge, guard, now };
     },
 
-    fetcher,
+    newFetcher,
     snapshotFs: nodeSnapshotFs(),
     availableEngines: available,
     now,

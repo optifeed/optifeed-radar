@@ -31,4 +31,29 @@ describe('defaultToolContext', () => {
     expect(DEFAULT_MCP_MAX_COST).toBeCloseTo(0.5);
     expect(deps.guard).toBeDefined();
   });
+
+  it('hands out a FRESH fetcher per tool invocation (no cross-call stale cache)', () => {
+    // The default fetcher's cache is a permanent per-instance Map (built for one
+    // CLI run). Reusing one instance across a long-lived MCP session would serve
+    // stale responses and grow unbounded, so each call must get its own.
+    const live = defaultToolContext({
+      env,
+      cwd: '/proj',
+      homeDir: '/home/u',
+      isProjectWritable: false,
+    });
+    expect(live.newFetcher()).not.toBe(live.newFetcher());
+  });
+
+  it('reuses an injected fetcher (so tests can observe requests)', () => {
+    const injected = createFetcher();
+    const withInjected = defaultToolContext({
+      env,
+      cwd: '/proj',
+      homeDir: '/home/u',
+      isProjectWritable: false,
+      fetcher: injected,
+    });
+    expect(withInjected.newFetcher()).toBe(injected);
+  });
 });

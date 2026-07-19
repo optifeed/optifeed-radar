@@ -41,6 +41,16 @@ export interface BuiltCheckDeps {
 export async function buildCheckDeps(
   input: BuildCheckDepsInput,
 ): Promise<BuiltCheckDeps> {
+  // Own miss path (no non-null assertion downstream): the judge falls back to
+  // the first available engine, so an empty set has no judge. Fail honestly
+  // here rather than building a judge over an undefined adapter that would
+  // crash on first use if a caller forgets the upstream guard.
+  if (input.availableEngines.length === 0) {
+    throw new Error(
+      'buildCheckDeps needs at least one available engine (an API key must be set).',
+    );
+  }
+
   const wanted = input.engines?.length ? input.engines : ENGINE_ORDER;
   const adapters = createEngineAdapters({ env: input.env }).filter((a) =>
     wanted.includes(a.id),
@@ -54,10 +64,14 @@ export async function buildCheckDeps(
   const judgeEngine =
     ENGINE_ORDER.find((e) => DEFAULT_JUDGE_MODELS[e] === judgeRes.model) ??
     input.availableEngines[0]!;
+  // Build ONLY the judge engine's adapter (with its resolved model), not all
+  // four again. The ask `adapters` above keep their default models; the judge
+  // may use a different (cheaper) model, so it needs its own instance.
   const judgeAdapter = createEngineAdapters({
     env: input.env,
     models: { [judgeEngine]: judgeRes.model },
-  }).find((a) => a.id === judgeEngine)!;
+    only: [judgeEngine],
+  })[0]!;
 
   return {
     deps: {

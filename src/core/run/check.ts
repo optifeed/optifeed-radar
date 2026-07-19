@@ -16,12 +16,13 @@
  * hidden (hard rule #6).
  */
 import { CostGuard, type CostEstimate, estimateRun } from '../costs.js';
-import { type ProfileFs, discover, nodeProfileFs } from '../discovery/index.js';
+import type { ProfileFs } from '../discovery/index.js';
 import { type AskMode, type EngineAdapter, askAll } from '../engines/index.js';
 import type { Fetcher } from '../fetcher/index.js';
 import { buildAuditReport, gatherAuditInput } from '../audit/index.js';
-import { type QueryFs, nodeQueryFs, resolveQueries } from '../queries/index.js';
+import type { QueryFs } from '../queries/index.js';
 import { scoreAnswers } from '../scoring/index.js';
+import { discoverAndBuildQueries } from './discover-queries.js';
 import {
   type SnapshotFs,
   type VisibilityEnvelope,
@@ -142,57 +143,47 @@ export async function runCheck(
   const report = deps.onProgress ?? ((): void => undefined);
   const notes: string[] = [];
 
-  // Discovery (M4) and the zero-LLM audit (M3) are independent fetch-only work;
-  // run them concurrently (the fetcher's in-run cache dedupes shared URLs).
+  // The shared front half - discover the brand (M4) then resolve the buyer
+  // prompts (M5) - runs concurrently with the zero-LLM audit (M3), which is
+  // independent fetch-only work (the fetcher's in-run cache dedupes shared
+  // URLs). The helper emits the discovery/queries progress events itself.
   report({ kind: 'discovery-start' });
-  const [discovery, auditReport] = await Promise.all([
-    discover(
+  const [front, auditReport] = await Promise.all([
+    discoverAndBuildQueries(
       domain,
       {
         fetcher,
         judge: deps.judge,
         guard,
-        fs: deps.profileFs ?? nodeProfileFs(),
+        profileFs: deps.profileFs,
+        queryFs: deps.queryFs,
         now,
       },
       {
         stateDir: opts.stateDir,
+        persist,
         refresh: opts.refresh,
         brand: opts.brand,
         category: opts.category,
         samplePages: opts.samplePages,
-        persist,
+        regenerate: opts.regenerate,
+        queriesFile: opts.queriesFile,
+        count: opts.count,
       },
+      report,
     ),
     gatherAuditInput(domain, fetcher, { samplePages: opts.samplePages }).then(
       buildAuditReport,
     ),
   ]);
-  const profile = discovery.profile;
-  report({ kind: 'discovery-done', brand: profile.brand });
-  if (discovery.competitorNote) notes.push(discovery.competitorNote);
-
-  // Query pack (M5): explicit file > cached > generate (setup budget).
-  report({ kind: 'queries-start' });
-  const queries = await resolveQueries(
-    profile,
-    { judge: deps.judge, guard, fs: deps.queryFs ?? nodeQueryFs(), now },
-    {
-      stateDir: opts.stateDir,
-      regenerate: opts.regenerate,
-      queriesFile: opts.queriesFile,
-      count: opts.count,
-      persist,
-    },
-  );
-  if (queries.note) notes.push(queries.note);
-  const prompts = queries.pack.queries.map((q) => q.prompt);
+  const profile = front.profile;
+  notes.push(...front.notes);
+  const prompts = front.pack.queries.map((q) => q.prompt);
   // Branded prompts (M5's "trust" intent) named the brand; scoring keeps them
   // out of the visibility score and reports them as reputation instead.
-  const brandedPrompts = queries.pack.queries
+  const brandedPrompts = front.pack.queries
     .filter((q) => q.intent === 'trust')
     .map((q) => q.prompt);
-  report({ kind: 'queries-done', prompts });
 
   // Gate the main ASK spend (bypassable with --yes, hard rule #8). Spending is
   // allowed ONLY when explicitly confirmed: `--yes`, or a `confirm` handler that

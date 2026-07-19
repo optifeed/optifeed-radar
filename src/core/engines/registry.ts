@@ -19,13 +19,22 @@ export interface CreateAdaptersOptions {
   models?: Partial<Record<EngineId, string>>;
   now?: () => string;
   retry?: RetryOptions;
+  /**
+   * Build adapters for only these engine ids (in spec order). Omit for all
+   * four. Lets a caller that needs a single adapter (e.g. the judge) avoid
+   * constructing three throwaway adapters.
+   */
+  only?: EngineId[];
 }
 
 export function createEngineAdapters(
   opts: CreateAdaptersOptions,
 ): EngineAdapter[] {
   const httpPost = opts.httpPost ?? defaultHttpPost;
-  return SPECS.map((spec) =>
+  const specs = opts.only
+    ? SPECS.filter((spec) => opts.only!.includes(spec.id))
+    : SPECS;
+  return specs.map((spec) =>
     createAdapter(spec, {
       httpPost,
       apiKey: opts.env[ENGINE_KEY_ENV[spec.id]],

@@ -19,6 +19,7 @@ import {
 import {
   buildCheckDeps,
   runCheck,
+  selectEngines,
   type ConfirmContext,
   type RunCheckDeps,
 } from '../core/run/index.js';
@@ -54,18 +55,14 @@ export function rejectStrayArgs(
 }
 
 /**
- * Parse `--engines a,b` into known engine ids. Unknown tokens are dropped; an
- * all-unknown value yields `[]`, which the action treats as an error (rather
- * than silently querying - and billing - every engine).
+ * Parse `--engines a,b` into known engine ids via the shared classifier (same
+ * drop-unknown / all-unknown policy the MCP tool uses). An all-unknown value
+ * yields `[]`, which the action treats as an error (rather than silently
+ * querying - and billing - every engine).
  */
 function parseEngines(value: string): EngineId[] {
-  const wanted = value
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  return wanted.filter((e): e is EngineId =>
-    (ENGINE_ORDER as string[]).includes(e),
-  );
+  const selection = selectEngines(value.split(','));
+  return selection.kind === 'engines' ? selection.engines : [];
 }
 
 function toFlags(o: Record<string, unknown>): CheckFlags {
