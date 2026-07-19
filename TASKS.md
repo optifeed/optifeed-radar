@@ -533,6 +533,35 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   by rendering both a parametric (no marker) and grounded (marked, singular copy)
   envelope.
 
+- 2026-07-19: high-effort workflow review of M15 (`922bc32..d6a4ec7`, the MCP
+  stdio server), 18 agents (4 finder lenses + per-location adversarial verify).
+  10 verified findings (2 refuted), all fixed test-first (+14 tests, 368 -> 382).
+  Five were correctness in the MCP tool layer: (1) `check_visibility` appended a
+  "Snapshot saved at ..." prose line to its text channel, so unlike the other 3
+  tools `JSON.parse(content[0].text)` threw - now pure JSON, the note is a
+  separate content block; (2) `defaultToolContext` built ONE fetcher for the
+  whole server lifetime, and the fetcher cache is a permanent per-instance Map,
+  so a long-lived stdio session served stale responses (a re-audit after a
+  robots.txt fix saw the old result) and grew unbounded - now a fresh
+  `newFetcher()` per tool invocation; (3) a non-array `engines` (bare string,
+  object) fell through to "query every available engine", silently widening a
+  run the agent meant to restrict - a string now coerces to one engine, any
+  other mis-shape errors, never widens; (4) an empty `engines: []` hard-errored
+  instead of meaning "no preference" (all available); (5) a stringified
+  `max_cost: "0.10"` was dropped to the higher $0.50 default cap - now parses
+  numeric strings. Five were cleanup/seam: `buildCheckDeps` built all four engine
+  adapters a second time to pull out one judge (now `createEngineAdapters({only})`
+  builds just the judge) and used a non-null `availableEngines[0]!` that would
+  build a broken judge on an empty set (now an honest throw); the CLI/MCP engine
+  parsing and the discover->resolveQueries composition were duplicated (extracted
+  `selectEngines` and `discoverAndBuildQueries` into `core/run`); and
+  `generate_buyer_queries` spread pack fields under the pack's own
+  schema_version, mislabeling a non-QueryPack (rule #2) - now an envelope with
+  the pack nested. Refuted (correctly): a missing setup sub-cap (setup calls are
+  token-bounded to cents, cannot approach the cap) and a copy-pasted ISO-clock
+  arrow (behaviorally identical). One backward-compatible cross-module add:
+  `only?` on `core/engines/registry.ts`.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
