@@ -1,5 +1,5 @@
 {
-  "name": "optifeed-visibility",
+  "name": "optifeed-radar",
   "version": "0.0.0",
   "description": "Open-source AI visibility checker (GEO/AEO). Is your brand recommended by ChatGPT, Perplexity, Gemini and Claude? BYO keys, runs locally.",
   "keywords": [
@@ -20,7 +20,7 @@
     "node": ">=20"
   },
   "bin": {
-    "optifeed-visibility": "dist/cli/index.js",
+    "optifeed-radar": "dist/cli/index.js",
     "optifeed-mcp": "dist/mcp/index.js"
   },
   "files": [

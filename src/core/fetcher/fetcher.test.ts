@@ -102,14 +102,14 @@ describe('fetchUrl', () => {
     });
     const f = createFetcher({
       fetchImpl: fn,
-      userAgent: 'optifeed-visibility/9.9.9',
+      userAgent: 'optifeed-radar/9.9.9',
     });
 
     await f.fetchUrl('https://a.example/p');
     await f.fetchUrl('https://a.example/p'); // cached: no second call
 
     expect(fn).toHaveBeenCalledTimes(1);
-    expect(seen[0]?.['user-agent']).toBe('optifeed-visibility/9.9.9');
+    expect(seen[0]?.['user-agent']).toBe('optifeed-radar/9.9.9');
   });
 });
 

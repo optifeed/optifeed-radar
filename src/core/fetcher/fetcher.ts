@@ -70,7 +70,7 @@ export interface Fetcher {
 }
 
 const DEFAULTS = {
-  userAgent: 'optifeed-visibility',
+  userAgent: 'optifeed-radar',
   timeoutMs: 10_000,
   maxBytes: 2_000_000,
   maxRedirects: 5,

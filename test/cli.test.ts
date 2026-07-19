@@ -13,7 +13,7 @@ describe('cli', () => {
 
   it('builds a named, versioned program', () => {
     const program = buildProgram();
-    expect(program.name()).toBe('optifeed-visibility');
+    expect(program.name()).toBe('optifeed-radar');
     expect(program.version()).toBe(pkg.version);
   });
 

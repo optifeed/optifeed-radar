@@ -17,7 +17,7 @@ import type { ToolContext } from './deps.js';
 /** Build a configured (but not yet connected) MCP server. */
 export function createServer(ctx: ToolContext): Server {
   const server = new Server(
-    { name: 'optifeed-visibility', version: '0.1.0' },
+    { name: 'optifeed-radar', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 

@@ -1,4 +1,4 @@
-# CLAUDE.md - Optifeed Visibility
+# CLAUDE.md - Optifeed Radar
 
 Open-source AI visibility checker: CLI + MCP server that asks real AI engines
 (OpenAI, Gemini, Perplexity, Claude) real buyer questions and scores whether a

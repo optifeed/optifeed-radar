@@ -52,7 +52,7 @@ function registerAudit(program: Command, rt: Runtime): void {
 export function buildProgram(rt: Runtime = defaultRuntime()): Command {
   const program = new Command();
   program
-    .name('optifeed-visibility')
+    .name('optifeed-radar')
     .description(
       'Open-source AI visibility checker. Is your brand recommended by AI engines?',
     )
