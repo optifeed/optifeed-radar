@@ -26,7 +26,7 @@
 - **Skill location:** canonical skill at `skills/optifeed-radar/SKILL.md` (a directory the Claude Code plugin loader can bundle via `"skills": "./skills/"` and that ClawHub ingests as a standalone Agent Skill). No duplicate root `SKILL.md`. This refines the spec's "repo root" wording; noted in the module report.
 - **Pre-release honest install framing:** the clone+build path leads (present-true); `npx`/npm invocation is documented but marked pending until M17 publishes.
 - **Badges:** only the static MIT badge ships now (no repo slug needed). Build/stars/npm badges are listed in an HTML comment as "add at launch" - shipping placeholder `OWNER/REPO` slugs would render broken images, which is not honest.
-- **Copy-lint** is a pure helper (`test/copy/messaging-rules.ts`) with red/green unit tests over known-bad inputs, plus an integration pass over the real surface files, plus a `JSON.parse` pass over every README ```` ```json ```` block. Uses `String.includes`, never regex (known regex-exec hook conflict).
+- **Copy-lint** is a pure helper (`test/copy/messaging-rules.ts`) with red/green unit tests over known-bad inputs, plus an integration pass over the real surface files, plus a `JSON.parse` pass over every README ` ```json ` block. Uses `String.includes`, never regex (known regex-exec hook conflict).
 
 ## Verified facts the tasks depend on (quote-exact)
 
@@ -39,6 +39,7 @@
 ## File structure (created / modified)
 
 **Created**
+
 - `skills/optifeed-radar/SKILL.md` - Agent Skill card (ClawHub + Claude Code plugin).
 - `.claude-plugin/plugin.json` - Claude Code plugin manifest (wires the stdio MCP server + bundles the skill).
 - `ai-context/claude-project.md` - Claude Projects custom instructions.
@@ -50,6 +51,7 @@
 - `test/copy/surfaces.test.ts` - integration: run the helper over the real surface files + parse README json blocks.
 
 **Modified**
+
 - `README.md` - full rewrite.
 - `package.json` - `name` + `bin` key.
 - `src/cli/index.ts` - `.name(...)`.
@@ -65,6 +67,7 @@
 ### Task 1: Rename identity strings to `optifeed-radar`
 
 **Files:**
+
 - Modify: `test/cli.test.ts:16`
 - Modify: `src/cli/index.ts:55`
 - Modify: `package.json:2,23`
@@ -77,7 +80,7 @@
 In `test/cli.test.ts`, change line 16:
 
 ```ts
-    expect(program.name()).toBe('optifeed-radar');
+expect(program.name()).toBe('optifeed-radar');
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -135,7 +138,7 @@ In `src/core/fetcher/fetcher.test.ts`, change lines 105 and 112:
 ```
 
 ```ts
-    expect(seen[0]?.['user-agent']).toBe('optifeed-radar/9.9.9');
+expect(seen[0]?.['user-agent']).toBe('optifeed-radar/9.9.9');
 ```
 
 - [ ] **Step 8: Verify no stray old name remains in code**
@@ -175,6 +178,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 The docs module's real risk surface is copy correctness, so the failure-mode coverage is a messaging lint. Build the pure helper first with unit tests over known-bad inputs (this is the red/green TDD core), then Task 8 runs it over the real files.
 
 **Files:**
+
 - Create: `test/copy/messaging-rules.ts`
 - Test: `test/copy/messaging-rules.test.ts`
 
@@ -182,7 +186,7 @@ The docs module's real risk surface is copy correctness, so the failure-mode cov
 
 Create `test/copy/messaging-rules.test.ts`:
 
-```ts
+````ts
 import { describe, expect, it } from 'vitest';
 import {
   extractJsonBlocks,
@@ -260,7 +264,7 @@ describe('extractJsonBlocks', () => {
     expect(JSON.parse(blocks[0])).toEqual({ a: 1 });
   });
 });
-```
+````
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -271,7 +275,7 @@ Expected: FAIL - `Cannot find module './messaging-rules.js'` (helper not written
 
 Create `test/copy/messaging-rules.ts`:
 
-```ts
+````ts
 import { FOOTER_CTA } from '../../src/core/output/index.js';
 
 export interface MessagingRuleOptions {
@@ -314,7 +318,9 @@ export function findMessagingViolations(
 
   for (const rule of BANNED) {
     const hay = rule.caseInsensitive ? lower : text;
-    const needle = rule.caseInsensitive ? rule.needle.toLowerCase() : rule.needle;
+    const needle = rule.caseInsensitive
+      ? rule.needle.toLowerCase()
+      : rule.needle;
     if (hay.includes(needle)) violations.push(`banned: ${rule.label}`);
   }
 
@@ -346,7 +352,7 @@ export function extractJsonBlocks(markdown: string): string[] {
   }
   return blocks;
 }
-```
+````
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -372,13 +378,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task 3: SKILL.md (Agent Skill card)
 
 **Files:**
+
 - Create: `skills/optifeed-radar/SKILL.md`
 
 - [ ] **Step 1: Write the skill card**
 
 Create `skills/optifeed-radar/SKILL.md`:
 
-```markdown
+````markdown
 ---
 name: optifeed-radar
 description: Check whether AI engines (ChatGPT, Perplexity, Gemini, Claude) recommend a brand when buyers ask, and score its AI visibility. Use when someone asks "does AI recommend my brand", wants an AI visibility / GEO / AEO check, or wants to audit a site's AI-readiness. Runs locally with the user's own engine API keys. The zero-key audit is free; the check pipeline spends a few cents of the user's API credit per run.
@@ -433,6 +440,7 @@ npx tsx src/cli/index.ts audit example.com
 export OPENAI_API_KEY=...
 npx tsx src/cli/index.ts check example.com --quick --yes
 ```
+````
 
 ## Honesty and cost
 
@@ -446,7 +454,8 @@ prompt-pack size). SKU-level and product-feed checks are on the roadmap, not
 shipped.
 
 More at optifeed.com
-```
+
+````
 
 - [ ] **Step 2: Verify frontmatter and footer**
 
@@ -460,7 +469,7 @@ git add skills/optifeed-radar/SKILL.md
 git commit -m "M16: Optifeed Radar Agent Skill card (SKILL.md)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
-```
+````
 
 ---
 
@@ -471,6 +480,7 @@ a shebang in the built bin. It assumes the plugin has been built (`npm run
 build`) - honest for a pre-release, clone-installed plugin.
 
 **Files:**
+
 - Create: `.claude-plugin/plugin.json`
 
 - [ ] **Step 1: Write the manifest**
@@ -522,6 +532,7 @@ footer CTA and follow the copy rules (no em-dash, "AI agents", future-tense
 roadmap).
 
 **Files:**
+
 - Create: `ai-context/claude-project.md`
 - Create: `ai-context/chatgpt-custom-gpt.md`
 - Create: `ai-context/cursor.mdc`
@@ -655,9 +666,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task 6: README rewrite
 
-Full rewrite under the Optifeed Radar name, pre-release honest. Every ```` ```json ```` block must be valid JSON (Task 8 parses them). MCP config paths use a `/path/to/optifeed-radar` placeholder the user replaces.
+Full rewrite under the Optifeed Radar name, pre-release honest. Every ` ```json ` block must be valid JSON (Task 8 parses them). MCP config paths use a `/path/to/optifeed-radar` placeholder the user replaces.
 
 **Files:**
+
 - Modify: `README.md` (replace entire contents)
 
 - [ ] **Step 1: Replace `README.md` with the full rewrite**
@@ -789,18 +801,18 @@ At launch the published package will also run via npx (no clone needed):
 
 ## Tools and cost
 
-| Surface | Name | What it does | Cost |
-| --- | --- | --- | --- |
-| CLI | `audit` | Zero-key AI-readiness check (robots, llms.txt, schema, sitemap) | Free, no AI calls |
-| CLI | `check` | Full pipeline: buyer prompts, engines, AI Visibility Score | BYO keys |
-| CLI | `diff` | What changed between your last two runs | Free (reads a saved snapshot) |
-| CLI | `sources` | Domains the AI cited, and your share of voice | Free (reads a saved snapshot) |
-| CLI | `queries` | Show or export your buyer-prompt pack | Free |
-| CLI | `config` | Which engine keys are set, where state is stored | Free |
-| MCP | `check_visibility` | Run a visibility check for a domain | BYO keys |
-| MCP | `audit_store` | Run the zero-key readiness audit | Free |
-| MCP | `generate_buyer_queries` | Produce the buyer-prompt pack | Free |
-| MCP | `get_snapshot_diff` | Compare two saved runs | Free |
+| Surface | Name                     | What it does                                                    | Cost                          |
+| ------- | ------------------------ | --------------------------------------------------------------- | ----------------------------- |
+| CLI     | `audit`                  | Zero-key AI-readiness check (robots, llms.txt, schema, sitemap) | Free, no AI calls             |
+| CLI     | `check`                  | Full pipeline: buyer prompts, engines, AI Visibility Score      | BYO keys                      |
+| CLI     | `diff`                   | What changed between your last two runs                         | Free (reads a saved snapshot) |
+| CLI     | `sources`                | Domains the AI cited, and your share of voice                   | Free (reads a saved snapshot) |
+| CLI     | `queries`                | Show or export your buyer-prompt pack                           | Free                          |
+| CLI     | `config`                 | Which engine keys are set, where state is stored                | Free                          |
+| MCP     | `check_visibility`       | Run a visibility check for a domain                             | BYO keys                      |
+| MCP     | `audit_store`            | Run the zero-key readiness audit                                | Free                          |
+| MCP     | `generate_buyer_queries` | Produce the buyer-prompt pack                                   | Free                          |
+| MCP     | `get_snapshot_diff`      | Compare two saved runs                                          | Free                          |
 
 Cost transparency: `audit` queries no AI engines and costs nothing. `check`
 spends your own API credit - a `--quick` single-engine run costs roughly a few
@@ -915,6 +927,7 @@ Now that the real surfaces exist, run the Task 2 helper over them and parse
 every README json block. This is the module's completeness gate.
 
 **Files:**
+
 - Test: `test/copy/surfaces.test.ts`
 
 - [ ] **Step 1: Write the integration test**
@@ -934,7 +947,10 @@ const root = new URL('../../', import.meta.url);
 const read = (rel: string) => readFileSync(new URL(rel, root), 'utf8');
 
 const SURFACES: { file: string; opts: MessagingRuleOptions }[] = [
-  { file: 'README.md', opts: { enforceRoadmapGate: true, requireFooter: true } },
+  {
+    file: 'README.md',
+    opts: { enforceRoadmapGate: true, requireFooter: true },
+  },
   { file: 'skills/optifeed-radar/SKILL.md', opts: { requireFooter: true } },
   { file: 'ai-context/claude-project.md', opts: { requireFooter: true } },
   { file: 'ai-context/chatgpt-custom-gpt.md', opts: { requireFooter: true } },
@@ -989,6 +1005,7 @@ Finish the rename across the human docs, reconcile the plan-first rule, and
 prove the renamed MCP server still handshakes.
 
 **Files:**
+
 - Modify: `CLAUDE.md` (product-name references, minimal)
 - Modify: `TASKS.md` (M16 status)
 - Modify: `/Users/erdem/workspace/optifeed-radar-docs/dev-plan.md` (Global Decision package name)
@@ -1018,10 +1035,12 @@ is not accessible in the session, STOP and ask the user rather than guessing.
 - [ ] **Step 4: Rebuild and verify the MCP stdio handshake under the new name**
 
 Run:
+
 ```bash
 npm run build
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' | node dist/mcp/index.js
 ```
+
 Expected: a single JSON-RPC response whose `result.serverInfo.name` is
 `optifeed-radar`. (If the server needs a `notifications/initialized` follow-up
 or waits on stdin, Ctrl-C after the first response line is fine - we only need
@@ -1054,18 +1073,18 @@ git -C /Users/erdem/workspace/optifeed-radar-docs commit -m "dev-plan: package r
 ## Definition of done (verify all before declaring complete)
 
 - [ ] `npm run check` green (typecheck + lint + full vitest, including
-  `messaging-rules`, `surfaces`, and `cli` tests).
+      `messaging-rules`, `surfaces`, and `cli` tests).
 - [ ] `npm run format:check` clean; `npm run build` emits `dist/`.
 - [ ] `grep -rn "optifeed-visibility" src test package.json` returns nothing.
-- [ ] `.claude-plugin/plugin.json` and every README ```` ```json ```` block
-  parse as JSON.
+- [ ] `.claude-plugin/plugin.json` and every README ` ```json ` block
+      parse as JSON.
 - [ ] SKILL.md has valid `name` + `description` frontmatter; all surfaces end
-  with the `FOOTER_CTA`.
+      with the `FOOTER_CTA`.
 - [ ] MCP stdio handshake echoes `serverInfo.name = optifeed-radar`.
 - [ ] PR body ends with a `## Module report`: what shipped, the wider-than-spec
-  rename surface (MCP identity + User-Agent), the skill-at-`skills/` refinement,
-  and the M17 follow-ups (npm/npx present tense, launch badges, listing PRs,
-  version reconciliation `0.0.0` vs `0.1.0`).
+      rename surface (MCP identity + User-Agent), the skill-at-`skills/` refinement,
+      and the M17 follow-ups (npm/npx present tense, launch badges, listing PRs,
+      version reconciliation `0.0.0` vs `0.1.0`).
 
 ## Manual checklist (not machine-checked - judgment calls)
 
