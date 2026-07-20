@@ -661,6 +661,51 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   policy produces a bad outcome, re-run the policy against every candidate
   rather than patching the one that bit.
 
+- 2026-07-20: **high-effort workflow review of the two M17 engine-verification
+  commits** (`38b0e38..HEAD`), 32 agents (5 finder lenses + per-finding
+  adversarial verify). 15 verified findings (11 refuted), deduped to 8 distinct
+  defects, ALL fixed test-first (+13 tests, 418 -> 426). Honesty headliners:
+  (1) **`sources --json` silently dropped `partialEngines`** - that call site
+  hand-rolled its own honesty projection and enumerated three flags, so the JSON
+  and the TEXT rendering of the SAME snapshot disagreed about whether the run
+  was partial, and its test asserted only the flags it already carried (a false
+  green on the exact contract). Fixed by extracting `honestyFields(env)` in
+  `core/output`: honesty is now PROJECTED, never enumerated, so the next signal
+  is carried automatically. Share of voice is a cross-engine ratio, so a 1-of-8
+  engine skews it harder than a fully skipped one. (2) **Cost-capped truncation
+  produced no `partialEngines` entry and the error path reported a fabricated
+  `attempted`.** Adapters fan out concurrently against ONE global `costCapped`
+  flag, so engine A can answer 8/8 while engine B answers 1/8; gating the signal
+  on errors alone missed that, leaving only a run-level cap note that names no
+  engine. Worse, the reason blamed the first ERROR for prompts the COST CAP
+  refused to send. Now every cause that fired is named ("...; cost cap reached
+  (5 not sent)"). (3) **`citationUrl` fabricated publishers from dotted titles**:
+  `Node.js` -> `https://node.js`, which parses cleanly in `new URL()`, reaches
+  the sources table and is persisted - a source that does not exist. Now
+  TLD-validated against a not-a-TLD denylist (`.md`, `.sh`, `.rs`, `.io`, `.ai`
+  are REAL TLDs and still resolve); rejecting is cheap because the fallback is a
+  working redirect link. Correctness: (4) **`--judge <legacy-id>` mis-routed to
+  the wrong provider** - the judge ENGINE was reverse-looked-up by exact match
+  against `DEFAULT_JUDGE_MODELS` with a silent fallback to `availableEngines[0]`,
+  so the two ids this wave changed made `--judge gemini-2.5-flash` build an
+  OpenAI adapter posting a Gemini id to api.openai.com. `MODEL_PRICING`
+  deliberately keeps legacy ids so pinned runs still PRICE - routing had to keep
+  working too. New `engineForModel()` matches on the id's own prefix and errors
+  honestly on an unroutable id. (5) `priciestPricing()` ranked by summed
+  per-token rates and so ignored the new `perRequestUsd`, breaking its documented
+  never-under-estimate guarantee for short calls; now ranked by a reference-call
+  cost. (6) `computeCost` returned 0 when `usage` was absent, dropping a
+  per-request fee that was already incurred. Cleanups: the "cost-capped,
+  degraded, or missing engines" wording named three causes after a fourth
+  existed (now interpolated from a new `partialCauses()`), and the
+  `partialEngines` render test asserted bare `toContain('1')`/`toContain('8')` -
+  digits already present in the report, so the reviewer's mutation (deleting both
+  numbers from the note) left the suite green. Now asserts the phrase.
+  **Meta-lesson banked: fixing a hand-rolled projection is not enough - delete
+  the enumeration.** Four separate submissions found the same `--json` gap, and
+  the M8 review had already fixed this exact class once; a call site that LISTS
+  honesty fields will always miss the next one.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`

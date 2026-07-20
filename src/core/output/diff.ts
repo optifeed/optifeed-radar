@@ -67,7 +67,8 @@ export interface SnapshotDiff {
    */
   scoringChanged: boolean;
   /**
-   * True when either compared run was partial (cost-capped, degraded, or
+   * True when either compared run was partial (any signal counted by
+   * `isPartialRun`; see `partialCauses` for the causes that actually fired, or
    * skipped engines). The delta is then not a full-confidence change (rule #6).
    */
   partial: boolean;

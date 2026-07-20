@@ -140,9 +140,13 @@ describe('renderCheckText', () => {
       }),
       { color: false },
     );
+    // Assert the counts as a PHRASE. Bare `toContain('1')`/`toContain('8')`
+    // matched digits already present elsewhere in the report (the 61/100 score,
+    // per-engine scores, positions), so the test passed even when the note was
+    // mutated to drop both numbers - the exact dishonest output this test
+    // exists to prevent. A loose assertion is a false green (project lesson).
+    expect(out).toContain('answered 1 of 8 prompts');
     expect(out).toContain('gemini');
-    expect(out).toContain('1');
-    expect(out).toContain('8');
     expect(out.toLowerCase()).toContain('quota exceeded');
   });
 

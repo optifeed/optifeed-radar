@@ -42,6 +42,31 @@ export const DEFAULT_JUDGE_MODELS: Record<EngineId, string> = {
   perplexity: 'sonar',
 };
 
+/**
+ * Which provider serves a model id, including ids that are no longer a default.
+ *
+ * Callers used to reverse-look-up the engine by exact match against
+ * {@link DEFAULT_JUDGE_MODELS} and silently fall back to "the first available
+ * engine" on a miss. When a default changes, every id the tool previously told
+ * users to pin misses - so `--judge gemini-2.5-flash` built an OpenAI adapter
+ * and posted a Gemini model id to api.openai.com. Matching on the id's own
+ * prefix keeps legacy and future ids routing to the provider that owns them.
+ *
+ * Returns undefined when the id belongs to no known provider; callers must
+ * surface that as an honest error rather than guessing an engine.
+ */
+export function engineForModel(model: string): EngineId | undefined {
+  const id = model.toLowerCase();
+  if (id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-')) {
+    return 'openai';
+  }
+  if (id.startsWith('claude-')) return 'anthropic';
+  if (id.startsWith('gemini-') || id.startsWith('gemma-')) return 'gemini';
+  if (id.startsWith('sonar')) return 'perplexity';
+  // Last resort: an id that is a current default but does not match a prefix.
+  return ENGINE_ORDER.find((e) => DEFAULT_JUDGE_MODELS[e] === model);
+}
+
 /** The canonical set of engine ids, in a stable order. Single source of truth. */
 export const ENGINE_ORDER: EngineId[] = [
   'openai',

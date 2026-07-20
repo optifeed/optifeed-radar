@@ -212,11 +212,14 @@ export interface ScoreReport {
  */
 export interface PartialEngine {
   engine: EngineId;
-  /** Prompts this engine was asked. */
+  /**
+   * Prompts the run asked for - the denominator this engine's score is measured
+   * against. Some may never have been sent (the cost guard can refuse them).
+   */
   attempted: number;
   /** Prompts it actually answered. */
   answered: number;
-  /** Why the rest failed (first error). */
+  /** Every cause that fired: request errors and/or a cost cap, never guessed. */
   reason: string;
 }
 

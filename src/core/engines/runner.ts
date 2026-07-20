@@ -162,21 +162,36 @@ export async function askAll(
         };
       }
 
-      // PARTIAL failure: some answered, some errored. Previously `errors` was
-      // computed here and then discarded, so an engine that answered 1 of 8 was
-      // scored on that single sample and the run reported no honesty flag at all
-      // (found live 2026-07-20 against a rate-limited Gemini key). Surface it as
-      // its own signal - the engine was not skipped, but its score is thinner
-      // than the per-engine table alone suggests (rule #6, lesson #7).
-      if (errors.length > 0) {
+      // PARTIAL: this engine answered fewer prompts than the run asked. Two
+      // independent causes, and BOTH must be reported:
+      //   - calls that errored (e.g. a rate-limited key)
+      //   - calls the cost guard refused to send
+      // Gating on errors alone missed cap-truncated engines entirely: adapters
+      // fan out concurrently against one global `costCapped` flag, so engine A
+      // can answer 8/8 while engine B answers 1/8, and the only trace was a
+      // run-level cap note naming no engine and carrying no counts. Attributing
+      // cap-refused prompts to the first ERROR would also be a false statement
+      // about why the sample is thin, so the reason names each cause that
+      // actually fired (rule #6, lesson #7).
+      const capped = settled.filter((s) => s.kind === 'capped').length;
+      if (answersForAdapter.length < prompts.length) {
+        const reasons: string[] = [];
+        if (errors.length > 0) {
+          reasons.push(errors[0]?.error ?? 'some requests failed');
+        }
+        if (capped > 0) {
+          reasons.push(`cost cap reached (${capped} not sent)`);
+        }
         return {
           answers: answersForAdapter,
           skip: undefined,
           partial: {
             engine: adapter.id,
+            // Prompts the RUN asked for - the denominator the engine's score is
+            // measured against, not just the calls that left the process.
             attempted: prompts.length,
             answered: answersForAdapter.length,
-            reason: errors[0]?.error ?? 'some requests failed',
+            reason: reasons.join('; ') || 'some prompts were not answered',
           },
         };
       }

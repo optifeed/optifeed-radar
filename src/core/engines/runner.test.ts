@@ -154,4 +154,52 @@ describe('askAll', () => {
     const result = await askAll(['p1', 'p2'], [fakeAdapter('openai')]);
     expect(result.partialEngines).toEqual([]);
   });
+
+  // Adapters fan out concurrently while `costCapped` is a single global flag,
+  // so one engine can answer every prompt while another is truncated mid-way.
+  // Gating the partial signal on errors alone missed that entirely: the only
+  // trace was the run-level "cost cap reached" note, which names no engine and
+  // carries no counts - defeating the very reason PartialEngine holds numbers.
+  it('reports a cost-capped truncation as partial, naming the cap', async () => {
+    // Budget allows ~2 calls at $0.02; the rest are refused by the guard.
+    const guard = new CostGuard({ maxCostUsd: 0.05 });
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4', 'p5'],
+      [fakeAdapter('openai', { costUsd: 0.02 })],
+      { guard, concurrency: 1 },
+    );
+
+    expect(guard.costCapped).toBe(true);
+    expect(result.answers.length).toBeGreaterThan(0);
+    expect(result.answers.length).toBeLessThan(5);
+    expect(result.skippedEngines).toEqual([]);
+    expect(result.partialEngines).toHaveLength(1);
+    const p = result.partialEngines[0]!;
+    expect(p.engine).toBe('openai');
+    expect(p.answered).toBe(result.answers.length);
+    expect(p.attempted).toBe(5);
+    expect(p.reason.toLowerCase()).toContain('cost cap');
+  });
+
+  // Mixed causes must not be misattributed. Blaming the rate limiter for
+  // prompts the COST CAP refused to send is a false statement about why the
+  // sample is thin, which is what the reason string exists to explain.
+  it('names both causes when some calls errored and others were capped', async () => {
+    const guard = new CostGuard({ maxCostUsd: 0.05 });
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4', 'p5'],
+      [
+        fakeAdapter('gemini', {
+          costUsd: 0.02,
+          failOn: (prompt) => prompt === 'p1',
+        }),
+      ],
+      { guard, concurrency: 1 },
+    );
+
+    expect(result.partialEngines).toHaveLength(1);
+    const reason = result.partialEngines[0]!.reason.toLowerCase();
+    expect(reason).toContain('boom'); // the real error
+    expect(reason).toContain('cost cap'); // and the cap, not blamed on the error
+  });
 });

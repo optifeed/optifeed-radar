@@ -16,6 +16,7 @@ import {
 import { loadQueryPack, toYaml } from '../core/queries/index.js';
 import {
   diffEnvelopes,
+  honestyFields,
   listSnapshots,
   loadSnapshot,
   renderDiffJson,
@@ -83,6 +84,10 @@ function registerSources(program: Command, rt: Runtime): void {
       if (options.json) {
         // Carry the run's honesty flags through the JSON path too - a partial
         // run must never read as complete in any derived artifact (rule #6).
+        // Projected via the shared helper, never enumerated here: this call
+        // site listed three flags and silently dropped `partialEngines` when it
+        // was added, so the JSON disagreed with the text rendering of the very
+        // same snapshot.
         rt.out(
           `${JSON.stringify(
             {
@@ -90,11 +95,7 @@ function registerSources(program: Command, rt: Runtime): void {
               domain: env.domain,
               sources: env.sources,
               shareOfVoice: env.shareOfVoice,
-              ...(env.costCapped ? { costCapped: true } : {}),
-              ...(env.degraded ? { degraded: true } : {}),
-              ...(env.skippedEngines
-                ? { skippedEngines: env.skippedEngines }
-                : {}),
+              ...honestyFields(env),
             },
             null,
             2,

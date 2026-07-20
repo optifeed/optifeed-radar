@@ -589,6 +589,41 @@ describe('sources command', () => {
       { engine: 'gemini', reason: 'no key' },
     ]);
   });
+
+  // This path hand-rolled its own honesty allowlist, so `partialEngines` (the
+  // fourth signal) was dropped: `sources --json` emitted a payload with ZERO
+  // honesty keys for a run the text renderer described as partial. Two
+  // renderings of one snapshot disagreeing about whether the run was complete
+  // is the M8 lesson verbatim. Share of voice is a cross-engine RATIO, so an
+  // engine that answered 1 of 8 skews it harder than one skipped outright.
+  it('carries partialEngines under --json when it is the only honesty signal', async () => {
+    const rt = testRuntime();
+    await saveSnapshot(
+      snapEnvelope({
+        partialEngines: [
+          {
+            engine: 'gemini',
+            attempted: 8,
+            answered: 1,
+            reason: 'HTTP 429: quota exceeded',
+          },
+        ],
+      }),
+      DSTATE,
+      rt.fs,
+    );
+
+    await run(rt, ['sources', 'acme.example', '--json']);
+    const parsed = JSON.parse(rt.output.join(''));
+    expect(parsed.partialEngines).toEqual([
+      {
+        engine: 'gemini',
+        attempted: 8,
+        answered: 1,
+        reason: 'HTTP 429: quota exceeded',
+      },
+    ]);
+  });
 });
 
 describe('queries command', () => {

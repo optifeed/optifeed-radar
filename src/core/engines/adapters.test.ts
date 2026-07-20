@@ -403,6 +403,83 @@ describe('createAdapter', () => {
     expect(answer.citations?.join(' ')).not.toContain('vertexaisearch');
   });
 
+  // A dotted title is not automatically a hostname. `Node.js`, `Next.js` and
+  // `Vue.js` all satisfy "alnum labels separated by dots", so a naive check
+  // turned them into `https://node.js` - a FABRICATED source that then parses
+  // cleanly in `new URL()`, gets persisted to the snapshot, and is listed in
+  // the sources table as a publisher that does not exist (rule #6). Gemini
+  // grounds on developer docs constantly, so this is not exotic.
+  it('does not fabricate a URL from a framework-style dotted title', async () => {
+    const { fn } = fakePost({
+      candidates: [
+        {
+          content: { parts: [{ text: 'answer' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/NODE',
+                  title: 'Node.js',
+                },
+              },
+              {
+                web: {
+                  uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/NEXT',
+                  title: 'Next.js',
+                },
+              },
+            ],
+          },
+        },
+      ],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+    });
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q', { mode: 'grounded' });
+
+    expect(answer.citations).toEqual([
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/NODE',
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/NEXT',
+    ]);
+    expect(answer.citations?.join(' ')).not.toContain('node.js');
+  });
+
+  // Real hostnames whose TLD collides with nothing must still resolve, so the
+  // guard above cannot be a blanket "reject anything short".
+  it('still resolves real hostnames with short or unusual TLDs', async () => {
+    const { fn } = fakePost({
+      candidates: [
+        {
+          content: { parts: [{ text: 'a' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://redirect/1', title: 'feedon.ai' } },
+              { web: { uri: 'https://redirect/2', title: 'pricefy.io' } },
+              { web: { uri: 'https://redirect/3', title: 'Marpipe.COM' } },
+              { web: { uri: 'https://redirect/4', title: 'news.bbc.co.uk' } },
+            ],
+          },
+        },
+      ],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+    });
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q', { mode: 'grounded' });
+
+    expect(answer.citations).toEqual([
+      'https://feedon.ai',
+      'https://pricefy.io',
+      'https://marpipe.com',
+      'https://news.bbc.co.uk',
+    ]);
+  });
+
   // A grounding chunk whose title is a page title rather than a hostname must
   // keep its (working) redirect URL - inventing `https://Some Article Title`
   // would be worse than an opaque link.
@@ -482,6 +559,24 @@ describe('createAdapter', () => {
     expect(answer.citations?.[0]).toMatch(/^https?:\/\//);
     expect(answer.tokens).toEqual({ input: 20, output: 816 });
     expect(answer.model).toBe('sonar');
+  });
+
+  // A per-request fee is owed for the CALL, not for the tokens. If the usage
+  // block drifts or is absent on an otherwise-successful response, charging $0
+  // under-reports real spend (rule #5) - the fee was already incurred.
+  it('still charges the Perplexity search fee when usage is absent', async () => {
+    const { fn } = fakePost({
+      choices: [{ message: { content: 'an answer with no usage block' } }],
+      model: 'sonar',
+    });
+    const answer = await createAdapter(perplexitySpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q');
+
+    expect(answer.tokens).toBeUndefined();
+    expect(answer.costUsd).toBeCloseTo(0.005, 6);
   });
 
   // The dead `gemini-2.5-flash` id was hardcoded in TWO places - the provider

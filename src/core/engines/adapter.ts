@@ -69,9 +69,12 @@ function computeCost(
   model: string,
   usage: { input: number; output: number } | undefined,
 ): number {
-  if (!usage) return 0;
   const pricing = MODEL_PRICING.models[model];
   if (!pricing) return 0;
+  // A flat per-request fee is owed even when token usage did not parse: a 2xx
+  // whose `usage` block drifted still cost the provider's per-search charge, so
+  // returning 0 would under-report real spend (rule #5).
+  if (!usage) return pricing.perRequestUsd ?? 0;
   return costOfCall(pricing, usage.input, usage.output);
 }
 

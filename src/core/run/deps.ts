@@ -10,11 +10,7 @@
  * MCP progress notifications). The caller attaches those.
  */
 import { CostGuard } from '../costs.js';
-import {
-  DEFAULT_JUDGE_MODELS,
-  ENGINE_ORDER,
-  resolveJudgeModel,
-} from '../config.js';
+import { ENGINE_ORDER, engineForModel, resolveJudgeModel } from '../config.js';
 import { createEngineAdapters, createJudgeClient } from '../engines/index.js';
 import { nodeProfileFs } from '../discovery/index.js';
 import { nodeQueryFs } from '../queries/index.js';
@@ -61,9 +57,17 @@ export async function buildCheckDeps(
     availableEngines: input.availableEngines,
     savedJudgeModel: input.judgeModel,
   });
-  const judgeEngine =
-    ENGINE_ORDER.find((e) => DEFAULT_JUDGE_MODELS[e] === judgeRes.model) ??
-    input.availableEngines[0]!;
+  // Route by the model id's own provider, never by "first available engine":
+  // that fallback silently built an adapter for the WRONG provider whenever a
+  // judge default changed, and then every judge call 400s with a cross-provider
+  // error that tells the user nothing.
+  const judgeEngine = engineForModel(judgeRes.model);
+  if (!judgeEngine) {
+    throw new Error(
+      `Cannot tell which provider serves judge model "${judgeRes.model}". ` +
+        `Pass a model from a supported provider with --judge.`,
+    );
+  }
   // Build ONLY the judge engine's adapter (with its resolved model), not all
   // four again. The ask `adapters` above keep their default models; the judge
   // may use a different (cheaper) model, so it needs its own instance.

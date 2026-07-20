@@ -203,13 +203,26 @@ export function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-/** The most expensive pricing in the table - a conservative unknown-model default. */
+/**
+ * The most expensive pricing in the table - a conservative unknown-model
+ * default, so an unpriced model never under-estimates the budget.
+ *
+ * Ranked by the cost of a REPRESENTATIVE CALL, not by summed per-token rates:
+ * a flat `perRequestUsd` (Perplexity's per-search fee) is invisible to a rate
+ * sum but dominates short calls. The judge asks for ~60 output tokens, well
+ * inside the window where the fee outweighs the rates, so rate-only ranking
+ * returned a row that was not actually the priciest and broke the
+ * never-under-estimate guarantee this function exists to provide (rule #5).
+ */
 function priciestPricing(): ModelPricing {
+  const referenceCost = (p: ModelPricing): number =>
+    costOfCall(
+      p,
+      ESTIMATE_ASSUMPTIONS.judgeInputTokens,
+      ESTIMATE_ASSUMPTIONS.judgeOutputTokens,
+    );
   return Object.values(MODEL_PRICING.models).reduce((max, p) =>
-    p.inputPerMTokens + p.outputPerMTokens >
-    max.inputPerMTokens + max.outputPerMTokens
-      ? p
-      : max,
+    referenceCost(p) > referenceCost(max) ? p : max,
   );
 }
 

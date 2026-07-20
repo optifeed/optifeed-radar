@@ -68,7 +68,11 @@ export function renderDiffText(
   }
   if (diff.partial) {
     caveats.push(
-      'At least one run was partial (cost-capped, degraded, or skipped engines), so this change is not full-confidence.',
+      // Deliberately does NOT list causes: the renderer receives only the diff,
+      // not the two envelopes, so any list here would be guessed. The old
+      // wording named three causes and a fourth signal now exists. Run
+      // `sources <domain>` on either snapshot for the specific reason.
+      'At least one run was partial, so this change is not full-confidence.',
     );
   }
   lines.push(...renderNoteBlock('Notes', caveats, c));

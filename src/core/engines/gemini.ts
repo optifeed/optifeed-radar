@@ -10,6 +10,34 @@ const HOSTNAME =
   /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 /**
+ * Final labels that look like a TLD but are file/framework suffixes. `Node.js`,
+ * `Next.js` and `Vue.js` all satisfy HOSTNAME, so without this they became
+ * `https://node.js` - a fabricated publisher that parses fine in `new URL()`,
+ * reaches the sources table, and is persisted to the snapshot (rule #6). Gemini
+ * grounds on developer docs constantly, so these are common titles.
+ *
+ * Only entries that are NOT real TLDs are listed: `.md`, `.sh`, `.rs`, `.io`
+ * and `.ai` are all genuine TLDs and must keep resolving. Rejecting is cheap -
+ * the caller falls back to the working (if opaque) redirect URL - so when in
+ * doubt this list should grow rather than risk inventing a source.
+ */
+const NOT_A_TLD = new Set([
+  'js',
+  'ts',
+  'jsx',
+  'tsx',
+  'py',
+  'json',
+  'yaml',
+  'yml',
+  'html',
+  'htm',
+  'css',
+  'txt',
+  'xml',
+]);
+
+/**
  * The citation URL for one grounding chunk.
  *
  * Gemini returns `web.uri` as an opaque Google REDIRECT
@@ -26,8 +54,17 @@ function citationUrl(web: {
   uri?: string;
   title?: string;
 }): string | undefined {
-  const title = web.title?.trim();
-  if (title && HOSTNAME.test(title)) return `https://${title}`;
+  const title = web.title?.trim().toLowerCase();
+  if (title && HOSTNAME.test(title)) {
+    const labels = title.split('.');
+    const tld = labels[labels.length - 1] ?? '';
+    // A real TLD is alphabetic and at least two characters, and must not be a
+    // known file/framework suffix. Anything else keeps the redirect URL: an
+    // opaque link that works beats a publisher that does not exist.
+    const plausibleTld =
+      tld.length >= 2 && /^[a-z]+$/.test(tld) && !NOT_A_TLD.has(tld);
+    if (plausibleTld) return `https://${title}`;
+  }
   return web.uri;
 }
 
