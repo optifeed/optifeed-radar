@@ -65,12 +65,14 @@ describe('estimateRun', () => {
 });
 
 describe('CostGuard', () => {
+  // `authorize` reserves, so it must be closed out with `settle` - pairing it
+  // with bare `record` leaves the hold outstanding and shrinks the budget.
   it('authorizes spends under the cap and accumulates actuals', () => {
     const guard = new CostGuard({ maxCostUsd: 1 });
     expect(guard.authorize(0.4)).toBe(true);
-    guard.record(0.4);
+    guard.settle(0.4, 0.4);
     expect(guard.authorize(0.5)).toBe(true);
-    guard.record(0.5);
+    guard.settle(0.5, 0.5);
     expect(guard.spentUsd).toBeCloseTo(0.9, 10);
     expect(guard.costCapped).toBe(false);
   });
@@ -100,5 +102,52 @@ describe('CostGuard', () => {
     // Next setup spend would exceed the setup cap even though total is fine.
     expect(guard.authorize(0.02, 'setup')).toBe(false);
     expect(guard.costCapped).toBe(true);
+  });
+  // Found live 2026-07-20: `--max-cost 0.20` spent $0.3481, a 74% breach.
+  // `authorize` only COMPARED against recorded spend, and recording happens
+  // after a call returns - so with concurrent calls in flight, every one of
+  // them was authorized against a spend figure that excluded all the others.
+  // Authorizing must therefore RESERVE the projected cost (hard rule #5:
+  // respect --max-cost).
+  it('reserves authorized spend so concurrent calls cannot double-spend headroom', () => {
+    const guard = new CostGuard({ maxCostUsd: 0.1 });
+    // Three calls authorized before any has completed. 3 x 0.04 = 0.12 > 0.10.
+    expect(guard.authorize(0.04)).toBe(true);
+    expect(guard.authorize(0.04)).toBe(true);
+    expect(guard.authorize(0.04)).toBe(false);
+    expect(guard.costCapped).toBe(true);
+  });
+
+  // A reservation is a hold, not a charge: settling replaces it with the real
+  // cost. If the actual comes in UNDER the estimate, that headroom must return
+  // to the budget or a long run would strangle itself.
+  it('settles a reservation with the actual cost and frees the difference', () => {
+    const guard = new CostGuard({ maxCostUsd: 0.1 });
+    expect(guard.authorize(0.04)).toBe(true);
+    guard.settle(0.04, 0.01); // reserved 4c, really cost 1c
+    expect(guard.spentUsd).toBeCloseTo(0.01, 10);
+    // 9c of headroom is genuinely free again.
+    expect(guard.authorize(0.08)).toBe(true);
+  });
+
+  // A call that throws never records a cost. Without an explicit release the
+  // reservation leaks and permanently shrinks the budget, so a run with a few
+  // failures would cap out early for no reason.
+  it('releases a reservation when the call failed and cost nothing', () => {
+    const guard = new CostGuard({ maxCostUsd: 0.1 });
+    expect(guard.authorize(0.09)).toBe(true);
+    guard.settle(0.09, 0); // request failed
+    expect(guard.spentUsd).toBe(0);
+    expect(guard.authorize(0.09)).toBe(true);
+  });
+
+  // Over-spend must still be counted honestly: if the actual exceeds what was
+  // reserved (a thinking model emitting far more tokens than assumed), the
+  // guard books the real figure, not the estimate.
+  it('books an actual that overruns its reservation', () => {
+    const guard = new CostGuard({ maxCostUsd: 1 });
+    expect(guard.authorize(0.01)).toBe(true);
+    guard.settle(0.01, 0.05);
+    expect(guard.spentUsd).toBeCloseTo(0.05, 10);
   });
 });

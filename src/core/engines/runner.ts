@@ -101,29 +101,51 @@ export async function askAll(
 
   const perAdapter = await Promise.all(
     available.map(async (adapter) => {
-      const settled = await mapLimit<string, Settled>(
-        prompts,
-        concurrency,
-        async (prompt) => {
+      // What this engine has ACTUALLY cost so far. The static per-call estimate
+      // assumes 500 output tokens; live, Gemini averaged 2584 (thinking tokens
+      // bill as output), so every authorization was ~5x too small and a whole
+      // concurrent wave could be admitted against headroom that could not pay
+      // for it. Once a call has completed we know better, so authorize against
+      // the observed cost (hard rule #5: respect --max-cost).
+      let observedTotal = 0;
+      let observedCount = 0;
+      const projectedCost = (): number => {
+        const observedAvg =
+          observedCount > 0 ? observedTotal / observedCount : 0;
+        return Math.max(estimateCall(adapter.model), observedAvg);
+      };
+
+      const askOne = async (prompt: string): Promise<Settled> => {
+        {
           const guard = opts.guard;
-          // Enforce the hard cost cap at the spend site: authorize an estimated
-          // per-call cost before asking; once it trips, `authorize` sets
-          // `costCapped` and we stop asking (partial run, never over-spend hard).
+          // Enforce the hard cost cap at the spend site: authorize (and thereby
+          // RESERVE) a projected per-call cost before asking; once it trips,
+          // `authorize` sets `costCapped` and we stop asking (partial run,
+          // never over-spend hard).
+          let reserved = 0;
           if (guard) {
             if (guard.costCapped) {
               opts.onAnswered?.();
               return { kind: 'capped' };
             }
-            if (!guard.authorize(estimateCall(adapter.model))) {
+            reserved = projectedCost();
+            if (!guard.authorize(reserved)) {
               opts.onAnswered?.();
               return { kind: 'capped' };
             }
           }
           try {
             const answer = await adapter.ask(prompt, { mode: opts.mode });
-            guard?.record(answer.costUsd);
+            // Settle, never record: settling releases the reservation this call
+            // is holding and books the real figure in its place.
+            guard?.settle(reserved, answer.costUsd);
+            observedTotal += answer.costUsd;
+            observedCount += 1;
             return { kind: 'ok', answer };
           } catch (err) {
+            // A failed call cost nothing; free its hold so a few errors do not
+            // strangle the remaining budget.
+            guard?.settle(reserved, 0);
             return {
               kind: 'error',
               error: err instanceof Error ? err.message : String(err),
@@ -133,7 +155,24 @@ export async function askAll(
             // every call ticks exactly once.
             opts.onAnswered?.();
           }
-        },
+        }
+      };
+
+      // Probe with ONE call before fanning out, but only when a guard is
+      // enforcing a budget. The first wave has no observed cost to authorize
+      // against, so `concurrency` calls would all reserve the stale static
+      // estimate at once - live, that alone kept a 74% cap breach at 28%. One
+      // sequential call buys a real measurement for the price of a single round
+      // trip, and every later authorization is then accurate. With no guard
+      // there is nothing to protect, so the full fan-out runs unchanged.
+      const settled: Settled[] = [];
+      let remaining = prompts;
+      if (opts.guard && prompts.length > 1) {
+        settled.push(await askOne(prompts[0]!));
+        remaining = prompts.slice(1);
+      }
+      settled.push(
+        ...(await mapLimit<string, Settled>(remaining, concurrency, askOne)),
       );
 
       const answersForAdapter = settled

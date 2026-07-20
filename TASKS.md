@@ -706,6 +706,39 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   the M8 review had already fixed this exact class once; a call site that LISTS
   honesty fields will always miss the next one.
 
+- 2026-07-20: **`--max-cost` was not actually enforced - found by live testing,
+  fixed, and re-verified live.** With Gemini billing enabled, a deliberate
+  low-cap run (`--max-cost 0.20`) spent **$0.3481, a 74% breach** of a control
+  the product's whole "BYO keys, you control spend" premise rests on (hard rule
+  #5). Two compounding causes, both measured: (1) the static per-call estimate
+  assumes 500 output tokens, but Gemini averaged **2584** because thinking
+  tokens bill as output - so authorizations were **4.9x too small** (OpenAI 1.1x
+  and Perplexity 1.0x were fine). Ironically the previous commit's fix to COUNT
+  thinking tokens is what made the recorded spend accurate enough to expose the
+  stale ESTIMATE. (2) `authorize()` compared against RECORDED spend only, and
+  recording happens after a call returns, so every concurrently in-flight call
+  was authorized against a total that excluded all the others - with 4
+  concurrent x 3 engines, a dozen calls each claimed the same headroom.
+  Fixed in three layers, each verified live: **reserve-and-settle** in
+  `CostGuard` (authorize now holds the projected cost; `settle(reserved, actual)`
+  replaces the hold with the real figure, and a failed call settles at 0 so the
+  hold cannot leak) took it to $0.2562 (+28%); **adaptive authorization** in the
+  runner (once an engine has completed a call, later calls are authorized
+  against its OBSERVED cost, not the assumption) fixed later waves; and a
+  **single probe call before fanning out** (only when a guard is enforcing a
+  budget) removed the remaining first-wave blind spot, since a fresh engine has
+  nothing to adapt to yet. Final live run: **$0.1787 against a $0.20 cap, 11%
+  under**, with all three engines honestly reported as partial with counts and
+  cause. Migrated all four spender call sites (discovery, query-gen, scoring
+  judge, runner) from `record` to `settle`; `record` remains for unreserved
+  spend and its docstring warns against pairing it with `authorize`. +9 tests
+  (426 -> 433). **Lessons: (a) a cap that is only CHECKED is not enforced -
+  concurrent spenders need a reservation; (b) fixing cost RECORDING can expose a
+  stale cost ESTIMATE, because the two were wrong in compensating directions;
+  (c) the adversarial verifier partially refuted a theoretical version of this
+  finding during the code review - reading the code could not settle an
+  empirical question, and only a live run with a deliberately low cap could.**
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`

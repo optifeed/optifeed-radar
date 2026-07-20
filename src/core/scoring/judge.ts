@@ -115,9 +115,11 @@ export async function refineAmbiguous(
     let verdict: Verdict;
     try {
       const res = await judge.complete(prompt, { maxTokens });
-      guard.record(res.costUsd, 'main');
+      // settle, not record: `authorize` reserved `projected` (see CostGuard).
+      guard.settle(projected, res.costUsd, 'main');
       verdict = parseVerdict(res.text);
     } catch {
+      guard.settle(projected, 0, 'main'); // failed call cost nothing
       // A judge error leaves this result as pass 1 decided it.
       continue;
     }
