@@ -68,4 +68,41 @@ describe('buildCheckDeps', () => {
       }),
     ).rejects.toThrow(/at least one/i);
   });
+
+  // The judge ENGINE was reverse-looked-up by exact match against
+  // DEFAULT_JUDGE_MODELS, with a silent fallback to availableEngines[0]. Two of
+  // those four values changed on 2026-07-20, so ids the tool itself told users
+  // to pin ("defaulting to the cheapest available (gemini-2.5-flash). Set one
+  // with --judge") stopped matching and built an OPENAI adapter that posts
+  // `model: "gemini-2.5-flash"` to api.openai.com - every judge call 400s with
+  // a confusing cross-provider error. MODEL_PRICING deliberately keeps the
+  // legacy ids so pinned runs still PRICE, which is exactly why routing must
+  // keep working too.
+  it('routes a pinned legacy judge model to its real provider', async () => {
+    const spy = vi.spyOn(registry, 'createEngineAdapters');
+    await buildCheckDeps({
+      env: { OPENAI_API_KEY: 'sk-test', GOOGLE_API_KEY: 'g-test' },
+      fetcher: createFetcher(),
+      availableEngines: ['openai', 'gemini'] as EngineId[],
+      judgeModel: 'gemini-2.5-flash',
+    });
+
+    const judgeBuild = spy.mock.calls
+      .map(([opts]) => opts)
+      .find((opts) => opts.only?.length === 1);
+    expect(judgeBuild?.only).toEqual(['gemini']);
+    expect(judgeBuild?.models).toEqual({ gemini: 'gemini-2.5-flash' });
+    spy.mockRestore();
+  });
+
+  it('errors honestly on a judge model it cannot route to a provider', async () => {
+    await expect(
+      buildCheckDeps({
+        env: OPENAI_ENV,
+        fetcher: createFetcher(),
+        availableEngines: ['openai'] as EngineId[],
+        judgeModel: 'llama-4-70b',
+      }),
+    ).rejects.toThrow(/llama-4-70b/);
+  });
 });

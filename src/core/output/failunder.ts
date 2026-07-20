@@ -2,12 +2,17 @@
  * The `--fail-under <n>` CI gate (M8): a pure predicate turning a run's
  * headline score into an exit code.
  *
- * Honest: a cost-capped, degraded, or engine-skipping run produces a partial
+ * Honest: any run flagged partial by `isPartialRun` (cost cap, degraded profile,
+ * skipped engines, or an engine that answered only some prompts) produces a partial
  * score, so the result is flagged {@link FailUnderResult.partial} and says so -
  * the caller (M11 CLI) decides how loudly to surface it, but the number is
  * never presented as a full-confidence measurement.
  */
-import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
+import {
+  isPartialRun,
+  partialCauses,
+  type VisibilityEnvelope,
+} from './envelope.js';
 
 /** Outcome of a `--fail-under` check. */
 export interface FailUnderResult {
@@ -15,7 +20,7 @@ export interface FailUnderResult {
   passed: boolean;
   /** Process exit code: 0 pass, 1 fail (CI convention). */
   exitCode: number;
-  /** The run was partial (cost-capped, degraded, or skipped engines); the score is an incomplete sample. */
+  /** The run was partial (see `partialCauses`); the score is an incomplete sample. */
   partial: boolean;
   /** Human-readable one-liner explaining the outcome. */
   reason: string;
@@ -29,8 +34,11 @@ export function failUnder(
   threshold?: number,
 ): FailUnderResult {
   const partial = isPartialRun(envelope);
+  // Name the causes that ACTUALLY fired. The old wording hardcoded three, so a
+  // run partial only because an engine answered some prompts was explained by
+  // three things that did not happen (rule #6: no invented attribution).
   const partialNote = partial
-    ? ' Note: this run was partial (cost-capped, degraded, or missing engines), so the score is an incomplete sample.'
+    ? ` Note: this run was partial (${partialCauses(envelope).join(', ')}), so the score is an incomplete sample.`
     : '';
 
   // Nothing was measured. Never pass a gate on a run that produced no score:

@@ -1,0 +1,57 @@
+{
+  "choices": [
+    {
+      "delta": {
+        "content": "",
+        "role": "assistant"
+      },
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "For 2026, the **best acoustic pianos** to buy are led by **Yamaha** and **Kawai** for most buyers due to their consistency and resale value, while **Steinway & Sons**, **Bösendorfer**, and **Bechstein** dominate the luxury tier for professional performers [4][9].\n\n### Top Recommended Brands & Specific Models\n\n| Category | Brand | Recommended Model | Type | Price Range (USD) | Best For |\n| :--- | :\n[trimmed for fixture review]",
+        "role": "assistant"
+      }
+    }
+  ],
+  "citations": [
+    "https://fararu.com/fa/news/950893/%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%AE%D8%B1%DB%8C%D8%AF-%D8%A8%D9%87%D8%AA%D8%B1%DB%8C%D9%86-%D9%BE%DB%8C%D8%A7%D9%86%D9%88-%D8%A2%DA%A9%D9%88%D8%B3%D8%AA%DB%8C%DA%A9-2026-15-%D8%A8%D8%B1%D9%86%D8%AF-%D8%A8%D8%B1%D8%AA%D8%B1-%D8%AC%D9%87%D8%A7%D9%86",
+    "https://www.musicradar.com/news/the-best-pianos-for-home-and-stage",
+    "https://www.independent.co.uk/extras/indybest/house-garden/best-acoustic-pianos-2147887.html"
+  ],
+  "created": 1784534267,
+  "id": "9b7bb8be-2f5d-4a16-9641-ce7820c6ce97",
+  "model": "sonar",
+  "object": "chat.completion",
+  "search_results": [
+    {
+      "date": "2026-02-21",
+      "last_updated": "2026-04-12",
+      "place_metadata": null,
+      "snippet": "|**برند**|**کشور سازنده**|**رده کیفی**|**سطح قیمت**|\n|--|--|--|--|\n|**Yamaha**|**ژاپن**|**عالی**|**متوسط تا بالا**|\n|**Kawai**|**ژاپن**|**عالی**|**متوسط تا بالا**|\n|**Steinway & Sons**|**آمریکا/آلمان**|**لوکس**|**بسیار بالا**|\n|**Bösendorfer**|**اتریش**|**لوکس**|**بسیار بالا**|\n|**C.\nBechstein**|**آ...",
+      "source": "web",
+      "title": "راهنمای خرید بهترین پیانو آکوستیک 2026 + 15 برند برتر جهان - فرارو",
+      "url": "https://fararu.com/fa/news/950893/%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%AE%D8%B1%DB%8C%D8%AF-%D8%A8%D9%87%D8%AA%D8%B1%DB%8C%D9%86-%D9%BE%DB%8C%D8%A7%D9%86%D9%88-%D8%A2%DA%A9%D9%88%D8%B3%D8%AA%DB%8C%DA%A9-2026-15-%D8%A8%D8%B1%D9%86%D8%AF-%D8%A8%D8%B1%D8%AA%D8%B1-%D8%AC%D9%87%D8%A7%D9%86"
+    },
+    {
+      "date": "2026-03-04",
+      "last_updated": "2026-07-14",
+      "place_metadata": null,
+      "snippet": "The Yamaha b1 comes in under £3,000 - depending on the finish option - and might just be the best piano if you’re looking for a reliable, well-built acoustic upright that you won't have to re-mortgage the house to purchase.",
+      "source": "web",
+      "title": "Best pianos 2026: Our pick of acoustic and digital options ...",
+      "url": "https://www.musicradar.com/news/the-best-pianos-for-home-and-stage"
+    }
+  ],
+  "usage": {
+    "completion_tokens": 816,
+    "cost": {
+      "input_tokens_cost": 2e-05,
+      "output_tokens_cost": 0.00082,
+      "request_cost": 0.005,
+      "total_cost": 0.00584
+    },
+    "prompt_tokens": 20,
+    "search_context_size": "low",
+    "total_tokens": 836
+  }
+}

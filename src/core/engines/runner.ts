@@ -2,8 +2,11 @@
  * Fan prompts across adapters, partial-failure tolerant (M6).
  *
  * One adapter's total failure never kills the run - it is moved to
- * `skippedEngines` with a reason. Per-provider concurrency is bounded; per-call
- * cost is recorded into an optional CostGuard.
+ * `skippedEngines` with a reason. An adapter that answers only SOME prompts is
+ * reported separately in `partialEngines` with its real counts, so a score
+ * resting on a thinner sample is never presented as full confidence (rule #6).
+ * Per-provider concurrency is bounded; per-call cost is recorded into an
+ * optional CostGuard.
  */
 import {
   type CostGuard,
@@ -11,7 +14,7 @@ import {
   MODEL_PRICING,
   costOfCall,
 } from '../costs.js';
-import type { EngineAnswer, EngineId } from '../types.js';
+import type { EngineAnswer, EngineId, PartialEngine } from '../types.js';
 import type { AskMode, EngineAdapter } from './adapter.js';
 
 export interface SkippedEngine {
@@ -22,6 +25,11 @@ export interface SkippedEngine {
 export interface AskAllResult {
   answers: EngineAnswer[];
   skippedEngines: SkippedEngine[];
+  /**
+   * Engines that answered some but not all prompts. Total failure lands in
+   * {@link AskAllResult.skippedEngines} instead - the two are separate signals.
+   */
+  partialEngines: PartialEngine[];
 }
 
 export interface AskAllOptions {
@@ -82,6 +90,7 @@ export async function askAll(
 ): Promise<AskAllResult> {
   const concurrency = opts.concurrency ?? 4;
   const skippedEngines: SkippedEngine[] = [];
+  const partialEngines: PartialEngine[] = [];
   const answers: EngineAnswer[] = [];
 
   const available: EngineAdapter[] = [];
@@ -149,16 +158,57 @@ export async function askAll(
             engine: adapter.id,
             reason: errors[0]?.error ?? 'all requests failed',
           },
+          partial: undefined,
         };
       }
-      return { answers: answersForAdapter, skip: undefined };
+
+      // PARTIAL: this engine answered fewer prompts than the run asked. Two
+      // independent causes, and BOTH must be reported:
+      //   - calls that errored (e.g. a rate-limited key)
+      //   - calls the cost guard refused to send
+      // Gating on errors alone missed cap-truncated engines entirely: adapters
+      // fan out concurrently against one global `costCapped` flag, so engine A
+      // can answer 8/8 while engine B answers 1/8, and the only trace was a
+      // run-level cap note naming no engine and carrying no counts. Attributing
+      // cap-refused prompts to the first ERROR would also be a false statement
+      // about why the sample is thin, so the reason names each cause that
+      // actually fired (rule #6, lesson #7).
+      const capped = settled.filter((s) => s.kind === 'capped').length;
+      if (answersForAdapter.length < prompts.length) {
+        const reasons: string[] = [];
+        if (errors.length > 0) {
+          reasons.push(errors[0]?.error ?? 'some requests failed');
+        }
+        if (capped > 0) {
+          reasons.push(`cost cap reached (${capped} not sent)`);
+        }
+        return {
+          answers: answersForAdapter,
+          skip: undefined,
+          partial: {
+            engine: adapter.id,
+            // Prompts the RUN asked for - the denominator the engine's score is
+            // measured against, not just the calls that left the process.
+            attempted: prompts.length,
+            answered: answersForAdapter.length,
+            reason: reasons.join('; ') || 'some prompts were not answered',
+          },
+        };
+      }
+
+      return {
+        answers: answersForAdapter,
+        skip: undefined,
+        partial: undefined,
+      };
     }),
   );
 
   for (const result of perAdapter) {
     if (result.skip) skippedEngines.push(result.skip);
+    if (result.partial) partialEngines.push(result.partial);
     answers.push(...result.answers);
   }
 
-  return { answers, skippedEngines };
+  return { answers, skippedEngines, partialEngines };
 }

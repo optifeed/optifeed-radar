@@ -29,10 +29,43 @@ export const ENGINE_KEY_ENV: Record<EngineId, string> = {
  */
 export const DEFAULT_JUDGE_MODELS: Record<EngineId, string> = {
   openai: 'gpt-5.4',
-  anthropic: 'claude-haiku-4-5',
-  gemini: 'gemini-2.5-flash',
+  // Was `claude-haiku-4-5`. The rule above says the judge is NOT the cheapest -
+  // it does factual RECALL and cheap models fabricate - but the anthropic entry
+  // still named the cheap tier, so an added Anthropic key silently downgraded
+  // the judge (the risk logged at M11). Sonnet 5 ($3/$15) also sits just above
+  // gpt-5.4 ($2.50/$15), so the cheapest-available rule now keeps gpt-5.4 as
+  // judge on a mixed run instead of swapping to a cheap-tier model.
+  anthropic: 'claude-sonnet-5',
+  // `gemini-2.5-flash` 404s as of 2026-07-20 ("no longer available to new
+  // users"), which made a Gemini-judged run fail on every setup call.
+  gemini: 'gemini-flash-latest',
   perplexity: 'sonar',
 };
+
+/**
+ * Which provider serves a model id, including ids that are no longer a default.
+ *
+ * Callers used to reverse-look-up the engine by exact match against
+ * {@link DEFAULT_JUDGE_MODELS} and silently fall back to "the first available
+ * engine" on a miss. When a default changes, every id the tool previously told
+ * users to pin misses - so `--judge gemini-2.5-flash` built an OpenAI adapter
+ * and posted a Gemini model id to api.openai.com. Matching on the id's own
+ * prefix keeps legacy and future ids routing to the provider that owns them.
+ *
+ * Returns undefined when the id belongs to no known provider; callers must
+ * surface that as an honest error rather than guessing an engine.
+ */
+export function engineForModel(model: string): EngineId | undefined {
+  const id = model.toLowerCase();
+  if (id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-')) {
+    return 'openai';
+  }
+  if (id.startsWith('claude-')) return 'anthropic';
+  if (id.startsWith('gemini-') || id.startsWith('gemma-')) return 'gemini';
+  if (id.startsWith('sonar')) return 'perplexity';
+  // Last resort: an id that is a current default but does not match a prefix.
+  return ENGINE_ORDER.find((e) => DEFAULT_JUDGE_MODELS[e] === model);
+}
 
 /** The canonical set of engine ids, in a stable order. Single source of truth. */
 export const ENGINE_ORDER: EngineId[] = [

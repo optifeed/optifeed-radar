@@ -199,6 +199,45 @@ describe('buildEnvelope', () => {
     ]);
   });
 
+  // An engine that answered only some of its prompts is scored on a smaller
+  // sample than its neighbours. If that never reaches the envelope, every
+  // derived artifact built FROM the envelope relaunders it as complete (M8
+  // lesson: honesty must propagate to every derived artifact).
+  it('propagates partialEngines and omits it when the run is clean', () => {
+    const clean = buildEnvelope({
+      profile: PROFILE,
+      score: score(),
+      answers: answers(),
+      generatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(clean.partialEngines).toBeUndefined();
+
+    const partial = buildEnvelope({
+      profile: PROFILE,
+      score: score(),
+      answers: answers(),
+      honesty: {
+        partialEngines: [
+          {
+            engine: 'gemini',
+            attempted: 8,
+            answered: 1,
+            reason: 'HTTP 429: quota exceeded',
+          },
+        ],
+      },
+      generatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(partial.partialEngines).toEqual([
+      {
+        engine: 'gemini',
+        attempted: 8,
+        answered: 1,
+        reason: 'HTTP 429: quota exceeded',
+      },
+    ]);
+  });
+
   it('defaults findings to an empty array when no audit ran', () => {
     const env = buildEnvelope({
       profile: PROFILE,
@@ -222,6 +261,16 @@ describe('isPartialRun', () => {
       isPartialRun({
         score: 61,
         skippedEngines: [{ engine: 'gemini', reason: 'no key' }],
+      }),
+    ).toBe(true);
+    // The fourth signal. Found live: an engine answering 1 of 8 left the run
+    // with every other flag unset, so the shared predicate called it complete.
+    expect(
+      isPartialRun({
+        score: 61,
+        partialEngines: [
+          { engine: 'gemini', attempted: 8, answered: 1, reason: '429' },
+        ],
       }),
     ).toBe(true);
   });

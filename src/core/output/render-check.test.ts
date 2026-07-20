@@ -122,6 +122,34 @@ describe('renderCheckText', () => {
     expect(out.toLowerCase()).toContain('degraded');
   });
 
+  // A partially-answered engine is scored on fewer samples than its neighbours,
+  // which the per-engine table does not make obvious on its own. The note has to
+  // state the actual counts - "partial" without numbers is not honest about HOW
+  // partial (rule #6, no vague hedging in place of the real figure).
+  it('surfaces a partially-answered engine with its real sample counts', () => {
+    const out = renderCheckText(
+      envelope({
+        partialEngines: [
+          {
+            engine: 'gemini',
+            attempted: 8,
+            answered: 1,
+            reason: 'HTTP 429: quota exceeded',
+          },
+        ],
+      }),
+      { color: false },
+    );
+    // Assert the counts as a PHRASE. Bare `toContain('1')`/`toContain('8')`
+    // matched digits already present elsewhere in the report (the 61/100 score,
+    // per-engine scores, positions), so the test passed even when the note was
+    // mutated to drop both numbers - the exact dishonest output this test
+    // exists to prevent. A loose assertion is a false green (project lesson).
+    expect(out).toContain('answered 1 of 8 prompts');
+    expect(out).toContain('gemini');
+    expect(out.toLowerCase()).toContain('quota exceeded');
+  });
+
   it('reports reputation (branded prompts) apart from the score, honestly', () => {
     const out = renderCheckText(
       envelope({

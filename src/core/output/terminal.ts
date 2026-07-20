@@ -273,6 +273,15 @@ export function honestyNotes(env: VisibilityEnvelope): string[] {
   for (const s of env.skippedEngines ?? []) {
     notes.push(`Engine skipped: ${s.engine} (${s.reason}).`);
   }
+  // State the real counts. "Partially answered" alone would hide HOW partial,
+  // and the per-engine table shows a score without showing that it rests on a
+  // thinner sample than the engines beside it.
+  for (const p of env.partialEngines ?? []) {
+    notes.push(
+      `Engine answered ${p.answered} of ${p.attempted} prompts: ${p.engine} ` +
+        `(${p.reason}). Its score rests on a smaller sample than the others.`,
+    );
+  }
   if (env.degraded) {
     notes.push('Profile was degraded (supplied via flags, not discovered).');
   }

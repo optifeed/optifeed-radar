@@ -10,7 +10,12 @@ interface MessagesShape {
 export const anthropicSpec: ProviderSpec = {
   id: 'anthropic',
   kind: 'parametric',
-  defaultModel: 'claude-haiku-4-5',
+  // Same reasoning as the OpenAI `gpt-4o-mini` -> `-chat-latest` fix: measure the
+  // model buyers actually talk to. `claude-haiku-4-5` is the cheap tier nobody
+  // chats with, so an Anthropic column measured on it answered a question no
+  // buyer asked. Sonnet 5 is what Claude.ai serves most users (verified live
+  // 2026-07-20 against /v1/models).
+  defaultModel: 'claude-sonnet-5',
   endpoint: () => 'https://api.anthropic.com/v1/messages',
   buildRequest: ({ prompt, model, apiKey, maxTokens }) => ({
     headers: {
