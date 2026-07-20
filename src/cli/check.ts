@@ -102,7 +102,7 @@ export async function defaultCheckDeps(
 
   // Default to ALL engines so keyless ones reach askAll and are surfaced as
   // skippedEngines (honest 1-of-4 reporting); `--engines` narrows the set.
-  const { deps, judgeNotice } = await buildCheckDeps({
+  const { deps, judgeNotice, judgeQualityWarning } = await buildCheckDeps({
     env: rt.env,
     fetcher: rt.fetcher,
     engines: flags.engines as EngineId[] | undefined,
@@ -112,6 +112,8 @@ export async function defaultCheckDeps(
     now: () => rt.now(),
   });
   if (judgeNotice) rt.err(`${judgeNotice}\n`);
+  // Stderr, like the notice, so `--json` stdout stays a clean envelope.
+  if (judgeQualityWarning) rt.err(`${judgeQualityWarning}\n`);
 
   const confirm = async (ctx: ConfirmContext): Promise<boolean> => {
     const cost = ctx.estimate

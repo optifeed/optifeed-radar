@@ -73,42 +73,66 @@ describe('resolveJudgeModel fallback matrix', () => {
     });
   });
 
-  it('falls back to the cheapest available model non-interactively, with a notice', async () => {
-    // The ANTHROPIC downgrade this test used to pin is gone (2026-07-20): its
-    // judge default was `claude-haiku-4-5`, which undercut openai's `gpt-5.4`,
-    // so adding an Anthropic key swapped the judge to a cheap tier. Anthropic
-    // now names the tier real users get (`claude-sonnet-5`, $3/$15), which sits
-    // just ABOVE gpt-5.4 ($2.50/$15). Asserted against the concrete id, not
-    // DEFAULT_JUDGE_MODELS.*, so a future default change cannot quietly
-    // re-satisfy this test. NOTE: the underlying "cheapest wins" rule is NOT
-    // fixed - see the gemini case below.
+  // The judge is now ranked by MEASURED competitor recall, not by price. The
+  // price rule kept finding new ways to downgrade the judge (haiku, then
+  // gemini-flash) because the judge does factual RECALL, where cheap models
+  // fabricate. Measured 2026-07-20 on the doremusic Turkish-retailer task with
+  // web-verified ground truth, 3 trials each through the real discovery path:
+  //   gpt-5.4              4/4 verified rivals, stable across trials
+  //   gemini-flash-latest  4/4 verified rivals, stable across trials
+  //   claude-sonnet-5      0 verified, ZERO overlap between its own 3 trials
+  // Price turned out to be ANTI-correlated with quality: sonnet-5 is the most
+  // expensive candidate ($3/$15) and the only one that fabricated.
+  // Assertions name concrete ids, not DEFAULT_JUDGE_MODELS.*, so a future
+  // default change cannot quietly re-satisfy them.
+  it('prefers the measured judge over a cheaper one (gpt-5.4 beats gemini)', async () => {
+    // gemini-flash-latest ($1.50/$9.00) undercuts gpt-5.4 ($2.50/$15.00), so
+    // under the old price rule a Google key silently took the judge. Both
+    // measured equally on recall; gpt-5.4 leads on track record.
+    const res = await resolveJudgeModel({
+      interactive: false,
+      availableEngines: ['openai', 'gemini'],
+    });
+    expect(res.source).toBe('fallback');
+    expect(res.model).toBe('gpt-5.4');
+    expect(res.notice).toBeTruthy();
+    expect(res.notice).not.toMatch(/cheapest/i);
+  });
+
+  it('prefers a measured judge over a measured-poor one, ignoring price', async () => {
+    // The sharpest case: gemini is CHEAPER than sonnet-5 and also better, so
+    // price and quality agree here only by luck. What this pins is that the
+    // ranking is the reason - sonnet-5 must never win on any axis.
+    const res = await resolveJudgeModel({
+      interactive: false,
+      availableEngines: ['anthropic', 'gemini'],
+    });
+    expect(res.model).toBe('gemini-flash-latest');
+  });
+
+  it('keeps gpt-5.4 over anthropic', async () => {
     const res = await resolveJudgeModel({
       interactive: false,
       availableEngines: ['anthropic', 'openai'],
     });
     expect(res.source).toBe('fallback');
     expect(res.model).toBe('gpt-5.4');
-    expect(res.notice).toBeTruthy();
   });
 
-  // The "cheapest wins" rule keeps finding new ways to downgrade the judge.
-  // Fixing anthropic did not fix the RULE: gemini-flash-latest ($1.50/$9.00)
-  // undercuts gpt-5.4 ($2.50/$15.00), so a Google key silently takes the judge
-  // even though the judge does factual RECALL, where cheap models fabricate.
-  // Observed live 2026-07-20 - a 4-engine run reported "defaulting to the
-  // cheapest available (gemini-flash-latest)". NOT redesigned here: ranking
-  // judges by recall quality needs per-provider measurement we have not done
-  // (the same reasoning that left this open at M11, and the same discipline as
-  // the gpt-5.4 judge choice, which WAS measured). Pinned so it cannot change
-  // silently, and logged in TASKS as still open.
-  it('lets a cheaper gemini judge win over gpt-5.4 (rule still price-only)', async () => {
+  it('ranks sonar last - a search-billed model is a poor judge', async () => {
     const res = await resolveJudgeModel({
       interactive: false,
-      availableEngines: ['openai', 'gemini'],
+      availableEngines: ['perplexity', 'anthropic'],
     });
-    expect(res.source).toBe('fallback');
-    expect(res.model).toBe('gemini-flash-latest');
-    expect(res.notice).toBeTruthy();
+    expect(res.model).toBe('claude-sonnet-5');
+  });
+
+  it('picks the top preference when every engine is available', async () => {
+    const res = await resolveJudgeModel({
+      interactive: false,
+      availableEngines: ['perplexity', 'gemini', 'anthropic', 'openai'],
+    });
+    expect(res.model).toBe('gpt-5.4');
   });
 
   it('picks the openai judge when it is the only engine available', async () => {
@@ -117,6 +141,32 @@ describe('resolveJudgeModel fallback matrix', () => {
       availableEngines: ['openai'],
     });
     expect(res.model).toBe('gpt-5.4');
+    expect(res.qualityWarning).toBeUndefined();
+  });
+
+  // Rule #6: a judge measured to fabricate must not be used silently. The run
+  // still proceeds (zero-config must keep working for an Anthropic-only user),
+  // but it says so.
+  it('warns when the only available judge measured poorly', async () => {
+    const res = await resolveJudgeModel({
+      interactive: false,
+      availableEngines: ['anthropic'],
+    });
+    expect(res.model).toBe('claude-sonnet-5');
+    expect(res.qualityWarning).toMatch(/recall/i);
+    expect(res.qualityWarning).toMatch(/--judge/);
+  });
+
+  it('warns about a measured-poor judge the user pinned explicitly', async () => {
+    // The warning follows the MODEL, not the selection path - pinning a known
+    // fabricator with --judge should not buy silence.
+    const res = await resolveJudgeModel({
+      interactive: true,
+      savedJudgeModel: 'claude-sonnet-5',
+      availableEngines: ['openai', 'anthropic'],
+    });
+    expect(res.source).toBe('saved');
+    expect(res.qualityWarning).toMatch(/recall/i);
   });
 
   it('throws when no engines are available', async () => {

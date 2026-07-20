@@ -29,6 +29,28 @@ describe('buildCheckDeps', () => {
     expect('onProgress' in deps).toBe(false);
   });
 
+  // A judge measured to fabricate must reach the user, not sit in core. This
+  // project has shipped four things that existed with no call site
+  // (CostGuard.authorize, failUnder, --grounded, supportsGrounded); a quality
+  // warning nobody surfaces would be the fifth.
+  it('surfaces a measured-poor judge as a quality warning', async () => {
+    const { judgeQualityWarning } = await buildCheckDeps({
+      env: { ANTHROPIC_API_KEY: 'sk-test' },
+      fetcher: createFetcher(),
+      availableEngines: ['anthropic'] as EngineId[],
+    });
+    expect(judgeQualityWarning).toMatch(/recall/i);
+  });
+
+  it('carries no quality warning for a measured-good judge', async () => {
+    const { judgeQualityWarning } = await buildCheckDeps({
+      env: OPENAI_ENV,
+      fetcher: createFetcher(),
+      availableEngines: ['openai'] as EngineId[],
+    });
+    expect(judgeQualityWarning).toBeUndefined();
+  });
+
   it('defaults to all engines when none are requested', async () => {
     const { deps } = await buildCheckDeps({
       env: OPENAI_ENV,

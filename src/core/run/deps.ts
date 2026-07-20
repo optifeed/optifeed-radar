@@ -32,6 +32,13 @@ export interface BuildCheckDepsInput {
 export interface BuiltCheckDeps {
   deps: Omit<RunCheckDeps, 'confirm' | 'onProgress'>;
   judgeNotice?: string;
+  /**
+   * Set when the resolved judge has a MEASURED quality problem. Entrypoints
+   * must surface it: it warns that this run's competitor list may be invented
+   * (rule #6). Kept separate from {@link judgeNotice}, which only explains
+   * which judge was picked and is silent on quality.
+   */
+  judgeQualityWarning?: string;
 }
 
 export async function buildCheckDeps(
@@ -89,5 +96,6 @@ export async function buildCheckDeps(
       now: input.now ?? ((): string => new Date().toISOString()),
     },
     judgeNotice: judgeRes.notice,
+    judgeQualityWarning: judgeRes.qualityWarning,
   };
 }

@@ -157,19 +157,23 @@ function registerConfig(program: Command, rt: Runtime): void {
       lines.push('');
 
       let judge = 'none (set an engine API key)';
+      let judgeQualityWarning: string | undefined;
       if (available.length > 0) {
         try {
-          judge = (
-            await resolveJudgeModel({
-              interactive: false,
-              availableEngines: available,
-            })
-          ).model;
+          const resolved = await resolveJudgeModel({
+            interactive: false,
+            availableEngines: available,
+          });
+          judge = resolved.model;
+          judgeQualityWarning = resolved.qualityWarning;
         } catch (e) {
           if (!(e instanceof NoJudgeModelError)) throw e;
         }
       }
       lines.push(`Judge model: ${judge}`);
+      // Naming the judge without its known quality problem would make this
+      // command the one place a user could look and be reassured wrongly.
+      if (judgeQualityWarning) lines.push(`  ${judgeQualityWarning}`);
       lines.push(`State directory: ${stateDirFor(rt, domain ?? '<domain>')}`);
       rt.out(`${lines.join('\n')}\n`);
     });

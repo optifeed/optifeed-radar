@@ -141,9 +141,65 @@ export interface JudgeModelResolution {
   source: 'saved' | 'prompted' | 'fallback';
   /** Human-readable note when we fell back without asking (CI/MCP/--yes). */
   notice?: string;
+  /**
+   * Set when the resolved judge has a MEASURED quality problem, whatever the
+   * selection path. Consumers must surface this - it reports that the run's
+   * competitor list may be fabricated (rule #6).
+   */
+  qualityWarning?: string;
 }
 
-/** Judge-call cost for a model, used to pick the cheapest fallback. */
+/**
+ * Judge models in order of MEASURED competitor-recall quality, best first.
+ *
+ * This deliberately replaces the old "cheapest available" rule. The judge does
+ * factual RECALL, and that rule kept silently downgrading it: first to
+ * `claude-haiku-4-5`, then - once anthropic's default was corrected - to
+ * `gemini-flash-latest`, because each new cheap entry undercut the measured
+ * choice. Fixing each instance never fixed the rule.
+ *
+ * Measured 2026-07-20 on the doremusic Turkish-retailer task (ground truth
+ * verified on the web, 3 trials each through the real discovery path):
+ *
+ * | model               | verified rivals | cross-trial stability |
+ * | ------------------- | --------------- | --------------------- |
+ * | gpt-5.4             | 4/4             | high                  |
+ * | gemini-flash-latest | 4/4             | high                  |
+ * | claude-sonnet-5     | 0               | none (no overlap)     |
+ *
+ * Price proved ANTI-correlated with quality: `claude-sonnet-5` is the most
+ * expensive candidate ($3/$15) and the only one that fabricated, inventing a
+ * different plausible-sounding list on every run and never returning Zuhal
+ * Müzik, the market leader both other models ranked first every time.
+ *
+ * gpt-5.4 leads gemini-flash-latest on track record (measured twice, and no
+ * free-tier rate-limit history) rather than on recall, where they tied.
+ * `sonar` is last: it bills per search, so it is expensive AND a poor fit for
+ * a parametric recall task.
+ *
+ * Re-measure when a default here changes - a model id is not a quality claim.
+ */
+export const JUDGE_PREFERENCE: string[] = [
+  'gpt-5.4',
+  'gemini-flash-latest',
+  'claude-sonnet-5',
+  'sonar',
+];
+
+/**
+ * Judges with a measured quality problem, keyed by model id.
+ *
+ * Surfaced whenever the model is resolved - including when the user pinned it
+ * explicitly - because rule #6 forbids running a known-unreliable judge
+ * silently. The run still proceeds: an Anthropic-only user must keep a working
+ * zero-config path.
+ */
+export const JUDGE_QUALITY_WARNINGS: Record<string, string> = {
+  'claude-sonnet-5':
+    'Judge quality: claude-sonnet-5 measured poorly on competitor recall (2026-07-20, Turkish retailer, 3 trials: 0 verifiable rivals and no overlap between its own runs). Competitor lists from this judge may be invented. Prefer --judge gpt-5.4 or gemini-flash-latest if you have that key.',
+};
+
+/** Judge-call cost for a model. Tie-breaks judges not yet ranked by recall. */
 function judgeCallCost(model: string): number {
   const pricing = MODEL_PRICING.models[model];
   if (!pricing) return Number.POSITIVE_INFINITY;
@@ -155,15 +211,36 @@ function judgeCallCost(model: string): number {
 }
 
 /**
+ * Rank two judge candidates: measured recall first, then price.
+ *
+ * An unranked model (a new default nobody has measured) sorts after every
+ * ranked one and falls back to the cheapest-wins tie-break, so adding an
+ * engine degrades to the old behavior for that engine only, never for a
+ * candidate we have evidence about.
+ */
+function judgeRank(model: string): number {
+  const index = JUDGE_PREFERENCE.indexOf(model);
+  return index === -1 ? JUDGE_PREFERENCE.length : index;
+}
+
+/**
  * Resolve which judge model to use. Order: saved explicit choice → interactive
- * prompt → cheapest available (non-interactive fallback, with a printed notice).
- * Throws {@link NoJudgeModelError} when no engines are available.
+ * prompt → best available by measured recall (non-interactive fallback, with a
+ * printed notice). Throws {@link NoJudgeModelError} when no engines are
+ * available.
  */
 export async function resolveJudgeModel(
   input: ResolveJudgeModelInput,
 ): Promise<JudgeModelResolution> {
+  const withWarning = (
+    resolution: JudgeModelResolution,
+  ): JudgeModelResolution => {
+    const qualityWarning = JUDGE_QUALITY_WARNINGS[resolution.model];
+    return qualityWarning ? { ...resolution, qualityWarning } : resolution;
+  };
+
   if (input.savedJudgeModel) {
-    return { model: input.savedJudgeModel, source: 'saved' };
+    return withWarning({ model: input.savedJudgeModel, source: 'saved' });
   }
 
   const candidates = input.availableEngines.map(
@@ -173,17 +250,19 @@ export async function resolveJudgeModel(
 
   if (input.interactive && input.prompt) {
     const model = await input.prompt(candidates);
-    return { model, source: 'prompted' };
+    return withWarning({ model, source: 'prompted' });
   }
 
-  const cheapest = candidates.reduce((best, model) =>
-    judgeCallCost(model) < judgeCallCost(best) ? model : best,
-  );
-  return {
-    model: cheapest,
+  const best = candidates.reduce((winner, model) => {
+    const rankDelta = judgeRank(model) - judgeRank(winner);
+    if (rankDelta !== 0) return rankDelta < 0 ? model : winner;
+    return judgeCallCost(model) < judgeCallCost(winner) ? model : winner;
+  });
+  return withWarning({
+    model: best,
     source: 'fallback',
-    notice: `No judge model chosen; defaulting to the cheapest available (${cheapest}). Set one with --judge or in optifeed.yml.`,
-  };
+    notice: `No judge model chosen; using the best available judge (${best}). Set one with --judge or in optifeed.yml.`,
+  });
 }
 
 export interface ResolveStateDirInput {

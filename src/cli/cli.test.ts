@@ -670,6 +670,23 @@ describe('config command', () => {
     await run(rt, ['config']);
     expect(rt.output.join('').toLowerCase()).toContain('not set');
   });
+
+  // `config` is where a user goes to see which judge they will get, so it is
+  // exactly where a measured quality problem must not be dropped (rule #6 -
+  // honesty propagates to every derived artifact).
+  it('surfaces a measured-poor judge alongside the resolved model', async () => {
+    const rt = testRuntime({ env: { ANTHROPIC_API_KEY: 'sk-test' } });
+    await run(rt, ['config']);
+    const out = rt.output.join('');
+    expect(out).toContain('claude-sonnet-5');
+    expect(out).toMatch(/recall/i);
+  });
+
+  it('stays quiet about judge quality for a measured-good judge', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    await run(rt, ['config']);
+    expect(rt.output.join('')).not.toMatch(/recall/i);
+  });
 });
 
 describe('defaultCheckDeps engine selection', () => {

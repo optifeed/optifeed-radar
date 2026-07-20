@@ -81,7 +81,7 @@ export function defaultToolContext(
       const guard = new CostGuard({
         maxCostUsd: opts.maxCost ?? DEFAULT_MCP_MAX_COST,
       });
-      const { deps, judgeNotice } = await buildCheckDeps({
+      const { deps, judgeNotice, judgeQualityWarning } = await buildCheckDeps({
         env: input.env,
         fetcher: newFetcher(),
         engines: opts.engines,
@@ -90,6 +90,7 @@ export function defaultToolContext(
         now,
       });
       if (judgeNotice) log(judgeNotice);
+      if (judgeQualityWarning) log(judgeQualityWarning);
       // No confirm gate: MCP tools pass `yes: true` (hard rule #8).
       return deps;
     },
@@ -99,7 +100,7 @@ export function defaultToolContext(
       // only needs the judge + fetcher + guard + clock from it.
       const guard = new CostGuard({ maxSetupCostUsd: DEFAULT_MCP_MAX_COST });
       const fetcher = newFetcher();
-      const { deps, judgeNotice } = await buildCheckDeps({
+      const { deps, judgeNotice, judgeQualityWarning } = await buildCheckDeps({
         env: input.env,
         fetcher,
         availableEngines: available(),
@@ -107,6 +108,7 @@ export function defaultToolContext(
         now,
       });
       if (judgeNotice) log(judgeNotice);
+      if (judgeQualityWarning) log(judgeQualityWarning);
       return { fetcher, judge: deps.judge, guard, now };
     },
 
