@@ -259,6 +259,30 @@ describe('renderCheckText', () => {
   it('never uses an em-dash', () => {
     expect(renderCheckText(envelope(), { color: false })).not.toContain('—');
   });
+
+  // A tool that spends the user's money tells them what it spent, in the
+  // report they actually read - not only in the JSON they would have to sum.
+  it('reports what the run cost, with the setup/engine split', () => {
+    const out = renderCheckText(
+      envelope({
+        spend: { setupUsd: 0.0021, mainUsd: 0.28, totalUsd: 0.2821 },
+      }),
+      { color: false },
+    );
+    expect(out).toContain('$0.2821');
+    // The split matters: setup is spent before any engine is asked, so a user
+    // who caps cost needs to see where the money went.
+    expect(out).toContain('$0.0021');
+    expect(out).toContain('$0.2800');
+  });
+
+  // Never fabricate $0.00 for a run whose cost was not recorded - the same
+  // rule that renders an unmeasured score as "not assessed".
+  it('says nothing about cost when the run carries no spend figure', () => {
+    const out = renderCheckText(envelope(), { color: false });
+    expect(out).not.toMatch(/\$0\.0000/);
+    expect(out.toLowerCase()).not.toContain('run cost');
+  });
 });
 
 describe('renderCheckHtml', () => {
@@ -283,6 +307,22 @@ describe('renderCheckHtml', () => {
     const html = renderCheckHtml(envelope());
     expect(html).toMatch(/<details/i);
     expect(html).toContain('Café Rio is a great choice.');
+  });
+
+  // Renderer parity: an HTML report that omits the cost while the terminal
+  // shows it is the same gap class as the variance note the HTML once missed.
+  it('reports what the run cost', () => {
+    const html = renderCheckHtml(
+      envelope({
+        spend: { setupUsd: 0.0021, mainUsd: 0.28, totalUsd: 0.2821 },
+      }),
+    );
+    expect(html).toContain('$0.2821');
+  });
+
+  it('says nothing about cost when the run carries no spend figure', () => {
+    const html = renderCheckHtml(envelope());
+    expect(html.toLowerCase()).not.toContain('run cost');
   });
 
   it('HTML-escapes external text so answers cannot inject markup', () => {

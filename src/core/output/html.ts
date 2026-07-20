@@ -11,6 +11,7 @@ import type { EngineAnswer, EngineScore, Finding } from '../types.js';
 import type { VisibilityEnvelope } from './envelope.js';
 import { FOOTER_CTA } from './footer.js';
 import { honestyNotes, samplingLine } from './terminal.js';
+import { spendLine } from './spend.js';
 import { VARIANCE_MARKER, isWiderEstimate, varianceNote } from './variance.js';
 
 /** Escape the five HTML-significant characters so untrusted text is inert. */
@@ -136,6 +137,16 @@ function notesSection(env: VisibilityEnvelope): string {
   return `<section><h2>Run notes</h2><ul class="notes">${items}</ul></section>`;
 }
 
+/**
+ * What the run cost. Empty string when not recorded - never a $0.0000 line,
+ * which would tell the reader a paid run was free (rule #6).
+ */
+function spendSection(env: VisibilityEnvelope): string {
+  const line = spendLine(env.spend);
+  if (!line) return '';
+  return `<section><p class="muted">${esc(line)}</p></section>`;
+}
+
 function shareOfVoice(env: VisibilityEnvelope): string {
   if (env.shareOfVoice.length === 0) return '';
   const rows = env.shareOfVoice
@@ -181,6 +192,7 @@ export function renderCheckHtml(env: VisibilityEnvelope): string {
   ${reputationSection(env)}
   ${findingsList(env.findings)}
   ${notesSection(env)}
+  ${spendSection(env)}
   ${evidence(env.answers)}
 
   <footer>${esc(FOOTER_CTA)}</footer>

@@ -5,6 +5,7 @@
  * guard - estimate first, never spend silently. Hard rule #6: estimates are
  * estimates and say so (see {@link CostEstimate.assumptions}).
  */
+import type { RunSpend } from './types.js';
 
 /** Per-million-token pricing for a model. */
 export interface ModelPricing {
@@ -312,6 +313,21 @@ export class CostGuard {
 
   get spentUsd(): number {
     return this.spent.setup + this.spent.main;
+  }
+
+  /**
+   * Actual spend split by phase, for reporting what a run cost.
+   *
+   * The guard is the only place that sees EVERY spender - discovery, query
+   * generation, the engine asks, and the scoring judge - so a report that sums
+   * answers instead would silently omit the setup phase.
+   */
+  get spendBreakdown(): RunSpend {
+    return {
+      setupUsd: this.spent.setup,
+      mainUsd: this.spent.main,
+      totalUsd: this.spentUsd,
+    };
   }
 
   get costCapped(): boolean {

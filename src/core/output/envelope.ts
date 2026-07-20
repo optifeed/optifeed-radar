@@ -23,6 +23,7 @@ import {
   type PartialEngine,
   type Reputation,
   type RunHonesty,
+  type RunSpend,
   type ScoreReport,
   type ShareOfVoiceRow,
   type SourceRow,
@@ -83,6 +84,16 @@ export interface VisibilityEnvelope {
   /** Audit findings (M3) surfaced inside check, never the audit score (rule #6). */
   findings: Finding[];
   sampling: EnvelopeSampling;
+  /**
+   * What the run actually spent (from the cost guard).
+   *
+   * Optional because snapshots written before this field existed still load,
+   * and because a caller may build an envelope with no guard. Absent means "not
+   * recorded" and renders as nothing at all - never as $0.00, which would claim
+   * a paid run was free (the same rule that renders an unmeasured score as
+   * "not assessed" rather than 0).
+   */
+  spend?: RunSpend;
   costCapped?: boolean;
   skippedEngines?: { engine: EngineId; reason: string }[];
   /** Engines that answered only some prompts, with their real sample counts. */
@@ -177,14 +188,23 @@ export interface BuildEnvelopeInput {
   auditFindings?: Finding[];
   /** Run honesty flags; absent when the run was clean. */
   honesty?: RunHonesty;
+  /** What the run spent, from the cost guard. Absent when it was not costed. */
+  spend?: RunSpend;
   /** Injected timestamp so builds are deterministic. */
   generatedAt: string;
 }
 
 /** Assemble the stable check envelope from the pipeline's outputs. */
 export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
-  const { profile, score, answers, auditFindings, honesty, generatedAt } =
-    input;
+  const {
+    profile,
+    score,
+    answers,
+    auditFindings,
+    honesty,
+    spend,
+    generatedAt,
+  } = input;
 
   // Sampling describes the SCORE's sample, so count the discovery prompts that
   // fed it (branded prompts are summarized in `reputation`, not the score). For
@@ -211,6 +231,9 @@ export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
       judged: score.sampling.judged,
       varianceNote: VARIANCE_NOTE,
     },
+    // Attached only when the run was costed. An absent figure means "not
+    // recorded"; writing a 0 would claim a paid run was free.
+    ...(spend ? { spend } : {}),
   };
 
   // Only attach honesty flags that are actually set, so a clean run's envelope

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { CostGuard } from '../core/costs.js';
 import { createFetcher, type FetchLike } from '../core/fetcher/index.js';
 import type { EngineAdapter } from '../core/engines/index.js';
 import { profilePath, type ProfileFs } from '../core/discovery/index.js';
@@ -208,6 +209,38 @@ describe('check command', () => {
     expect(out).toContain('AI Visibility Score');
     expect(out).toContain('Acme');
     expect(out).toContain('optifeed.com');
+  });
+
+  // A run that spends money says what it spent, in the report a human reads.
+  it('prints what the run cost', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    await run(rt, ['check', 'acme.example', '--yes']);
+    expect(rt.output.join('')).toContain('Run cost: $');
+  });
+
+  // Discovery and query generation bill BEFORE the confirm gate, so an aborted
+  // run is not necessarily a free one. Saying only "no engines were queried"
+  // would let a user who declined to avoid spending believe it cost nothing.
+  it('reports setup spend when the run is aborted at the confirm gate', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    const guard = new CostGuard();
+    guard.record(0.02, 'setup');
+    // Reuse the standard deps and only add the guard + a declining gate, so
+    // this test does not re-specify the whole pipeline.
+    // Must stay SYNC: `rt.checkDeps(flags)` is not awaited, so an async
+    // override would hand runCheck a Promise and fall through to the real
+    // network fetcher.
+    const base = rt.checkDeps!;
+    rt.checkDeps = (...args: Parameters<typeof base>) => ({
+      ...base(...args),
+      guard,
+      confirm: async () => false,
+    });
+
+    await run(rt, ['check', 'acme.example']);
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain('Aborted');
+    expect(all).toContain('$0.0200');
   });
 
   it('emits a clean JSON envelope under --json (no ANSI)', async () => {

@@ -126,6 +126,30 @@ describe('saveSnapshot / loadSnapshot round-trip', () => {
     expect(loaded).toEqual(env);
   });
 
+  // The null-score change once made every not-assessed snapshot permanently
+  // UNLOADABLE, because saveSnapshot wrote a shape the loader still rejected.
+  // Any new persisted field has to prove the same round-trip.
+  it('round-trips the run spend', async () => {
+    const fs = fakeFs();
+    const env: VisibilityEnvelope = {
+      ...envelope('2026-07-15T00:00:00.000Z'),
+      spend: { setupUsd: 0.0021, mainUsd: 0.28, totalUsd: 0.2821 },
+    };
+    const path = await saveSnapshot(env, '/state', fs);
+    const loaded = await loadSnapshot(path, fs);
+    expect(loaded.spend).toEqual(env.spend);
+    expect(loaded).toEqual(env);
+  });
+
+  // Snapshots written before this field existed must keep loading.
+  it('loads a snapshot that predates the spend field', async () => {
+    const fs = fakeFs();
+    const env = envelope('2026-07-15T00:00:00.000Z');
+    const path = await saveSnapshot(env, '/state', fs);
+    const loaded = await loadSnapshot(path, fs);
+    expect(loaded.spend).toBeUndefined();
+  });
+
   it('persists no API keys (envelope carries none by contract)', async () => {
     const fs = fakeFs();
     await saveSnapshot(envelope('2026-07-15T00:00:00.000Z'), '/state', fs);

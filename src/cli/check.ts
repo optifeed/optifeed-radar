@@ -15,6 +15,7 @@ import {
   renderCheckHtml,
   renderCheckJson,
   renderCheckText,
+  spendLine,
 } from '../core/output/index.js';
 import {
   buildCheckDeps,
@@ -248,6 +249,13 @@ export function registerCheck(program: Command, rt: Runtime): void {
 
       if (result.aborted) {
         rt.out('Aborted - no engines were queried.\n');
+        // Discovery and query generation bill BEFORE the confirmation gate, so
+        // an aborted run is not necessarily a free one. Reported only when it
+        // actually cost something, so a genuinely free abort stays quiet.
+        const spent = result.spend;
+        if (spent && spent.totalUsd > 0) {
+          rt.out(`${spendLine(spent)}\n`);
+        }
         return;
       }
       const env = result.envelope!;

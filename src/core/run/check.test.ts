@@ -163,6 +163,96 @@ function baseDeps(fs: ReturnType<typeof memFs>, fetcher: Fetcher) {
   };
 }
 
+describe('runCheck spend reporting', () => {
+  // Before this, a run billed real money and reported it NOWHERE: the figure
+  // was only recoverable by summing costUsd across answers in the snapshot
+  // JSON, and --yes (the documented agent/CI path) skips the confirm gate that
+  // shows the estimate, so those runs saw no cost at all, before or after.
+  it('reports what the run actually spent, from the guard', async () => {
+    const fs = seededFs();
+    const guard = new CostGuard();
+    // Setup spend the guard sees but no ANSWER carries: this is exactly what
+    // summing answers would lose.
+    guard.record(0.02, 'setup');
+
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        adapters: [fakeAdapter('openai', 'parametric', { cost: 0.01 })],
+        guard,
+      },
+      { stateDir: STATE, yes: true },
+    );
+
+    const env = result.envelope!;
+    expect(env.spend).toBeDefined();
+    const answersTotal = env.answers.reduce((s, a) => s + a.costUsd, 0);
+    expect(env.spend!.mainUsd).toBeCloseTo(answersTotal, 10);
+    expect(env.spend!.setupUsd).toBeCloseTo(0.02, 10);
+    // The headline figure must exceed the answers alone, or setup spend
+    // (discovery, query generation, the scoring judge) is being hidden.
+    expect(env.spend!.totalUsd).toBeGreaterThan(answersTotal);
+    expect(env.spend!.totalUsd).toBeCloseTo(answersTotal + 0.02, 10);
+  });
+
+  // Discovery and query generation run BEFORE the confirm gate, so declining
+  // still spent real money. "Aborted, no engines were queried" is true but
+  // incomplete: the setup phase already billed, and a user who declined
+  // precisely to avoid spending deserves to know it was not free.
+  it('reports setup spend even when the run is aborted at the confirm gate', async () => {
+    const fs = seededFs();
+    const guard = new CostGuard();
+    guard.record(0.02, 'setup');
+
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        guard,
+        confirm: async () => false,
+      },
+      { stateDir: STATE },
+    );
+
+    expect(result.aborted).toBe(true);
+    expect(result.envelope).toBeUndefined();
+    expect(result.spend?.setupUsd).toBeCloseTo(0.02, 10);
+    expect(result.spend?.totalUsd).toBeCloseTo(0.02, 10);
+  });
+
+  it('reports setup spend when aborting for a missing confirm handler', async () => {
+    const fs = seededFs();
+    const guard = new CostGuard();
+    guard.record(0.02, 'setup');
+    const result = await runCheck(
+      'acme.example',
+      { ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })), guard },
+      { stateDir: STATE }, // no yes, no confirm
+    );
+    expect(result.aborted).toBe(true);
+    expect(result.spend?.totalUsd).toBeCloseTo(0.02, 10);
+  });
+
+  it('still reports spend on a cost-capped partial run', async () => {
+    // A capped run spent real money before it stopped; reporting nothing here
+    // would hide the exact spend a user hit a cap trying to control.
+    const fs = seededFs();
+    const guard = new CostGuard({ maxCostUsd: 0.005 });
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        adapters: [fakeAdapter('openai', 'parametric', { cost: 0.004 })],
+        guard,
+      },
+      { stateDir: STATE, yes: true },
+    );
+    expect(result.envelope!.spend).toBeDefined();
+    expect(result.envelope!.costCapped).toBe(true);
+  });
+});
+
 describe('runCheck end to end (all mocked)', () => {
   it('produces a full envelope with score, audit findings, and a snapshot', async () => {
     const fs = seededFs();

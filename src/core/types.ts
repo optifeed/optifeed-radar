@@ -223,6 +223,23 @@ export interface PartialEngine {
   reason: string;
 }
 
+/**
+ * What a run actually SPENT, split by phase.
+ *
+ * Sourced from the cost guard, never by summing answers: the guard is the only
+ * thing that sees every spender, and discovery, query generation, and the
+ * scoring judge carry no answer to sum. `setupUsd` is spent before any engine
+ * is asked, which is why the split is reported rather than a bare total.
+ */
+export interface RunSpend {
+  /** Discovery + query generation (spent before the confirm gate's main ask). */
+  setupUsd: number;
+  /** Engine answers + the scoring judge pass. */
+  mainUsd: number;
+  /** setupUsd + mainUsd. */
+  totalUsd: number;
+}
+
 /** The honesty flags a run carries so partial/capped runs are never hidden. */
 export interface RunHonesty {
   costCapped?: boolean;

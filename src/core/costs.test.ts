@@ -165,6 +165,28 @@ describe('CostGuard', () => {
     expect(guard.spentUsd).toBeCloseTo(0.8, 10); // refused spend not recorded
   });
 
+  // A run must be able to report what it SPENT, and the guard is the only
+  // thing that sees every spender: summing answers misses discovery,
+  // query-gen, and the scoring judge entirely.
+  it('reports spend broken down by phase', () => {
+    const guard = new CostGuard();
+    guard.record(0.02, 'setup');
+    guard.record(0.5, 'main');
+    expect(guard.spendBreakdown).toEqual({
+      setupUsd: 0.02,
+      mainUsd: 0.5,
+      totalUsd: 0.52,
+    });
+  });
+
+  it('reports a zero breakdown for a guard that never spent', () => {
+    expect(new CostGuard().spendBreakdown).toEqual({
+      setupUsd: 0,
+      mainUsd: 0,
+      totalUsd: 0,
+    });
+  });
+
   it('with no cap, authorizes everything', () => {
     const guard = new CostGuard();
     expect(guard.authorize(1000)).toBe(true);

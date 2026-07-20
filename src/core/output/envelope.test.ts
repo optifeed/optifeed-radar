@@ -87,6 +87,9 @@ describe('buildEnvelope', () => {
       generatedAt: '2026-07-15T12:00:00.000Z',
     });
 
+    // A run that was not costed must not claim it was free. Absent, never $0 -
+    // the same rule that made an unmeasured score `null` instead of 0.
+    expect(env.spend).toBeUndefined();
     expect(env.schema_version).toBe(SCHEMA_VERSION);
     expect(env.generatedAt).toBe('2026-07-15T12:00:00.000Z');
     expect(env.domain).toBe('caferio.example');
@@ -96,6 +99,24 @@ describe('buildEnvelope', () => {
     expect(env.engines).toEqual(score().engines);
     expect(env.mentions).toEqual(score().mentions);
     expect(env.shareOfVoice).toEqual(score().shareOfVoice);
+  });
+
+  // A money-spending tool must report what it spent. The envelope is where
+  // every consumer reads it from: --json, the HTML report, the terminal
+  // footer, and any agent driving the MCP server.
+  it('carries the run spend when the run was costed', () => {
+    const env = buildEnvelope({
+      profile: PROFILE,
+      score: score(),
+      answers: answers(),
+      spend: { setupUsd: 0.0021, mainUsd: 0.28, totalUsd: 0.2821 },
+      generatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(env.spend).toEqual({
+      setupUsd: 0.0021,
+      mainUsd: 0.28,
+      totalUsd: 0.2821,
+    });
   });
 
   it('surfaces audit findings inside the check envelope (rule #6)', () => {

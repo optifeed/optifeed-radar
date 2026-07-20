@@ -37,7 +37,7 @@ import {
 } from '../output/index.js';
 import { createFetcher } from '../fetcher/index.js';
 import { createEngineAdapters } from '../engines/index.js';
-import type { EngineId, JudgeClient, RunHonesty } from '../types.js';
+import type { EngineId, JudgeClient, RunHonesty, RunSpend } from '../types.js';
 
 /**
  * Progress events emitted through a run's phases. Structured data only - the
@@ -128,6 +128,15 @@ export interface RunCheckResult {
   snapshotPath?: string;
   /** Human-readable notes (competitor skip, query-gen skip, confirmation abort). */
   notes: string[];
+  /**
+   * What the run spent, from the cost guard.
+   *
+   * Present even on an ABORTED run: discovery and query generation happen
+   * before the confirmation gate, so declining still billed for the setup
+   * phase. Reporting only on success would tell a user who declined in order
+   * to avoid spending that the run was free.
+   */
+  spend?: RunSpend;
 }
 
 /**
@@ -200,7 +209,7 @@ export async function runCheck(
       notes.push(
         'Aborted before spending: engine queries need confirmation. Pass yes to run non-interactively, or provide a confirm handler.',
       );
-      return { aborted: true, notes };
+      return { aborted: true, notes, spend: guard.spendBreakdown };
     }
     const estimate = priceRun(
       prompts.length,
@@ -215,7 +224,7 @@ export async function runCheck(
     });
     if (!ok) {
       notes.push('Run aborted at the cost confirmation.');
-      return { aborted: true, notes };
+      return { aborted: true, notes, spend: guard.spendBreakdown };
     }
   }
 
@@ -265,6 +274,10 @@ export async function runCheck(
     answers: asked.answers,
     auditFindings: auditReport.findings,
     honesty,
+    // Read from the guard, not by summing answers: discovery, query generation
+    // and the scoring judge all spend without producing an answer to sum.
+    // Taken AFTER scoring so the judge pass is included.
+    spend: guard.spendBreakdown,
     generatedAt,
   });
 

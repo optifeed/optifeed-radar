@@ -10,6 +10,7 @@ export * from './snapshot.js';
 export * from './diff.js';
 export * from './failunder.js';
 export * from './footer.js';
+export * from './spend.js';
 export * from './terminal.js';
 export * from './render-diff.js';
 export * from './html.js';

@@ -9,6 +9,7 @@ import type { ShareOfVoiceRow } from '../types.js';
 import { VARIANCE_MARKER, isWiderEstimate, varianceNote } from './variance.js';
 import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
 import { AUDIT_ONLY_NOTE, FOOTER_CTA } from './footer.js';
+import { spendLine } from './spend.js';
 
 // Re-exported so existing importers keep `core/output`'s single footer constant.
 export { FOOTER_CTA } from './footer.js';
@@ -215,6 +216,14 @@ export function renderCheckText(
   }
 
   lines.push(...renderNoteBlock('Run notes', honestyNotes(env), c));
+
+  // What this run actually cost. Omitted entirely when not recorded, never
+  // rendered as $0.0000 (rule #6).
+  const cost = spendLine(env.spend);
+  if (cost) {
+    lines.push(c.dim(cost));
+    lines.push('');
+  }
 
   if (opts.reportPath) {
     lines.push(`Report: ${opts.reportPath}`);
