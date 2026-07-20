@@ -747,6 +747,67 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   finding during the code review - reading the code could not settle an
   empirical question, and only a live run with a deliberately low cap could.**
 
+- 2026-07-20: **high-effort workflow review of `671da63..HEAD`** (the 6 unreviewed
+  M17 commits), 32 agents (4 finder angles + per-location adversarial verify).
+  28 candidates, 9 refuted, **10 findings kept, all fixed test-first** (+21
+  tests, 468 -> 489). Three finders independently found the same reservation
+  leak. The uncomfortable headline: **the commit that fixed a 74% cap breach
+  still had four more paths to breach the cap.** Money fixes: (1) `settle`
+  booked actual spend with NO cap re-check, so a call overshooting its
+  reservation sailed past `--max-cost` with `costCapped` never set - the
+  envelope claimed a clean full-confidence run while the footer printed a total
+  above the cap; a shared `flagIfOverCap` now fires from `settle`/`record` (the
+  money is already spent and cannot be refused, but it MUST be reported).
+  (2) The probe learned only from a SUCCESSFUL call, so one transient 429 on
+  the first prompt sent the whole concurrent wave out against the stale
+  estimate the probe exists to replace - it now probes sequentially until a
+  real cost is observed. (3) `estimateCall` returned **0** for an unpriced
+  model, so every `authorize(0)` succeeded and the cap was silently
+  unenforceable for that engine - unknown now means "assume expensive" via
+  `priciestPricing`. (4) `generateQueries` never settled its setup reservation
+  on error (competitors.ts and judge.ts both did), so a failed query-gen call
+  held budget for the run's life and forced premature capping over money never
+  spent. (5) `costCapped` latching made `askAll` short-circuit and abandon
+  every remaining prompt after one transient reservation spike; the flag is
+  history, the BUDGET governs new spend, so each prompt is now offered to the
+  guard on its own merits. Honesty fixes: a zero `spendBreakdown` is always
+  defined so `buildEnvelope`'s "absent means not recorded" guard never fired
+  and an unpriced run printed a fabricated `$0.0000` (renderers now say nothing
+  at zero, since it is indistinguishable from "could not price"); the aborted
+  branch wrote prose to stdout under `--json`, breaking `JSON.parse` for
+  agents; and `RunCheckResult.spend` was populated on both ABORT paths but
+  dropped from the success return, so the field existed exactly for runs that
+  spent nothing. Plus `validateEnvelope` now vouches for every `spend` member
+  (renderers call `.toFixed` on them - M8 lesson #3).
+- 2026-07-20: **the review's fixes were verified live, and the live run found
+  what reading could not.** A deliberate `--max-cost 0.20 --grounded` run still
+  breached by **47%** ($0.2936). Diagnosis by back-solving real per-call costs:
+  the four engines each fire one concurrent unmeasured probe, reserving $0.1095
+  together and settling at $0.2097 - blowing the cap before any fan-out.
+  **Root cause was a stale measurement, not a design flaw:** `avgOutputTokens`
+  was 500, a figure predating the thinking-model generation, while real asks
+  measured **2583 (OpenAI), 3356 (Gemini), 700 (Anthropic), 400 (Perplexity)**.
+  The global default is now 2600 with per-model overrides from those
+  measurements, which cut the breach to 16%. The residual was the irreducible
+  part - a call's cost is unknowable until it returns - so unmeasured calls now
+  reserve with a documented `UNMEASURED_CALL_MARGIN` (1.5, sized from the
+  observed ~1.3x spread), dropped as soon as the engine reports a real cost.
+  **Final live run: $0.1605 against the $0.20 cap, 80% used, and it returned
+  MORE answers (11 vs 6) than the breaching run** - accurate estimates buy
+  coverage, they do not just restrict it. Lessons: (a) a cap that only compares
+  is not enforced, and one that never re-checks after spending is not honest
+  either; (b) three separate live runs were needed because each fix exposed the
+  next layer, and none of the three causes was visible from the code alone;
+  (c) test caps must be DERIVED from the same constants the runner reserves
+  against - three existing tests silently re-targeted when the assumption
+  moved, one of them passing only because unpriced models used to reserve $0.
+- [ ] **`--max-cost` is now a bounded best-effort guarantee, not an absolute
+      one - document it before launch.** A call's cost cannot be known until it
+      returns, so the honest promise is: the cap is enforced before every call,
+      overshoot is bounded by the unmeasured first call per engine (margined 1.5x),
+      and any overshoot is always reported via `costCapped` plus per-engine counts.
+      README and `--help` should say this rather than implying a hard ceiling.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`

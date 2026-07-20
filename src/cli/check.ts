@@ -248,13 +248,21 @@ export function registerCheck(program: Command, rt: Runtime): void {
       }
 
       if (result.aborted) {
-        rt.out('Aborted - no engines were queried.\n');
+        // Under --json, stdout is the envelope channel and nothing else may
+        // touch it: an agent that gets prose here cannot tell an abort from a
+        // crash. Every other branch already routes prose to stderr; this one
+        // did not, and the spend line made it a second offender.
+        const say = (s: string): void => {
+          if (flags.json) rt.err(s);
+          else rt.out(s);
+        };
+        say('Aborted - no engines were queried.\n');
         // Discovery and query generation bill BEFORE the confirmation gate, so
         // an aborted run is not necessarily a free one. Reported only when it
         // actually cost something, so a genuinely free abort stays quiet.
         const spent = result.spend;
         if (spent && spent.totalUsd > 0) {
-          rt.out(`${spendLine(spent)}\n`);
+          say(`${spendLine(spent)}\n`);
         }
         return;
       }

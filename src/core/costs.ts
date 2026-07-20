@@ -23,6 +23,16 @@ export interface ModelPricing {
    * Charged only when a call actually searched.
    */
   perSearchUsd?: number;
+  /**
+   * Typical output tokens for one ask against THIS model, overriding
+   * {@link EstimateAssumptions.avgOutputTokens}.
+   *
+   * Exists because a single global figure cannot describe both a plain chat
+   * model and a thinking model: the global 500 was ~5x under for Gemini, whose
+   * reasoning tokens bill as output. That gap under-quoted the confirm gate
+   * and under-reserved the cap. Omit unless a model is measurably different.
+   */
+  avgOutputTokens?: number;
 }
 
 /**
@@ -76,7 +86,12 @@ export const MODEL_PRICING: {
   lastUpdated: '2026-07-20',
   models: {
     // Current generation (what ChatGPT serves / what we ask + judge with).
-    'gpt-5.3-chat-latest': { inputPerMTokens: 5, outputPerMTokens: 30 },
+    // avgOutputTokens measured live 2026-07-20: ~2583 on a grounded ask.
+    'gpt-5.3-chat-latest': {
+      inputPerMTokens: 5,
+      outputPerMTokens: 30,
+      avgOutputTokens: 2600,
+    },
     'gpt-5.6-sol': { inputPerMTokens: 5, outputPerMTokens: 30 },
     'gpt-5.6-terra': { inputPerMTokens: 2.5, outputPerMTokens: 15 },
     'gpt-5.6-luna': { inputPerMTokens: 1, outputPerMTokens: 6 },
@@ -89,21 +104,42 @@ export const MODEL_PRICING: {
     'gpt-4o-mini': { inputPerMTokens: 0.15, outputPerMTokens: 0.6 },
     'gpt-4o': { inputPerMTokens: 2.5, outputPerMTokens: 10 },
     'claude-haiku-4-5': { inputPerMTokens: 1, outputPerMTokens: 5 },
-    'claude-sonnet-5': { inputPerMTokens: 3, outputPerMTokens: 15 },
+    // Measured ~700 output tokens live; Anthropic answers shorter than the
+    // thinking models, so it gets its own (lower) figure rather than the
+    // conservative global default.
+    'claude-sonnet-5': {
+      inputPerMTokens: 3,
+      outputPerMTokens: 15,
+      avgOutputTokens: 900,
+    },
+    // avgOutputTokens: thinking tokens bill as output, so this runs high and
+    // VARIES - measured 2584 on one live ask and 3356 on another. The higher
+    // observation is used: over-reserving only costs a little parallelism
+    // (settle returns the excess immediately), while under-reserving breaches
+    // the cap.
     'gemini-flash-latest': {
       inputPerMTokens: 1.5,
       outputPerMTokens: 9,
       perSearchUsd: 0.014,
+      avgOutputTokens: 3400,
     },
     'gemini-3.5-flash': {
       inputPerMTokens: 1.5,
       outputPerMTokens: 9,
       perSearchUsd: 0.014,
+      avgOutputTokens: 3400,
     },
     // Retired 2026-07-20: 404s ("no longer available to new users"). Kept only
     // so snapshots written before the switch still price.
     'gemini-2.5-flash': { inputPerMTokens: 0.3, outputPerMTokens: 2.5 },
-    sonar: { inputPerMTokens: 1, outputPerMTokens: 1, perRequestUsd: 0.005 },
+    // Measured ~400 output tokens live; Perplexity answers concisely and its
+    // cost is dominated by the flat per-search fee, not tokens.
+    sonar: {
+      inputPerMTokens: 1,
+      outputPerMTokens: 1,
+      perRequestUsd: 0.005,
+      avgOutputTokens: 600,
+    },
   },
 };
 
@@ -119,6 +155,22 @@ function pricingFor(model: string): ModelPricing {
   const p = MODEL_PRICING.models[model];
   if (!p) throw new UnknownModelError(model);
   return p;
+}
+
+/**
+ * Output tokens to assume for one ask against `pricing`: the model's own
+ * figure when it has one, else the global default.
+ *
+ * Single source of truth so every estimator - the confirm-gate quote, the
+ * runner's per-call reservation, the whole-run estimate - agrees. They used to
+ * diverge, and only the runner learned the real number (from its probe), so
+ * the figure the USER saw stayed ~5x under for thinking models.
+ */
+export function assumedOutputTokens(
+  pricing: ModelPricing,
+  assumptions: EstimateAssumptions = ESTIMATE_ASSUMPTIONS,
+): number {
+  return pricing.avgOutputTokens ?? assumptions.avgOutputTokens;
 }
 
 /**
@@ -162,7 +214,14 @@ export interface EstimateAssumptions {
 /** The default token/sampling assumptions for a run estimate. */
 export const ESTIMATE_ASSUMPTIONS: EstimateAssumptions = {
   avgInputTokens: 200,
-  avgOutputTokens: 500,
+  // Raised from 500 on 2026-07-20 after a live low-cap run breached its cap by
+  // 47%. Back-solving the real per-call costs showed modern models answering
+  // at ~2583 (OpenAI) and ~3356 (Gemini) output tokens, not 500 - a figure
+  // that predates the GPT-5/thinking generation. It is the fallback for a
+  // model with no measured `avgOutputTokens` of its own, so it errs high on
+  // purpose: under-reserving breaches the cap, while over-reserving costs only
+  // a little parallelism because `settle` returns the excess immediately.
+  avgOutputTokens: 2600,
   judgeInputTokens: 700,
   judgeOutputTokens: 100,
   judgeSampleRate: 0.3, // M7: judge calls <= 30% of answers
@@ -209,7 +268,7 @@ export function estimateRun(
       costOfCall(
         pricingFor(model),
         assumptions.avgInputTokens,
-        assumptions.avgOutputTokens,
+        assumedOutputTokens(pricingFor(model), assumptions),
         // Only a grounded run searches. An engine with no `perSearchUsd`
         // absorbs this as zero, so an engine that cannot search is never
         // charged for one even under --grounded.
@@ -277,7 +336,7 @@ export function approxTokens(text: string): number {
  * returned a row that was not actually the priciest and broke the
  * never-under-estimate guarantee this function exists to provide (rule #5).
  */
-function priciestPricing(): ModelPricing {
+export function priciestPricing(): ModelPricing {
   const referenceCost = (p: ModelPricing): number =>
     costOfCall(
       p,
@@ -372,6 +431,13 @@ export class CostGuard {
    * Close out an authorized call: release its reservation and book what it
    * actually cost. Pass `actualUsd: 0` when the call failed or was abandoned,
    * so the hold does not leak and strangle the remaining budget.
+   *
+   * Settling can itself BREACH a cap: a reservation is a projection, and a
+   * call that returns far more tokens (or searches) than assumed costs more
+   * than was held for it. That money is already spent and cannot be refused,
+   * but it must be reported - `authorize` used to be the only thing that could
+   * set `costCapped`, so an overshoot sailed past `--max-cost` while the
+   * envelope still claimed a clean, full-confidence run (rule #6).
    */
   settle(
     reservedUsd: number,
@@ -380,6 +446,23 @@ export class CostGuard {
   ): void {
     this.reserved[phase] = Math.max(0, this.reserved[phase] - reservedUsd);
     this.spent[phase] += actualUsd;
+    this.flagIfOverCap();
+  }
+
+  /**
+   * Flag the run when ACTUAL spend has reached or passed a cap. Compares spend
+   * only (not reservations): an outstanding hold is a projection that may yet
+   * settle lower, and treating it as a breach would flag runs that never
+   * exceeded anything.
+   */
+  private flagIfOverCap(): void {
+    const { maxSetupCostUsd, maxCostUsd } = this.caps;
+    if (maxSetupCostUsd !== undefined && this.spent.setup > maxSetupCostUsd) {
+      this.capped = true;
+    }
+    if (maxCostUsd !== undefined && this.spentUsd > maxCostUsd) {
+      this.capped = true;
+    }
   }
 
   /**
@@ -391,5 +474,6 @@ export class CostGuard {
    */
   record(usd: number, phase: CostPhase = 'main'): void {
     this.spent[phase] += usd;
+    this.flagIfOverCap();
   }
 }

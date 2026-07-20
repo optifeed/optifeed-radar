@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard, MODEL_PRICING, costOfCall } from '../costs.js';
+import {
+  CostGuard,
+  ESTIMATE_ASSUMPTIONS,
+  MODEL_PRICING,
+  assumedOutputTokens,
+  costOfCall,
+} from '../costs.js';
 import type { EngineAnswer, EngineId } from '../types.js';
 import { type EngineAdapter, createAdapter } from './adapter.js';
 import { geminiSpec } from './gemini.js';
 import { HttpError, type HttpPost, postJsonWithRetry } from './http.js';
 import { openaiSpec } from './openai.js';
-import { askAll } from './runner.js';
+import { UNMEASURED_CALL_MARGIN, askAll } from './runner.js';
 
 const FIXED = '2026-07-15T00:00:00.000Z';
 
@@ -67,11 +73,28 @@ describe('adapter cost pricing', () => {
 // Finding 2
 describe('askAll cost cap enforcement', () => {
   it('stops asking once the cap would be exceeded and marks the run capped', async () => {
-    // est/call = costOfCall(gpt-4o-mini, 200, 500) ~= 0.00033; cap allows one call.
-    const guard = new CostGuard({ maxCostUsd: 0.0005 });
+    // The cap is DERIVED from the same estimate the runner reserves against,
+    // rather than hardcoded: a hardcoded figure silently re-targets whenever
+    // an assumption moves (raising avgOutputTokens 500 -> 2600 turned this
+    // test's "allows one call" budget into "allows none"). Room for exactly
+    // one reservation, and not enough left for a second once the first call's
+    // real cost is booked.
+    const pricing = MODEL_PRICING.models['gpt-4o-mini']!;
+    const perCall = costOfCall(
+      pricing,
+      ESTIMATE_ASSUMPTIONS.avgInputTokens,
+      assumedOutputTokens(pricing),
+    );
+    // Real cost equal to the estimate, so once the first call is booked a
+    // second reservation cannot fit. The budget covers exactly the margined
+    // first reservation and nothing beyond it.
+    const actual = perCall;
+    const guard = new CostGuard({
+      maxCostUsd: perCall * UNMEASURED_CALL_MARGIN + perCall * 0.1,
+    });
     const adapter = fakeAdapter('openai', {
       model: 'gpt-4o-mini',
-      costUsd: 0.00033,
+      costUsd: actual,
     });
 
     const result = await askAll(['p1', 'p2', 'p3'], [adapter], {

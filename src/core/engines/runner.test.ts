@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import {
+  CostGuard,
+  ESTIMATE_ASSUMPTIONS,
+  MODEL_PRICING,
+  assumedOutputTokens,
+  costOfCall,
+} from '../costs.js';
 import type { EngineAnswer, EngineId } from '../types.js';
 import type { EngineAdapter } from './adapter.js';
-import { askAll } from './runner.js';
+import { UNMEASURED_CALL_MARGIN, askAll } from './runner.js';
 
 function fakeAdapter(
   id: EngineId,
@@ -36,6 +42,165 @@ function fakeAdapter(
     },
   };
 }
+
+describe('askAll cost-cap control flow', () => {
+  // `costCapped` latches: it records the honest fact that the cap refused
+  // something. But askAll short-circuited on that flag before even asking, so
+  // ONE transient reservation spike - reservations are projections, and they
+  // settle back down - abandoned every remaining prompt across every engine,
+  // producing a needlessly thin sample and a degraded score while the reported
+  // spend sat far under the cap. The flag is history; the BUDGET governs new
+  // spend, so each prompt must be offered to the guard on its own merits.
+  it('keeps asking prompts the budget can still afford after the cap flag latched', async () => {
+    const guard = new CostGuard({ maxCostUsd: 1 });
+    // Trip the flag with one refused oversized reservation. Nothing is spent
+    // and nothing is held, so the full $1 budget is still available.
+    expect(guard.authorize(5)).toBe(false);
+    expect(guard.costCapped).toBe(true);
+
+    const result = await askAll(
+      ['p1', 'p2'],
+      [fakeAdapter('openai', { costUsd: 0.001, model: 'gpt-4o-mini' })],
+      { guard },
+    );
+
+    expect(result.answers).toHaveLength(2);
+  });
+
+  // The flag must still stop a run whose budget is genuinely exhausted.
+  it('stops asking once the budget really is spent', async () => {
+    const guard = new CostGuard({ maxCostUsd: 0.001 });
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4'],
+      [fakeAdapter('openai', { costUsd: 0.0005, model: 'gpt-5.4' })],
+      { guard },
+    );
+    expect(result.answers.length).toBeLessThan(4);
+    expect(guard.costCapped).toBe(true);
+  });
+});
+
+describe('askAll cost estimation safety', () => {
+  // estimateCall returned 0 for a model absent from MODEL_PRICING, so every
+  // authorize(0) succeeded and --max-cost was silently unenforceable for that
+  // engine - unbounded real spend against a cap the user explicitly set.
+  // An unknown price means "assume expensive", never "assume free": the same
+  // never-under-estimate guarantee estimateCallUsd already documents.
+  it('does not treat an unpriced model as free when a cap is set', async () => {
+    const guard = new CostGuard({ maxCostUsd: 0.001 });
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4'],
+      // A model id that is deliberately NOT in MODEL_PRICING.
+      [fakeAdapter('openai', { model: 'some-unreleased-model-id' })],
+      { guard },
+    );
+    // A conservative unknown-model price exceeds this cap outright, so the
+    // very first authorization must refuse and NOTHING is spent. Asserting 0
+    // rather than "fewer than 4" is deliberate: with a 0 reservation the run
+    // still bills for one call before settle notices the overshoot, so a
+    // looser assertion would pass against the unfixed code.
+    expect(result.answers).toHaveLength(0);
+    expect(guard.spentUsd).toBe(0);
+    expect(guard.costCapped).toBe(true);
+  });
+
+  // Until an engine has answered once, its cost is a GUESS, and a guess that
+  // lands low is spent money the cap cannot claw back. Measured live: with
+  // corrected token assumptions, real calls still came in up to ~1.3x their
+  // reservation. Unmeasured calls therefore reserve with a margin; once the
+  // engine has reported a real cost, the observed figure takes over and the
+  // margin no longer applies.
+  it('reserves a margin for a call whose cost has never been measured', async () => {
+    const pricing = MODEL_PRICING.models['gpt-4o-mini']!;
+    const bare = costOfCall(
+      pricing,
+      ESTIMATE_ASSUMPTIONS.avgInputTokens,
+      assumedOutputTokens(pricing),
+    );
+    // A budget that covers the bare estimate but NOT the margined one. The
+    // first call must be refused, which is only possible if the margin is
+    // actually applied to an unmeasured engine.
+    const guard = new CostGuard({ maxCostUsd: bare * 1.05 });
+    const result = await askAll(
+      ['only'],
+      [fakeAdapter('openai', { costUsd: 0.0001, model: 'gpt-4o-mini' })],
+      { guard },
+    );
+
+    expect(result.answers).toHaveLength(0);
+    expect(guard.costCapped).toBe(true);
+    expect(guard.spentUsd).toBe(0);
+  });
+
+  // The margin must NOT persist once the engine's real cost is known, or a
+  // long run would keep over-reserving and refuse calls it can afford.
+  it('drops the margin once a real cost has been observed', async () => {
+    const pricing = MODEL_PRICING.models['gpt-4o-mini']!;
+    const bare = costOfCall(
+      pricing,
+      ESTIMATE_ASSUMPTIONS.avgInputTokens,
+      assumedOutputTokens(pricing),
+    );
+    // Enough for the margined first reservation PLUS the three remaining
+    // prompts reserving concurrently at the (unmargined) observed rate.
+    const guard = new CostGuard({
+      maxCostUsd: bare * (UNMEASURED_CALL_MARGIN + 3),
+    });
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4'],
+      // Real cost is a tiny fraction of the estimate, so after the first call
+      // the observed figure should let every remaining prompt through.
+      [fakeAdapter('openai', { costUsd: 0.000001, model: 'gpt-4o-mini' })],
+      { guard },
+    );
+
+    expect(result.answers).toHaveLength(4);
+  });
+
+  // The probe exists to replace the static estimate with a real measurement
+  // before fanning out. It only learned from a SUCCESSFUL call, so a single
+  // transient failure on the first prompt sent the whole concurrent wave out
+  // against the very estimate the probe was added to replace.
+  it('keeps probing sequentially until it gets a real cost observation', async () => {
+    const guard = new CostGuard({ maxCostUsd: 1 });
+    let inFlight = 0;
+    let sawSuccess = false;
+    // Concurrency reached BEFORE any call reported a cost. Fan-out after the
+    // first observation is expected and not what this test constrains.
+    let maxInFlightWhileBlind = 0;
+    const adapter: EngineAdapter = {
+      id: 'gemini',
+      kind: 'parametric',
+      model: 'gemini-flash-latest',
+      available: () => true,
+      async ask(prompt): Promise<EngineAnswer> {
+        inFlight += 1;
+        if (!sawSuccess) {
+          maxInFlightWhileBlind = Math.max(maxInFlightWhileBlind, inFlight);
+        }
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        // The first two probes fail; only the third yields an observation.
+        if (prompt === 'p1' || prompt === 'p2') throw new Error('429');
+        sawSuccess = true;
+        return {
+          engine: 'gemini',
+          kind: 'parametric',
+          prompt,
+          text: 'ok',
+          model: 'gemini-flash-latest',
+          costUsd: 0.01,
+          ts: 't',
+        };
+      },
+    };
+
+    await askAll(['p1', 'p2', 'p3', 'p4', 'p5', 'p6'], [adapter], { guard });
+
+    // Nothing may fan out until one call has actually reported a cost.
+    expect(maxInFlightWhileBlind).toBe(1);
+  });
+});
 
 describe('askAll grounding fee reservation', () => {
   // A grounded Gemini call owes $14/1,000 per SEARCH on top of tokens - on the
@@ -222,10 +387,14 @@ describe('askAll', () => {
   // carries no counts - defeating the very reason PartialEngine holds numbers.
   it('reports a cost-capped truncation as partial, naming the cap', async () => {
     // Budget allows ~2 calls at $0.02; the rest are refused by the guard.
+    // The model must be a PRICED one: an unpriced id now reserves the
+    // conservative unknown-model figure (it used to reserve $0, which is the
+    // bug that made --max-cost unenforceable), and that would refuse every
+    // call here rather than exercising the truncation this test is about.
     const guard = new CostGuard({ maxCostUsd: 0.05 });
     const result = await askAll(
       ['p1', 'p2', 'p3', 'p4', 'p5'],
-      [fakeAdapter('openai', { costUsd: 0.02 })],
+      [fakeAdapter('openai', { costUsd: 0.02, model: 'gpt-4o-mini' })],
       { guard, concurrency: 1 },
     );
 
@@ -327,8 +496,13 @@ describe('askAll', () => {
     const result = await askAll(
       ['p1', 'p2', 'p3', 'p4', 'p5'],
       [
+        // Priced model on purpose: an unpriced one now reserves the
+        // conservative unknown-model figure, which would refuse every call so
+        // the ERROR cause could never fire and this test would pass on a
+        // cap-only reason.
         fakeAdapter('gemini', {
           costUsd: 0.02,
+          model: 'gpt-4o-mini',
           failOn: (prompt) => prompt === 'p1',
         }),
       ],

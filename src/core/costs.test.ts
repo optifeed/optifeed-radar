@@ -118,6 +118,50 @@ describe('estimateRun', () => {
     expect(grounded.askUsd).toBeCloseTo(parametric.askUsd, 10);
   });
 
+  // The global avgOutputTokens (500) is ~5x wrong for a thinking model:
+  // Gemini averaged 2584 live, because thinking tokens bill as output. The
+  // probe patched this at ONE call site inside askAll, leaving every other
+  // estimator - including the confirm gate the user actually reads - quoting
+  // roughly a fifth of what the run bills. Pricing carries the per-model
+  // assumption so all of them agree.
+  it('uses a per-model output-token assumption where one is known', () => {
+    const pricing = MODEL_PRICING.models['claude-sonnet-5']!;
+    // Anthropic answers far shorter than the thinking models (measured ~700),
+    // so it carries its own figure instead of the conservative global default.
+    expect(pricing.avgOutputTokens).toBe(900);
+    expect(pricing.avgOutputTokens).toBeLessThan(
+      ESTIMATE_ASSUMPTIONS.avgOutputTokens,
+    );
+
+    const est = estimateRun(1, ['claude-sonnet-5'], 'gpt-5.4');
+    const expected = costOfCall(
+      pricing,
+      ESTIMATE_ASSUMPTIONS.avgInputTokens,
+      900, // the model's own figure, NOT the 2600 global
+    );
+    expect(est.askUsd).toBeCloseTo(expected, 10);
+  });
+
+  // The global default is the fallback for an unmeasured model, and it must
+  // err HIGH: a live low-cap run breached its cap by 47% because 500 predates
+  // the thinking-model generation (real asks measured 2583 and 3356).
+  // Under-reserving breaches the cap; over-reserving costs only parallelism,
+  // because settle returns the excess as soon as a call completes.
+  it('defaults to a conservative modern output-token figure', () => {
+    expect(ESTIMATE_ASSUMPTIONS.avgOutputTokens).toBeGreaterThanOrEqual(2500);
+  });
+
+  it('falls back to the global assumption for a model with no per-model figure', () => {
+    expect(MODEL_PRICING.models['gpt-5.4']?.avgOutputTokens).toBeUndefined();
+    const est = estimateRun(1, ['gpt-5.4'], 'gpt-5.4');
+    const expected = costOfCall(
+      MODEL_PRICING.models['gpt-5.4']!,
+      ESTIMATE_ASSUMPTIONS.avgInputTokens,
+      ESTIMATE_ASSUMPTIONS.avgOutputTokens,
+    );
+    expect(est.askUsd).toBeCloseTo(expected, 10);
+  });
+
   it('assumes at least as many searches as a real call was observed to make', () => {
     // The one real captured grounded call issued 3 searches. The assumption
     // must not sit below observed reality: with reserve-and-settle an
@@ -247,5 +291,39 @@ describe('CostGuard', () => {
     expect(guard.authorize(0.01)).toBe(true);
     guard.settle(0.01, 0.05);
     expect(guard.spentUsd).toBeCloseTo(0.05, 10);
+  });
+
+  // `authorize` was the ONLY thing that could set `capped`, so a call whose
+  // real cost overshot its reservation carried the run past --max-cost with no
+  // flag at all: the envelope reported a clean full-confidence run and the
+  // footer printed a total above the cap the user set. The money is already
+  // spent by then and cannot be refused - but it MUST be reported (rule #6).
+  it('marks costCapped when a settled actual pushes spend past the cap', () => {
+    const guard = new CostGuard({ maxCostUsd: 0.2 });
+    expect(guard.authorize(0.03)).toBe(true);
+    guard.settle(0.03, 0.24); // a thinking-heavy grounded call overshoots
+    expect(guard.spentUsd).toBeCloseTo(0.24, 10);
+    expect(guard.costCapped).toBe(true);
+  });
+
+  it('marks costCapped when a settled actual overshoots the SETUP cap', () => {
+    const guard = new CostGuard({ maxCostUsd: 10, maxSetupCostUsd: 0.05 });
+    expect(guard.authorize(0.02, 'setup')).toBe(true);
+    guard.settle(0.02, 0.09, 'setup');
+    expect(guard.costCapped).toBe(true);
+  });
+
+  it('does not mark costCapped when a settled actual stays within the cap', () => {
+    const guard = new CostGuard({ maxCostUsd: 0.2 });
+    expect(guard.authorize(0.03)).toBe(true);
+    guard.settle(0.03, 0.05);
+    expect(guard.costCapped).toBe(false);
+  });
+
+  it('leaves an uncapped guard alone however much it settles', () => {
+    const guard = new CostGuard();
+    expect(guard.authorize(1)).toBe(true);
+    guard.settle(1, 1000);
+    expect(guard.costCapped).toBe(false);
   });
 });

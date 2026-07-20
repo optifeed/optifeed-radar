@@ -132,6 +132,16 @@ function validateEnvelope(raw: unknown, path: string): VisibilityEnvelope {
   v.array(obj, 'answers');
   v.array(obj, 'findings');
   v.objectField(obj, 'sampling');
+  // `spend` is optional (snapshots predate it), but when present the renderers
+  // dereference every member through `.toFixed`, so a partial or hand-edited
+  // one must fail as a SnapshotParseError here rather than as a raw TypeError
+  // three layers away (M8 lesson #3: vouch for every field a consumer reads).
+  if ('spend' in obj && obj.spend !== undefined) {
+    const spend = v.object(obj.spend, 'spend');
+    v.number(spend, 'setupUsd');
+    v.number(spend, 'mainUsd');
+    v.number(spend, 'totalUsd');
+  }
   return obj as unknown as VisibilityEnvelope;
 }
 

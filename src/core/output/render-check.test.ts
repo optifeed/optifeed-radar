@@ -283,6 +283,28 @@ describe('renderCheckText', () => {
     expect(out).not.toMatch(/\$0\.0000/);
     expect(out.toLowerCase()).not.toContain('run cost');
   });
+
+  // A zero breakdown is NOT proof the run was free: it is also what an
+  // unpriced model produces, since a MODEL_PRICING miss records $0 per call.
+  // `guard.spendBreakdown` always returns an object, so the "absent means not
+  // recorded" guard in buildEnvelope never fired and a paid-but-unpriced run
+  // printed "$0.0000" - precisely the fabricated zero this line must never be.
+  it('says nothing about cost when the recorded total is zero', () => {
+    const out = renderCheckText(
+      envelope({ spend: { setupUsd: 0, mainUsd: 0, totalUsd: 0 } }),
+      { color: false },
+    );
+    expect(out).not.toMatch(/\$0\.0000/);
+    expect(out.toLowerCase()).not.toContain('run cost');
+  });
+
+  it('still reports a real sub-cent cost rather than rounding it away', () => {
+    const out = renderCheckText(
+      envelope({ spend: { setupUsd: 0, mainUsd: 0.0024, totalUsd: 0.0024 } }),
+      { color: false },
+    );
+    expect(out).toContain('$0.0024');
+  });
 });
 
 describe('renderCheckHtml', () => {

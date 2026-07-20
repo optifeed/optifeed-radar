@@ -479,4 +479,55 @@ describe('generateQueries', () => {
     expect(skipped).toContain('503');
     expect(guard.spentUsd).toBe(0);
   });
+
+  // `authorize` RESERVES; only `settle` releases the hold. competitors.ts and
+  // scoring/judge.ts both settle on their error path - this one did not, so a
+  // failed query-generation call held its reservation for the life of the
+  // guard. Nothing was spent, yet every later engine call was authorized
+  // against the smaller remaining budget: the run came back costCapped with a
+  // thinner sample over money that was never actually spent.
+  it('releases its setup reservation when the judge call fails', async () => {
+    const judge: JudgeClient = {
+      model: 'gpt-4o-mini',
+      complete() {
+        return Promise.reject(new Error('503 unavailable'));
+      },
+    };
+    const guard = new CostGuard({ maxCostUsd: 0.05 });
+
+    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+
+    expect(guard.spentUsd).toBe(0);
+    // The whole budget must still be available: a failed call costs nothing.
+    expect(guard.authorize(0.05)).toBe(true);
+  });
+
+  // A parse failure AFTER the judge call already settled must not settle the
+  // same reservation twice.
+  it('does not double-settle when parsing throws after a successful call', async () => {
+    const judge: JudgeClient = {
+      model: 'gpt-4o-mini',
+      complete() {
+        // Valid response; the failure comes later, inside pack building.
+        return Promise.resolve({
+          text: '{"best-of":["a widget question?"]}',
+          costUsd: 0.01,
+          model: 'gpt-4o-mini',
+        });
+      },
+    };
+    const guard = new CostGuard({ maxCostUsd: 1 });
+    const broken = { ...profile() };
+    // Force a throw downstream of settle.
+    Object.defineProperty(broken, 'competitors', {
+      get() {
+        throw new Error('boom');
+      },
+    });
+
+    await generateQueries(broken, { judge, guard }, { generatedAt: AT_ISO });
+
+    // The real cost is booked exactly once, and no phantom credit appears.
+    expect(guard.spentUsd).toBeCloseTo(0.01, 10);
+  });
 });

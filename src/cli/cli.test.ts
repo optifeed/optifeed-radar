@@ -243,6 +243,32 @@ describe('check command', () => {
     expect(all).toContain('$0.0200');
   });
 
+  // Every other branch of this command keeps stdout pure JSON (report path and
+  // notes go to stderr). The abort branch did not, and the spend line I added
+  // made it a second offender: an agent running `check --json` without --yes
+  // got prose on stdout and could not tell an abort from a crash.
+  it('keeps stdout parseable under --json when the run aborts', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    const guard = new CostGuard();
+    guard.record(0.02, 'setup');
+    const base = rt.checkDeps!;
+    rt.checkDeps = (...args: Parameters<typeof base>) => ({
+      ...base(...args),
+      guard,
+      confirm: async () => false,
+    });
+
+    await run(rt, ['check', 'acme.example', '--json']);
+
+    const out = rt.output.join('');
+    expect(out).not.toContain('Aborted');
+    expect(out).not.toContain('Run cost');
+    // The abort and its cost must still be reported - on stderr.
+    const err = rt.errors.join('');
+    expect(err).toContain('Aborted');
+    expect(err).toContain('$0.0200');
+  });
+
   it('emits a clean JSON envelope under --json (no ANSI)', async () => {
     const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
     await run(rt, ['check', 'acme.example', '--yes', '--json']);

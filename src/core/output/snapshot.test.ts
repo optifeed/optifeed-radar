@@ -150,6 +150,36 @@ describe('saveSnapshot / loadSnapshot round-trip', () => {
     expect(loaded.spend).toBeUndefined();
   });
 
+  // M8 lesson #3: a validator vouches for EVERY field a consumer dereferences.
+  // The renderers call `.toFixed` on spend.totalUsd/setupUsd/mainUsd, so a
+  // persisted spend missing a member crashed rendering with a raw TypeError
+  // instead of the SnapshotParseError the loader contract promises.
+  it('rejects a persisted spend that is missing a member', async () => {
+    const fs = fakeFs();
+    const env = envelope('2026-07-15T00:00:00.000Z');
+    const path = await saveSnapshot(env, '/state', fs);
+    const raw = JSON.parse(await fs.readFile(path)) as Record<string, unknown>;
+    raw.spend = { totalUsd: 0.28 }; // setupUsd / mainUsd absent
+    await fs.writeFile(path, JSON.stringify(raw));
+
+    await expect(loadSnapshot(path, fs)).rejects.toBeInstanceOf(
+      SnapshotParseError,
+    );
+  });
+
+  it('rejects a persisted spend whose member is the wrong type', async () => {
+    const fs = fakeFs();
+    const env = envelope('2026-07-15T00:00:00.000Z');
+    const path = await saveSnapshot(env, '/state', fs);
+    const raw = JSON.parse(await fs.readFile(path)) as Record<string, unknown>;
+    raw.spend = { setupUsd: 0, mainUsd: '0.28', totalUsd: 0.28 };
+    await fs.writeFile(path, JSON.stringify(raw));
+
+    await expect(loadSnapshot(path, fs)).rejects.toBeInstanceOf(
+      SnapshotParseError,
+    );
+  });
+
   it('persists no API keys (envelope carries none by contract)', async () => {
     const fs = fakeFs();
     await saveSnapshot(envelope('2026-07-15T00:00:00.000Z'), '/state', fs);

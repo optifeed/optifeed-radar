@@ -26,6 +26,12 @@ export function formatUsd(usd: number): string {
  */
 export function spendLine(spend: RunSpend | undefined): string | undefined {
   if (!spend) return undefined;
+  // A zero total is NOT evidence the run was free. It is also what an unpriced
+  // model produces, because a MODEL_PRICING miss records $0 for every call -
+  // so "$0.0000" could be reporting an unbilled run or a run whose cost we
+  // simply failed to compute. Since the two are indistinguishable here, say
+  // nothing rather than assert a figure that might be a lie (rule #6).
+  if (spend.totalUsd <= 0) return undefined;
   return `Run cost: ${formatUsd(spend.totalUsd)} (setup ${formatUsd(
     spend.setupUsd,
   )}, engines ${formatUsd(spend.mainUsd)})`;

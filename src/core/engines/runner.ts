@@ -12,7 +12,9 @@ import {
   type CostGuard,
   ESTIMATE_ASSUMPTIONS,
   MODEL_PRICING,
+  assumedOutputTokens,
   costOfCall,
+  priciestPricing,
 } from '../costs.js';
 import type { EngineAnswer, EngineId, PartialEngine } from '../types.js';
 import type { AskMode, EngineAdapter } from './adapter.js';
@@ -73,6 +75,21 @@ type Settled =
   | { kind: 'capped' };
 
 /**
+ * Safety factor applied to the reservation for a call whose engine has not yet
+ * reported a real cost.
+ *
+ * `--max-cost` cannot be a perfect guarantee: a call's cost is unknowable until
+ * it returns, and money already spent cannot be refused. What CAN be bounded is
+ * the blind window - the first call per engine. Sized from live measurement
+ * (2026-07-20): with corrected token assumptions, real first calls landed at up
+ * to ~1.3x their reservation, so 1.5 covers the observed spread with a little
+ * room. Over-reserving is cheap because `settle` returns the unused hold as
+ * soon as the call completes; it costs a little parallelism near the cap, not
+ * budget.
+ */
+export const UNMEASURED_CALL_MARGIN = 1.5;
+
+/**
  * Rough per-call cost for the pre-ask cap check (real cost is recorded after).
  *
  * A grounded call also owes a per-search fee, which on a real Gemini call
@@ -81,12 +98,18 @@ type Settled =
  * 74% breach found on 2026-07-20.
  */
 function estimateCall(model: string, grounded: boolean): number {
-  const pricing = MODEL_PRICING.models[model];
-  if (!pricing) return 0;
+  // An unpriced model must NOT read as free. Returning 0 here made every
+  // `authorize(0)` succeed, so `--max-cost` was silently unenforceable for
+  // that engine and the run could spend without bound against a cap the user
+  // explicitly set. `estimateCallUsd` already documents the never-under-
+  // estimate rule; this is the same rule, applied at the enforcement site.
+  const pricing = MODEL_PRICING.models[model] ?? priciestPricing();
   return costOfCall(
     pricing,
     ESTIMATE_ASSUMPTIONS.avgInputTokens,
-    ESTIMATE_ASSUMPTIONS.avgOutputTokens,
+    // Per-model where known: the global 500 is ~5x under for thinking models,
+    // which is what under-reserved the cap in the first place.
+    assumedOutputTokens(pricing),
     grounded ? ESTIMATE_ASSUMPTIONS.searchesPerGroundedCall : 0,
   );
 }
@@ -120,28 +143,47 @@ export async function askAll(
       const projectedCost = (): number => {
         const observedAvg =
           observedCount > 0 ? observedTotal / observedCount : 0;
+        // Until this engine has answered once its cost is a GUESS, and a guess
+        // that lands low is money already spent that the cap cannot claw back.
+        // Live 2026-07-20, even with corrected token assumptions, first calls
+        // came in up to ~1.3x their reservation and four concurrent engines
+        // each contributed one such call, taking a $0.20 cap to $0.2322.
+        // The margin applies ONLY while blind: once a real cost is known the
+        // observed figure takes over, so a long run does not keep
+        // over-reserving and refusing calls it can afford.
+        const margin = observedCount === 0 ? UNMEASURED_CALL_MARGIN : 1;
         // `supportsGrounded` gates this the same way the adapter does: an
         // engine that cannot search is not reserved for searches it will never
         // run, even under --grounded (rule #6 - no fake precision).
         const willSearch =
           opts.mode === 'grounded' &&
           (adapter.kind === 'grounded' || adapter.supportsGrounded === true);
-        return Math.max(estimateCall(adapter.model, willSearch), observedAvg);
+        return Math.max(
+          estimateCall(adapter.model, willSearch) * margin,
+          observedAvg,
+        );
       };
 
       const askOne = async (prompt: string): Promise<Settled> => {
         {
           const guard = opts.guard;
           // Enforce the hard cost cap at the spend site: authorize (and thereby
-          // RESERVE) a projected per-call cost before asking; once it trips,
-          // `authorize` sets `costCapped` and we stop asking (partial run,
-          // never over-spend hard).
+          // RESERVE) a projected per-call cost before asking; a refusal sets
+          // `costCapped` and this prompt goes unasked (partial run, never
+          // over-spend hard).
+          //
+          // Deliberately does NOT short-circuit on `guard.costCapped`. That
+          // flag latches to record that the cap refused something, but a
+          // reservation is a projection: one concurrent wave can reserve past
+          // the cap, settle far below it, and hand the headroom straight back.
+          // Bailing out on the flag turned a transient spike into "abandon
+          // every remaining prompt on every engine", yielding a thin sample and
+          // a degraded score while reported spend sat well under the cap. Each
+          // prompt is therefore offered to the guard on its own merits; when
+          // the budget really is gone, `authorize` refuses and this returns
+          // capped anyway - at the cost of one cheap in-memory call per prompt.
           let reserved = 0;
           if (guard) {
-            if (guard.costCapped) {
-              opts.onAnswered?.();
-              return { kind: 'capped' };
-            }
             reserved = projectedCost();
             if (!guard.authorize(reserved)) {
               opts.onAnswered?.();
@@ -179,11 +221,25 @@ export async function askAll(
       // sequential call buys a real measurement for the price of a single round
       // trip, and every later authorization is then accurate. With no guard
       // there is nothing to protect, so the full fan-out runs unchanged.
+      // Probing only learned from a SUCCESSFUL call, so one transient failure
+      // on the first prompt sent the whole concurrent wave out against the
+      // very estimate the probe exists to replace. Keep probing sequentially
+      // until a call actually reports a cost (or the guard refuses, or we run
+      // out of prompts) - the blast radius of a blind fan-out is every
+      // in-flight call at once, while an extra sequential probe costs one
+      // round trip.
       const settled: Settled[] = [];
       let remaining = prompts;
       if (opts.guard && prompts.length > 1) {
-        settled.push(await askOne(prompts[0]!));
-        remaining = prompts.slice(1);
+        let i = 0;
+        while (i < prompts.length - 1 && observedCount === 0) {
+          const outcome = await askOne(prompts[i]!);
+          settled.push(outcome);
+          i += 1;
+          // A refusal means the budget is gone; further probing cannot help.
+          if (outcome.kind === 'capped') break;
+        }
+        remaining = prompts.slice(i);
       }
       settled.push(
         ...(await mapLimit<string, Settled>(remaining, concurrency, askOne)),

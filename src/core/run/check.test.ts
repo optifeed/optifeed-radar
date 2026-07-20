@@ -234,6 +234,28 @@ describe('runCheck spend reporting', () => {
     expect(result.spend?.totalUsd).toBeCloseTo(0.02, 10);
   });
 
+  // The field was populated on both ABORT paths but dropped from the success
+  // return, so `result.spend` existed exactly for runs that spent almost
+  // nothing and was undefined for the run that actually spent. A consumer
+  // branching on `result.spend !== undefined` read a completed run as uncosted.
+  it('reports spend on the success return, not only on aborts', async () => {
+    const fs = seededFs();
+    const guard = new CostGuard();
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        adapters: [fakeAdapter('openai', 'parametric', { cost: 0.01 })],
+        guard,
+      },
+      { stateDir: STATE, yes: true },
+    );
+
+    expect(result.aborted).toBe(false);
+    expect(result.spend).toBeDefined();
+    expect(result.spend).toEqual(result.envelope!.spend);
+  });
+
   it('still reports spend on a cost-capped partial run', async () => {
     // A capped run spent real money before it stopped; reporting nothing here
     // would hide the exact spend a user hit a cap trying to control.

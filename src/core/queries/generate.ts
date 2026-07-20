@@ -333,10 +333,15 @@ export async function generateQueries(
     return { pack: emptyPack, skipped: 'setup cost cap reached' };
   }
 
+  // Tracks whether the reservation has been closed out, so the error path can
+  // release a hold the success path never reached WITHOUT settling twice when
+  // the throw came from parsing (after settle already booked the real cost).
+  let settled = false;
   try {
     const res = await judge.complete(prompt, { maxTokens });
     // settle, not record: `authorize` reserved `projected` (see CostGuard).
     guard.settle(projected, res.costUsd, 'setup');
+    settled = true;
     const byIntent = parseIntentQueries(res.text, intents);
     const pack = buildQueryPack({
       domain: profile.domain,
@@ -348,6 +353,10 @@ export async function generateQueries(
     });
     return { pack };
   } catch (err) {
+    // A failed judge call cost nothing; free the hold so a single setup error
+    // does not shrink the budget for the whole run (competitors.ts and
+    // scoring/judge.ts already did this - this path was the one that leaked).
+    if (!settled) guard.settle(projected, 0, 'setup');
     const reason = err instanceof Error ? err.message : String(err);
     return { pack: emptyPack, skipped: `judge error: ${reason}` };
   }

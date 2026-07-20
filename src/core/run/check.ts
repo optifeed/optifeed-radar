@@ -277,6 +277,9 @@ export async function runCheck(
     // Read from the guard, not by summing answers: discovery, query generation
     // and the scoring judge all spend without producing an answer to sum.
     // Taken AFTER scoring so the judge pass is included.
+    // Always attached for a run that had a guard - a recorded zero is data, and
+    // the RENDERERS decide whether a zero is worth stating (it is ambiguous
+    // between "free" and "could not be priced", so they stay silent).
     spend: guard.spendBreakdown,
     generatedAt,
   });
@@ -290,7 +293,16 @@ export async function runCheck(
     );
   }
 
-  return { envelope, aborted: false, snapshotPath, notes };
+  // Spend rides the success return too, not just the abort paths: a consumer
+  // branching on `result.spend` would otherwise see it defined only for runs
+  // that spent almost nothing, and undefined for the run that actually spent.
+  return {
+    envelope,
+    aborted: false,
+    snapshotPath,
+    notes,
+    spend: guard.spendBreakdown,
+  };
 }
 
 /** Best-effort cost estimate; undefined when no judge or an unpriced model. */
