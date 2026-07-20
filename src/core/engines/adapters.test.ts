@@ -369,6 +369,102 @@ describe('createAdapter', () => {
     expect(uncapped.generationConfig?.thinkingConfig).toBeUndefined();
   });
 
+  const geminiGroundedReal = realFixture('gemini-grounded-real.json');
+
+  // The grounded Gemini path was the last hand-written, never-executed shape -
+  // the same category as the OpenAI grounded bug. Captured live 2026-07-20 once
+  // billing was enabled (the free tier has no Search grounding quota at all).
+  //
+  // Structurally the parser was right, but every citation URI is a Google
+  // REDIRECT WRAPPER (vertexaisearch.cloud.google.com/grounding-api-redirect/...)
+  // and the real publisher is in `web.title`. M7 derives cited domains with
+  // `new URL(u).hostname`, so all 16 live citations collapsed to ONE domain -
+  // Google's infrastructure - and the sources table showed that instead of the
+  // publishers who actually cited the brand. "Which sources does the AI cite
+  // about you" is a headline capability, so this was a wrong product output,
+  // not a cosmetic one. Those signed redirects also expire, so persisting them
+  // in snapshots rots the evidence.
+  it('reports the REAL publisher domain, not the Google redirect wrapper', async () => {
+    const { fn } = fakePost(geminiGroundedReal);
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best product feed tools?', { mode: 'grounded' });
+
+    expect(answer.kind).toBe('grounded');
+    expect(answer.citations).toEqual([
+      'https://aishoppingfeeds.com',
+      'https://gosynaps.com',
+      'https://feedon.ai',
+      'https://skuanalyzer.com',
+    ]);
+    // The wrapper must not survive into the evidence at all.
+    expect(answer.citations?.join(' ')).not.toContain('vertexaisearch');
+  });
+
+  // A grounding chunk whose title is a page title rather than a hostname must
+  // keep its (working) redirect URL - inventing `https://Some Article Title`
+  // would be worse than an opaque link.
+  it('falls back to the chunk URI when the title is not a hostname', async () => {
+    const { fn } = fakePost({
+      candidates: [
+        {
+          content: { parts: [{ text: 'answer' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/ABC',
+                  title: 'How to pick a feed tool in 2026',
+                },
+              },
+            ],
+          },
+        },
+      ],
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+    });
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q', { mode: 'grounded' });
+    expect(answer.citations).toEqual([
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/ABC',
+    ]);
+  });
+
+  // Gemini exposes its rewritten search queries as `webSearchQueries` - the
+  // same evidence OpenAI surfaces via web_search_call.action.queries. It was
+  // captured but never read (lesson #7); M6 logged it as unverifiable without
+  // a key. The HTML evidence block already renders fanoutQueries when present.
+  it('captures Gemini fanoutQueries from webSearchQueries', async () => {
+    const { fn } = fakePost(geminiGroundedReal);
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best product feed tools?', { mode: 'grounded' });
+
+    expect(answer.fanoutQueries).toEqual([
+      'Feedon.ai product feed',
+      'best product feed management tools 2026',
+      'best product feed management software 2025 2026',
+    ]);
+  });
+
+  // Never fabricate evidence that is not there (rule #6).
+  it('omits fanoutQueries on a parametric Gemini answer', async () => {
+    const { fn } = fakePost(geminiReal);
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('q');
+    expect(answer.fanoutQueries).toBeUndefined();
+  });
+
   // Perplexity's hand-written spec turned out to be CORRECT: `citations` really
   // is top-level on the raw body (unlike OpenAI, where it was an SDK-only
   // convenience). Pinning that against a real payload so it stays true.

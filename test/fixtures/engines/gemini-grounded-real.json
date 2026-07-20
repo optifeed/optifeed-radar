@@ -1,0 +1,71 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "In 2026, product feed management has evolved far beyond simple CSV exports. With the rise of AI-powered search (like Google's AI-driven shopping and conversational agents) and rapid multi-channel expansion, today's best tools act as the \"brain\" of your e-commerce operation. They don’t just format your data—they enrich, clean, and optimize it to max\n[trimmed for fixture review]"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0,
+      "groundingMetadata": {
+        "groundingChunks": [
+          {
+            "web": {
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG-SJ7RGEfSEY-Cr7eKhanDyD2aL[trimmed]",
+              "title": "aishoppingfeeds.com"
+            }
+          },
+          {
+            "web": {
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFmVdp0H2ffUu0EOtF7iduv8Fioh[trimmed]",
+              "title": "gosynaps.com"
+            }
+          },
+          {
+            "web": {
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGfCuL3pn5IxwDWYkkSrMXGtW3yD[trimmed]",
+              "title": "feedon.ai"
+            }
+          },
+          {
+            "web": {
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFLWbVgkav1CGH_qIqQIxGK3xTyS[trimmed]",
+              "title": "skuanalyzer.com"
+            }
+          }
+        ],
+        "webSearchQueries": [
+          "Feedon.ai product feed",
+          "best product feed management tools 2026",
+          "best product feed management software 2025 2026"
+        ]
+      }
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 545,
+    "candidatesTokenCount": 2161,
+    "totalTokenCount": 4215,
+    "cachedContentTokenCount": 111,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 545
+      }
+    ],
+    "cacheTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 111
+      }
+    ],
+    "thoughtsTokenCount": 1509,
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.5-flash",
+  "responseId": "h99daqvrEprbxs0P4KaQkQw"
+}

@@ -5,10 +5,40 @@
  */
 import type { ParsedResponse, ProviderSpec } from './adapter.js';
 
+/** A bare hostname (`feedon.ai`), as opposed to a prose page title. */
+const HOSTNAME =
+  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
+/**
+ * The citation URL for one grounding chunk.
+ *
+ * Gemini returns `web.uri` as an opaque Google REDIRECT
+ * (`vertexaisearch.cloud.google.com/grounding-api-redirect/...`) and puts the
+ * real publisher in `web.title`. Scoring derives cited domains with
+ * `new URL(u).hostname`, so using the uri collapsed every citation in a run to
+ * Google's own infrastructure domain and the sources table showed that instead
+ * of the publishers (verified live 2026-07-20: 16 citations, 1 reported
+ * domain). Those signed redirects also expire, so persisting them rots the
+ * evidence. Prefer the title when it really is a hostname; otherwise keep the
+ * uri - a working opaque link beats a fabricated one.
+ */
+function citationUrl(web: {
+  uri?: string;
+  title?: string;
+}): string | undefined {
+  const title = web.title?.trim();
+  if (title && HOSTNAME.test(title)) return `https://${title}`;
+  return web.uri;
+}
+
 interface GenerateShape {
   candidates?: {
     content?: { parts?: { text?: string; thought?: boolean }[] };
-    groundingMetadata?: { groundingChunks?: { web?: { uri?: string } }[] };
+    groundingMetadata?: {
+      groundingChunks?: { web?: { uri?: string; title?: string } }[];
+      /** The rewritten queries Gemini actually searched (fanout evidence). */
+      webSearchQueries?: string[];
+    };
     finishReason?: string;
   }[];
   usageMetadata?: {
@@ -67,11 +97,20 @@ export const geminiSpec: ProviderSpec = {
       .map((p) => p.text ?? '')
       .join('');
     const citations = candidate?.groundingMetadata?.groundingChunks
-      ?.map((c) => c.web?.uri)
+      ?.map((c) => (c.web ? citationUrl(c.web) : undefined))
       .filter((u): u is string => Boolean(u));
+    // What Gemini actually searched, where it exposes it. Recorded when present,
+    // never fabricated (rule #6) - the OpenAI grounded path surfaces the same
+    // evidence from web_search_call.action.queries.
+    const fanoutQueries =
+      candidate?.groundingMetadata?.webSearchQueries?.filter((q): q is string =>
+        Boolean(q),
+      );
     return {
       text,
       citations: citations && citations.length > 0 ? citations : undefined,
+      fanoutQueries:
+        fanoutQueries && fanoutQueries.length > 0 ? fanoutQueries : undefined,
       usage: r.usageMetadata
         ? {
             input: r.usageMetadata.promptTokenCount ?? 0,

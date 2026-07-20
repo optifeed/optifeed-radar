@@ -74,21 +74,40 @@ describe('resolveJudgeModel fallback matrix', () => {
   });
 
   it('falls back to the cheapest available model non-interactively, with a notice', async () => {
-    // RESOLVED (2026-07-20): selection is still purely by PRICE, but the silent
-    // downgrade this test used to pin is gone. The anthropic judge default was
-    // `claude-haiku-4-5`, which undercut openai's `gpt-5.4` - so adding an
-    // Anthropic key swapped the judge to a cheap tier and risked reintroducing
-    // fabricated competitors. Both Anthropic defaults now name the tier real
-    // users get (`claude-sonnet-5`, $3/$15), which sits just ABOVE gpt-5.4
-    // ($2.50/$15), so "cheapest available" now lands on a recall-grade judge
-    // either way. Asserted against the concrete id, not DEFAULT_JUDGE_MODELS.*,
-    // so a future default change cannot quietly re-satisfy this test.
+    // The ANTHROPIC downgrade this test used to pin is gone (2026-07-20): its
+    // judge default was `claude-haiku-4-5`, which undercut openai's `gpt-5.4`,
+    // so adding an Anthropic key swapped the judge to a cheap tier. Anthropic
+    // now names the tier real users get (`claude-sonnet-5`, $3/$15), which sits
+    // just ABOVE gpt-5.4 ($2.50/$15). Asserted against the concrete id, not
+    // DEFAULT_JUDGE_MODELS.*, so a future default change cannot quietly
+    // re-satisfy this test. NOTE: the underlying "cheapest wins" rule is NOT
+    // fixed - see the gemini case below.
     const res = await resolveJudgeModel({
       interactive: false,
       availableEngines: ['anthropic', 'openai'],
     });
     expect(res.source).toBe('fallback');
     expect(res.model).toBe('gpt-5.4');
+    expect(res.notice).toBeTruthy();
+  });
+
+  // The "cheapest wins" rule keeps finding new ways to downgrade the judge.
+  // Fixing anthropic did not fix the RULE: gemini-flash-latest ($1.50/$9.00)
+  // undercuts gpt-5.4 ($2.50/$15.00), so a Google key silently takes the judge
+  // even though the judge does factual RECALL, where cheap models fabricate.
+  // Observed live 2026-07-20 - a 4-engine run reported "defaulting to the
+  // cheapest available (gemini-flash-latest)". NOT redesigned here: ranking
+  // judges by recall quality needs per-provider measurement we have not done
+  // (the same reasoning that left this open at M11, and the same discipline as
+  // the gpt-5.4 judge choice, which WAS measured). Pinned so it cannot change
+  // silently, and logged in TASKS as still open.
+  it('lets a cheaper gemini judge win over gpt-5.4 (rule still price-only)', async () => {
+    const res = await resolveJudgeModel({
+      interactive: false,
+      availableEngines: ['openai', 'gemini'],
+    });
+    expect(res.source).toBe('fallback');
+    expect(res.model).toBe('gemini-flash-latest');
     expect(res.notice).toBeTruthy();
   });
 
