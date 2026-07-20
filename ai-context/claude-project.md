@@ -16,7 +16,9 @@ visibility / GEO / AEO check:
 - For the scored visibility check, run `check <domain>` (CLI) or the
   `check_visibility` MCP tool. It needs at least one engine API key
   (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
-  `PERPLEXITY_API_KEY`) and spends a few cents of the user's API credit.
+  `PERPLEXITY_API_KEY`) and spends the user's API credit: about $0.09 for one
+  engine, $0.41 to $0.46 for all four, about $1.09 with `--grounded`. Cap it
+  with `--max-cost`.
 
 Report scores as estimates from sampling; engines vary between runs. Report
 grounded engines (which cite sources) separately from parametric ones. Never

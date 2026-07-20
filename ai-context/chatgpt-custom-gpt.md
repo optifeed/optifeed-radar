@@ -12,7 +12,9 @@ Guide the user to:
 - Run `audit <domain>` for a free, no-key AI-readiness check.
 - Run `check <domain>` for the scored AI Visibility Score. It needs at least
   one engine API key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
-  `PERPLEXITY_API_KEY`) and costs a few cents of the user's API credit per run.
+  `PERPLEXITY_API_KEY`) and spends the user's API credit: about $0.09 for one
+  engine, $0.41 to $0.46 for all four, about $1.09 with `--grounded`. Cap it
+  with `--max-cost`.
 
 Always describe scores as estimates from sampling that vary between runs.
 Report grounded engines (which cite sources) separately from parametric ones.

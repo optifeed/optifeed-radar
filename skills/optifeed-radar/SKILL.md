@@ -1,6 +1,6 @@
 ---
 name: optifeed-radar
-description: Check whether AI engines (ChatGPT, Perplexity, Gemini, Claude) recommend a brand when buyers ask, and score its AI visibility. Use when someone asks "does AI recommend my brand", wants an AI visibility / GEO / AEO check, or wants to audit a site's AI-readiness. Runs locally with the user's own engine API keys. The zero-key audit is free; the check pipeline spends a few cents of the user's API credit per run.
+description: Check whether AI engines (ChatGPT, Perplexity, Gemini, Claude) recommend a brand when buyers ask, and score its AI visibility. Use when someone asks "does AI recommend my brand", wants an AI visibility / GEO / AEO check, or wants to audit a site's AI-readiness. Runs locally with the user's own engine API keys. The zero-key audit is free; the check pipeline spends the user's API credit, from about $0.09 for one engine to about $1.09 for four engines with web search.
 ---
 
 # Optifeed Radar
@@ -58,10 +58,18 @@ npx tsx src/cli/index.ts check example.com --quick --yes
 BYO keys. Scores are estimates from sampling and say so; engines vary between
 runs. Grounded engines (which cite sources) are reported separately from
 parametric ones (which answer from model weights alone). Keys stay on the
-user's machine and are never logged or stored. The zero-key `audit` costs
-nothing; a `--quick` single-engine `check` costs roughly a few cents of the
-user's API credit (about $0.09 measured on one run, varies by engine and
-prompt-pack size). SKU-level and product-feed checks are on the roadmap, not
-shipped.
+user's machine and are never logged or stored.
+
+Cost, measured on real runs (2026-07-20, `--quick` = 8 buyer prompts): the
+zero-key `audit` is free; a single-engine `check` is about $0.09; all four
+engines is $0.41 to $0.46; adding `--grounded` takes that to about $1.09,
+since web search is billed on top of tokens. Every run reports what it spent,
+split into setup and engine calls. `--max-cost` caps spend and is checked
+before every call, but a call's cost is not known until it returns, so a run
+can exceed the cap by at most one unmeasured call per engine; any overshoot is
+always reported. Confirm the cost with the user before running `check` on a
+large prompt pack or with `--grounded`.
+
+SKU-level and product-feed checks are on the roadmap, not shipped.
 
 More at optifeed.com

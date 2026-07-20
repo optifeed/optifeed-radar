@@ -44,8 +44,9 @@ It discovers your brand, generates a buyer-prompt pack, asks the engines, and
 scores recommendation, position, and share of voice into one AI Visibility
 Score. The score reads only the unbranded buyer questions (did the AI surface
 you unprompted); questions that name your brand are reported separately as
-reputation. Verifying `check` live against each engine's production API is the
-last step before the npm release, so treat it as pre-release.
+reputation. All four engines are verified live against their production APIs
+(2026-07-20). Treat this as pre-release only because the npm package is not
+published yet.
 
 The examples call `npx tsx src/cli/index.ts` directly so flags reach the CLI
 unchanged. With the `npm run dev` script, put `--` before the arguments
@@ -138,10 +139,30 @@ At launch the published package will also run via npx (no clone needed):
 | MCP     | `get_snapshot_diff`      | Compare two saved runs                                          | Free                          |
 
 Cost transparency: `audit` queries no AI engines and costs nothing. `check`
-spends your own API credit - a `--quick` single-engine run costs roughly a few
-cents (about $0.09 measured on one run; your cost varies by engine,
-prompt-pack size, and provider pricing). Cap spend with `--max-cost 0.50`;
-hitting the cap returns a partial result flagged as capped, never an error.
+spends your own API credit. Measured on real runs (2026-07-20, `--quick` =
+8 buyer prompts):
+
+| run                              | measured cost  |
+| -------------------------------- | -------------- |
+| `audit`                          | free           |
+| `check --quick`, one engine      | about $0.09    |
+| `check --quick`, all four        | $0.41 to $0.46 |
+| `check --quick --grounded`, four | about $1.09    |
+
+Your cost varies with engine, prompt-pack size, and provider pricing. Grounded
+runs cost roughly 3x parametric ones, because web search is billed on top of
+tokens: Google charges per search query, and one answer can trigger several.
+
+Every run reports what it actually spent, split into setup (brand discovery
+and prompt generation) and engine calls, so you can reconcile it against your
+provider bill. Declining at the confirmation prompt still reports the setup
+cost, because discovery runs before that prompt.
+
+`--max-cost 0.20` caps spend. The cap is checked before every call and hitting
+it returns a partial result flagged as capped, never an error. It is a strong
+bound rather than an absolute ceiling: an engine's cost is not known until its
+call returns, so a run can exceed the cap by at most the cost of one
+unmeasured call per engine. Any overshoot is always reported, never hidden.
 
 Useful `check` flags: `--json` (raw envelope), `--report report.html`
 (self-contained report), `--max-cost 0.50`, `--quick` (smaller prompt pack),
@@ -173,8 +194,10 @@ optimization (AEO).
 `get_snapshot_diff` to your AI agents over stdio.
 
 **What does it cost?** The `audit` command is free and needs no keys. The
-`check` pipeline spends your own engine API credit - a few cents for a quick
-run. You bring your own keys; there is no Optifeed-hosted billing.
+`check` pipeline spends your own engine API credit: measured at about $0.09 for
+a quick single-engine run, $0.41 to $0.46 across all four, and about $1.09 with
+`--grounded`. Every run reports what it spent, and `--max-cost` caps it. You
+bring your own keys; there is no Optifeed-hosted billing.
 
 **Is my data stored anywhere?** No. It runs locally, saves snapshots on your
 machine, and never sends your API keys off-device or logs them.
