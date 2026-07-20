@@ -12,6 +12,7 @@ function fakeAdapter(
     failOn?: (prompt: string) => boolean;
     /** Override so the adapter can use a model that IS in MODEL_PRICING. */
     model?: string;
+    supportsGrounded?: boolean;
   } = {},
 ): EngineAdapter {
   const model = opts.model ?? `${id}-model`;
@@ -19,6 +20,7 @@ function fakeAdapter(
     id,
     kind: 'parametric',
     model,
+    supportsGrounded: opts.supportsGrounded,
     available: () => opts.available ?? true,
     async ask(prompt): Promise<EngineAnswer> {
       if (opts.failOn?.(prompt)) throw new Error(`${id} boom`);
@@ -34,6 +36,61 @@ function fakeAdapter(
     },
   };
 }
+
+describe('askAll grounding fee reservation', () => {
+  // A grounded Gemini call owes $14/1,000 per SEARCH on top of tokens - on the
+  // real captured call the fee ($0.042) exceeded the whole token cost
+  // ($0.034). Reserving tokens only would admit calls the budget cannot pay
+  // for, which is precisely how --max-cost was breached by 74% on 2026-07-20.
+  it('reserves the search fee, so a tight cap admits fewer grounded calls', async () => {
+    const prompts = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    const adapter = (): EngineAdapter =>
+      fakeAdapter('gemini', {
+        model: 'gemini-flash-latest',
+        supportsGrounded: true,
+        costUsd: 0.0001, // tiny actual, so only the RESERVATION differs
+      });
+
+    const parametricGuard = new CostGuard({ maxCostUsd: 0.2 });
+    const parametric = await askAll(prompts, [adapter()], {
+      guard: parametricGuard,
+    });
+
+    const groundedGuard = new CostGuard({ maxCostUsd: 0.2 });
+    const grounded = await askAll(prompts, [adapter()], {
+      guard: groundedGuard,
+      mode: 'grounded',
+    });
+
+    // Same cap, same prompts: grounded reserves ~5 searches x $0.014 extra per
+    // call, so fewer calls fit. If the fee is not reserved these are equal.
+    expect(grounded.answers.length).toBeLessThan(parametric.answers.length);
+    expect(groundedGuard.costCapped).toBe(true);
+  });
+
+  // Rule #6: under --grounded, an engine that cannot search is honestly tagged
+  // parametric. Reserving a search fee for it would shrink the budget for
+  // searches that never happen.
+  it('reserves no search fee for an engine that cannot ground', async () => {
+    const prompts = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    const adapter = (): EngineAdapter =>
+      fakeAdapter('anthropic', {
+        model: 'claude-sonnet-5',
+        supportsGrounded: false,
+        costUsd: 0.0001,
+      });
+
+    const parametric = await askAll(prompts, [adapter()], {
+      guard: new CostGuard({ maxCostUsd: 0.05 }),
+    });
+    const grounded = await askAll(prompts, [adapter()], {
+      guard: new CostGuard({ maxCostUsd: 0.05 }),
+      mode: 'grounded',
+    });
+
+    expect(grounded.answers.length).toBe(parametric.answers.length);
+  });
+});
 
 describe('askAll', () => {
   it('builds the full answer matrix across adapters and prompts', async () => {

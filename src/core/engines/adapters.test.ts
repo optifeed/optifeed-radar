@@ -531,6 +531,43 @@ describe('createAdapter', () => {
     ]);
   });
 
+  // Google bills grounding per SEARCH QUERY on top of tokens ($14/1,000;
+  // "You will be charged for each individual search query performed" -
+  // official sheet, retrieved 2026-07-20). This real call issued 3 searches =
+  // $0.042, which is MORE than its entire token cost (~$0.034), so pricing by
+  // tokens alone under-reported it by ~2.2x. Same class as the Perplexity
+  // per-request fee, and the reason a grounded --max-cost run could breach its
+  // cap while reporting itself under (hard rule #5).
+  it('charges the Gemini per-search grounding fee on a grounded call', async () => {
+    const { fn } = fakePost(geminiGroundedReal);
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best product feed tools?', { mode: 'grounded' });
+
+    // input 545 @ $1.50/M = 0.00081750
+    // output (2161 + 1509 thinking) @ $9.00/M = 0.03303
+    // 3 search queries @ $0.014 = 0.042
+    expect(answer.costUsd).toBeCloseTo(0.0758475, 6);
+    // The fee must dominate here; a regression that drops it is not subtle.
+    expect(answer.costUsd).toBeGreaterThan(0.07);
+  });
+
+  // The fee follows the SEARCHES, not the engine: a parametric Gemini call
+  // runs no search and must not be charged for one.
+  it('charges no grounding fee on a parametric Gemini call', async () => {
+    const { fn } = fakePost(geminiReal);
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best product feed tools?');
+
+    // input 21 @ $1.50/M + output (1797 + 1274 thinking) @ $9.00/M, no fee.
+    expect(answer.costUsd).toBeCloseTo(0.0276705, 6);
+  });
+
   // Never fabricate evidence that is not there (rule #6).
   it('omits fanoutQueries on a parametric Gemini answer', async () => {
     const { fn } = fakePost(geminiReal);

@@ -72,14 +72,22 @@ type Settled =
   | { kind: 'error'; error: string }
   | { kind: 'capped' };
 
-/** Rough per-call cost for the pre-ask cap check (real cost is recorded after). */
-function estimateCall(model: string): number {
+/**
+ * Rough per-call cost for the pre-ask cap check (real cost is recorded after).
+ *
+ * A grounded call also owes a per-search fee, which on a real Gemini call
+ * exceeded the entire token cost. Reserving the token cost alone would admit
+ * calls the budget cannot pay for - the same under-reservation shape as the
+ * 74% breach found on 2026-07-20.
+ */
+function estimateCall(model: string, grounded: boolean): number {
   const pricing = MODEL_PRICING.models[model];
   if (!pricing) return 0;
   return costOfCall(
     pricing,
     ESTIMATE_ASSUMPTIONS.avgInputTokens,
     ESTIMATE_ASSUMPTIONS.avgOutputTokens,
+    grounded ? ESTIMATE_ASSUMPTIONS.searchesPerGroundedCall : 0,
   );
 }
 
@@ -112,7 +120,13 @@ export async function askAll(
       const projectedCost = (): number => {
         const observedAvg =
           observedCount > 0 ? observedTotal / observedCount : 0;
-        return Math.max(estimateCall(adapter.model), observedAvg);
+        // `supportsGrounded` gates this the same way the adapter does: an
+        // engine that cannot search is not reserved for searches it will never
+        // run, even under --grounded (rule #6 - no fake precision).
+        const willSearch =
+          opts.mode === 'grounded' &&
+          (adapter.kind === 'grounded' || adapter.supportsGrounded === true);
+        return Math.max(estimateCall(adapter.model, willSearch), observedAvg);
       };
 
       const askOne = async (prompt: string): Promise<Settled> => {

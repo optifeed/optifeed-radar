@@ -20,6 +20,13 @@ export interface EngineAdapter {
   kind: EngineKind;
   /** Resolved model id this adapter answers with (used for cost/judge). */
   model: string;
+  /**
+   * Whether this engine can actually search when asked for grounded mode.
+   * Mirrors {@link ProviderSpec.supportsGrounded} so cost reservation can tell
+   * a real search from a request for one - an engine that cannot ground is
+   * neither billed nor reserved for searches it will never run.
+   */
+  supportsGrounded?: boolean;
   available(): boolean;
   ask(prompt: string, opts?: AskOptions): Promise<EngineAnswer>;
 }
@@ -68,14 +75,19 @@ export interface AdapterDeps {
 function computeCost(
   model: string,
   usage: { input: number; output: number } | undefined,
+  searchQueries = 0,
 ): number {
   const pricing = MODEL_PRICING.models[model];
   if (!pricing) return 0;
-  // A flat per-request fee is owed even when token usage did not parse: a 2xx
-  // whose `usage` block drifted still cost the provider's per-search charge, so
-  // returning 0 would under-report real spend (rule #5).
-  if (!usage) return pricing.perRequestUsd ?? 0;
-  return costOfCall(pricing, usage.input, usage.output);
+  // Per-request and per-search fees are owed even when token usage did not
+  // parse: a 2xx whose `usage` block drifted still cost the provider's search
+  // charges, so returning 0 would under-report real spend (rule #5).
+  if (!usage) {
+    return (
+      (pricing.perRequestUsd ?? 0) + searchQueries * (pricing.perSearchUsd ?? 0)
+    );
+  }
+  return costOfCall(pricing, usage.input, usage.output, searchQueries);
 }
 
 export function createAdapter(
@@ -88,6 +100,7 @@ export function createAdapter(
   return {
     id: spec.id,
     kind: spec.kind,
+    supportsGrounded: spec.supportsGrounded,
     model,
     available: () => Boolean(deps.apiKey),
     async ask(prompt, opts = {}) {
@@ -128,7 +141,9 @@ export function createAdapter(
         fanoutQueries: parsed.fanoutQueries,
         model: parsed.model ?? model,
         tokens: parsed.usage,
-        costUsd: computeCost(model, parsed.usage),
+        // Price the searches the call actually reported, not an assumption:
+        // Google bills grounding per individual search query.
+        costUsd: computeCost(model, parsed.usage, parsed.fanoutQueries?.length),
         ts: now(),
       };
     },

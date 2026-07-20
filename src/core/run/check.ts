@@ -15,7 +15,12 @@
  * assembled from all three independent signals and surfaced upward, never
  * hidden (hard rule #6).
  */
-import { CostGuard, type CostEstimate, estimateRun } from '../costs.js';
+import {
+  CostGuard,
+  type CostEstimate,
+  ESTIMATE_ASSUMPTIONS,
+  estimateRun,
+} from '../costs.js';
 import type { ProfileFs } from '../discovery/index.js';
 import { type AskMode, type EngineAdapter, askAll } from '../engines/index.js';
 import type { Fetcher } from '../fetcher/index.js';
@@ -197,7 +202,12 @@ export async function runCheck(
       );
       return { aborted: true, notes };
     }
-    const estimate = priceRun(prompts.length, availableEngines, deps.judge);
+    const estimate = priceRun(
+      prompts.length,
+      availableEngines,
+      deps.judge,
+      opts.mode === 'grounded',
+    );
     const ok = await deps.confirm({
       estimate,
       nPrompts: prompts.length,
@@ -275,6 +285,7 @@ function priceRun(
   nPrompts: number,
   availableEngines: EngineAdapter[],
   judge?: JudgeClient,
+  grounded = false,
 ): CostEstimate | undefined {
   if (!judge || nPrompts === 0 || availableEngines.length === 0) {
     return undefined;
@@ -284,6 +295,10 @@ function priceRun(
       nPrompts,
       availableEngines.map((a) => a.model),
       judge.model,
+      // A grounded run owes a per-search fee that can exceed its token cost,
+      // so the confirm gate must quote the run being requested, not a
+      // parametric one.
+      { ...ESTIMATE_ASSUMPTIONS, grounded },
     );
   } catch {
     // An unpriced model must not block the run; the guard still caps spend.

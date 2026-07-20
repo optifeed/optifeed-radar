@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ESTIMATE_ASSUMPTIONS,
   CostGuard,
   MODEL_PRICING,
   UnknownModelError,
@@ -17,6 +18,43 @@ describe('costOfCall', () => {
   it('is zero for a zero-token call', () => {
     const pricing = { inputPerMTokens: 5, outputPerMTokens: 9 };
     expect(costOfCall(pricing, 0, 0)).toBe(0);
+  });
+
+  // Google bills grounding PER SEARCH QUERY, not per request: "A customer-
+  // submitted request to Gemini may result in one or more queries to Google
+  // Search. You will be charged for each individual search query performed."
+  // (https://ai.google.dev/gemini-api/docs/pricing, retrieved 2026-07-20).
+  // Token-only pricing misses this entirely.
+  it('adds a per-search grounding fee when searches were performed', () => {
+    const pricing = {
+      inputPerMTokens: 1,
+      outputPerMTokens: 2,
+      perSearchUsd: 0.014,
+    };
+    // tokens 0.0012 + 3 searches @ $0.014 = 0.042 -> 0.0432
+    expect(costOfCall(pricing, 200, 500, 3)).toBeCloseTo(0.0432, 10);
+  });
+
+  it('charges no grounding fee for a parametric call', () => {
+    const pricing = {
+      inputPerMTokens: 1,
+      outputPerMTokens: 2,
+      perSearchUsd: 0.014,
+    };
+    expect(costOfCall(pricing, 200, 500)).toBeCloseTo(0.0012, 10);
+    expect(costOfCall(pricing, 200, 500, 0)).toBeCloseTo(0.0012, 10);
+  });
+
+  it('prices the search fee independently of the per-request fee', () => {
+    // Perplexity bills flat per request; Google bills per search. A model with
+    // both must not have one silently stand in for the other.
+    const pricing = {
+      inputPerMTokens: 0,
+      outputPerMTokens: 0,
+      perRequestUsd: 0.005,
+      perSearchUsd: 0.014,
+    };
+    expect(costOfCall(pricing, 0, 0, 2)).toBeCloseTo(0.033, 10);
   });
 });
 
@@ -49,6 +87,44 @@ describe('estimateRun', () => {
     expect(est.askUsd).toBeCloseTo(expectedAsk, 10);
     expect(est.judgeUsd).toBeGreaterThan(0);
     expect(est.totalUsd).toBeCloseTo(est.askUsd + est.judgeUsd, 10);
+  });
+
+  // A grounded run pays a search fee per call that a parametric run does not.
+  // The estimate must reflect it, or --max-cost authorizes against a number
+  // that cannot pay for the run (the exact shape of the 74% breach found on
+  // 2026-07-20, where the static estimate was 4.9x too small).
+  it('prices grounding searches into a grounded estimate', () => {
+    const parametric = estimateRun(10, ['gemini-flash-latest'], 'gpt-5.4');
+    const grounded = estimateRun(10, ['gemini-flash-latest'], 'gpt-5.4', {
+      ...ESTIMATE_ASSUMPTIONS,
+      grounded: true,
+    });
+
+    const perSearch =
+      MODEL_PRICING.models['gemini-flash-latest']!.perSearchUsd!;
+    const expectedFee =
+      10 * ESTIMATE_ASSUMPTIONS.searchesPerGroundedCall * perSearch;
+    expect(grounded.askUsd - parametric.askUsd).toBeCloseTo(expectedFee, 10);
+  });
+
+  it('adds no search fee to a grounded estimate for an engine that cannot search', () => {
+    // claude-sonnet-5 has no perSearchUsd: under --grounded it is honestly
+    // tagged parametric, so charging it a search fee would be fake precision.
+    const parametric = estimateRun(10, ['claude-sonnet-5'], 'gpt-5.4');
+    const grounded = estimateRun(10, ['claude-sonnet-5'], 'gpt-5.4', {
+      ...ESTIMATE_ASSUMPTIONS,
+      grounded: true,
+    });
+    expect(grounded.askUsd).toBeCloseTo(parametric.askUsd, 10);
+  });
+
+  it('assumes at least as many searches as a real call was observed to make', () => {
+    // The one real captured grounded call issued 3 searches. The assumption
+    // must not sit below observed reality: with reserve-and-settle an
+    // over-estimate settles back down, an under-estimate breaches the cap.
+    expect(ESTIMATE_ASSUMPTIONS.searchesPerGroundedCall).toBeGreaterThanOrEqual(
+      3,
+    );
   });
 
   it('scales linearly with prompt count', () => {

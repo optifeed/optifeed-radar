@@ -288,6 +288,51 @@ describe('runCheck end to end (all mocked)', () => {
     expect(env.answers).toHaveLength(2);
   });
 
+  // The confirm gate is where a user decides whether to spend, so the number
+  // it shows must price the run actually being requested. A grounded run owes
+  // Google a per-search fee that dominates its cost; quoting the parametric
+  // price would understate what the user is agreeing to.
+  it('quotes the grounding fee in the estimate for a grounded run', async () => {
+    const seen: (number | undefined)[] = [];
+    const runWithMode = async (mode?: 'grounded'): Promise<void> => {
+      const fs = seededFs();
+      await runCheck(
+        'acme.example',
+        {
+          ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+          adapters: [
+            fakeAdapter('gemini', 'parametric', {
+              model: 'gemini-flash-latest',
+            }),
+          ],
+          // Both models must be in MODEL_PRICING or priceRun returns undefined
+          // and the test would compare two blanks.
+          judge: {
+            model: 'gpt-5.4',
+            complete: async () => ({
+              text: '{}',
+              costUsd: 0,
+              model: 'gpt-5.4',
+            }),
+          },
+          confirm: async (ctx) => {
+            seen.push(ctx.estimate?.totalUsd);
+            return false; // never spend; we only want the quote
+          },
+        },
+        { stateDir: STATE, ...(mode ? { mode } : {}) },
+      );
+    };
+
+    await runWithMode();
+    await runWithMode('grounded');
+
+    const [parametric, grounded] = seen;
+    expect(parametric).toBeDefined();
+    expect(grounded).toBeDefined();
+    expect(grounded!).toBeGreaterThan(parametric!);
+  });
+
   it('aborts without asking any engine when confirmation is declined', async () => {
     const fs = seededFs();
     const adapters = [fakeAdapter('openai', 'parametric')];

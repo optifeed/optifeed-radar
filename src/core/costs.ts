@@ -15,6 +15,13 @@ export interface ModelPricing {
    * search fee per call (Perplexity), which token-only pricing misses entirely.
    */
   perRequestUsd?: number;
+  /**
+   * USD charged per individual SEARCH QUERY, on top of tokens. Distinct from
+   * {@link perRequestUsd}: Google bills grounding per query and one request can
+   * issue several, so the multiplier is the search count, not the call count.
+   * Charged only when a call actually searched.
+   */
+  perSearchUsd?: number;
 }
 
 /**
@@ -46,9 +53,20 @@ export interface ModelPricing {
  * on introductory pricing ($2/$10) through 2026-08-31, so the row over-estimates
  * until then - deliberate, an estimate should not under-report spend.
  *
- * NOT modelled (known gap, logged for M17): Google Search grounding bills
- * $14/1,000 search queries on top of tokens - one request can trigger several -
- * so a grounded Gemini estimate is a floor, not a quote.
+ * Google Search grounding is modelled as of 2026-07-20 (`perSearchUsd`): $14
+ * per 1,000 search queries on top of tokens. The billing unit is the SEARCH,
+ * not the request - "A customer-submitted request to Gemini may result in one
+ * or more queries to Google Search. You will be charged for each individual
+ * search query performed" (official sheet, retrieved 2026-07-20). RECORDED
+ * spend is exact because the response reports the queries it ran
+ * (`webSearchQueries` -> `fanoutQueries`); only the pre-run ESTIMATE assumes a
+ * count, via {@link EstimateAssumptions.searchesPerGroundedCall}. This fee is
+ * not small: on the real captured grounded call it was $0.042 against $0.034
+ * of tokens.
+ *
+ * Google also grants a free grounding allowance (5,000 prompts/month at the
+ * time of writing), so a user inside it pays nothing. Pricing it anyway is
+ * deliberate: an estimate must not under-report spend.
  */
 export const MODEL_PRICING: {
   lastUpdated: string;
@@ -71,8 +89,16 @@ export const MODEL_PRICING: {
     'gpt-4o': { inputPerMTokens: 2.5, outputPerMTokens: 10 },
     'claude-haiku-4-5': { inputPerMTokens: 1, outputPerMTokens: 5 },
     'claude-sonnet-5': { inputPerMTokens: 3, outputPerMTokens: 15 },
-    'gemini-flash-latest': { inputPerMTokens: 1.5, outputPerMTokens: 9 },
-    'gemini-3.5-flash': { inputPerMTokens: 1.5, outputPerMTokens: 9 },
+    'gemini-flash-latest': {
+      inputPerMTokens: 1.5,
+      outputPerMTokens: 9,
+      perSearchUsd: 0.014,
+    },
+    'gemini-3.5-flash': {
+      inputPerMTokens: 1.5,
+      outputPerMTokens: 9,
+      perSearchUsd: 0.014,
+    },
     // Retired 2026-07-20: 404s ("no longer available to new users"). Kept only
     // so snapshots written before the switch still price.
     'gemini-2.5-flash': { inputPerMTokens: 0.3, outputPerMTokens: 2.5 },
@@ -94,16 +120,24 @@ function pricingFor(model: string): ModelPricing {
   return p;
 }
 
-/** USD cost of one call given token counts. */
+/**
+ * USD cost of one call given token counts and, for grounded engines, the
+ * number of search queries the call actually issued.
+ *
+ * `searchQueries` defaults to 0 so every parametric caller is unchanged: a call
+ * that ran no search is never charged a search fee.
+ */
 export function costOfCall(
   pricing: ModelPricing,
   inputTokens: number,
   outputTokens: number,
+  searchQueries = 0,
 ): number {
   return (
     (inputTokens / 1_000_000) * pricing.inputPerMTokens +
     (outputTokens / 1_000_000) * pricing.outputPerMTokens +
-    (pricing.perRequestUsd ?? 0)
+    (pricing.perRequestUsd ?? 0) +
+    searchQueries * (pricing.perSearchUsd ?? 0)
   );
 }
 
@@ -114,6 +148,14 @@ export interface EstimateAssumptions {
   judgeInputTokens: number;
   judgeOutputTokens: number;
   judgeSampleRate: number;
+  /**
+   * Search queries assumed per grounded call, for engines that bill per search
+   * ({@link ModelPricing.perSearchUsd}). Only an ESTIMATE input - recorded
+   * spend uses the count the provider actually reported.
+   */
+  searchesPerGroundedCall: number;
+  /** Whether the run being estimated will ask engines in grounded mode. */
+  grounded?: boolean;
 }
 
 /** The default token/sampling assumptions for a run estimate. */
@@ -123,6 +165,16 @@ export const ESTIMATE_ASSUMPTIONS: EstimateAssumptions = {
   judgeInputTokens: 700,
   judgeOutputTokens: 100,
   judgeSampleRate: 0.3, // M7: judge calls <= 30% of answers
+  // One above the only real observation (a captured grounded call issued 3),
+  // and deliberately NOT padded further. Cap safety no longer rests on this
+  // number: the guard reserves and then settles to actual, and the runner
+  // authorizes later calls against each engine's OBSERVED cost after a probe
+  // call. What this number does drive is the figure shown at the confirm gate,
+  // where a heavily padded assumption would talk users out of runs that are
+  // cheaper than quoted. Note the fee is large either way - at 4 searches it is
+  // most of a grounded run's estimated cost, which is real, not an artifact.
+  // n=1: replace with a measured distribution at the M17 smoke test.
+  searchesPerGroundedCall: 4,
 };
 
 /** Result of {@link estimateRun}: a pre-run cost estimate in USD. */
@@ -151,6 +203,10 @@ export function estimateRun(
         pricingFor(model),
         assumptions.avgInputTokens,
         assumptions.avgOutputTokens,
+        // Only a grounded run searches. An engine with no `perSearchUsd`
+        // absorbs this as zero, so an engine that cannot search is never
+        // charged for one even under --grounded.
+        assumptions.grounded ? assumptions.searchesPerGroundedCall : 0,
       ),
     0,
   );
