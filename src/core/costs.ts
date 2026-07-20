@@ -232,10 +232,19 @@ export type CostPhase = 'setup' | 'main';
 /**
  * Accumulates actual spend and enforces caps. Per the abort contract, hitting a
  * cap NEVER throws: {@link CostGuard.authorize} returns `false` and sets
- * {@link CostGuard.costCapped}, and the caller stops. `record` logs actuals.
+ * {@link CostGuard.costCapped}, and the caller stops.
+ *
+ * Authorizing RESERVES the projected cost, and {@link CostGuard.settle}
+ * replaces that hold with the real figure once the call returns. Without the
+ * reservation, `authorize` compared only against RECORDED spend - and recording
+ * happens after a call completes - so every concurrently in-flight call was
+ * authorized against a total that excluded all the others. Measured live
+ * 2026-07-20: `--max-cost 0.20` spent $0.3481, a 74% breach (hard rule #5).
  */
 export class CostGuard {
   private readonly spent: Record<CostPhase, number> = { setup: 0, main: 0 };
+  /** Authorized-but-not-yet-settled holds, so in-flight calls count against the cap. */
+  private readonly reserved: Record<CostPhase, number> = { setup: 0, main: 0 };
   private capped = false;
 
   constructor(
@@ -260,22 +269,48 @@ export class CostGuard {
    */
   authorize(usd: number, phase: CostPhase = 'main'): boolean {
     const { maxSetupCostUsd, maxCostUsd } = this.caps;
+    // Committed = already spent PLUS everything currently in flight. Checking
+    // spend alone let concurrent calls each claim the same headroom.
+    const committedSetup = this.spent.setup + this.reserved.setup;
+    const committedTotal =
+      this.spentUsd + this.reserved.setup + this.reserved.main;
     if (
       phase === 'setup' &&
       maxSetupCostUsd !== undefined &&
-      this.spent.setup + usd > maxSetupCostUsd
+      committedSetup + usd > maxSetupCostUsd
     ) {
       this.capped = true;
       return false;
     }
-    if (maxCostUsd !== undefined && this.spentUsd + usd > maxCostUsd) {
+    if (maxCostUsd !== undefined && committedTotal + usd > maxCostUsd) {
       this.capped = true;
       return false;
     }
+    this.reserved[phase] += usd;
     return true;
   }
 
-  /** Record actual spend after a call completes. */
+  /**
+   * Close out an authorized call: release its reservation and book what it
+   * actually cost. Pass `actualUsd: 0` when the call failed or was abandoned,
+   * so the hold does not leak and strangle the remaining budget.
+   */
+  settle(
+    reservedUsd: number,
+    actualUsd: number,
+    phase: CostPhase = 'main',
+  ): void {
+    this.reserved[phase] = Math.max(0, this.reserved[phase] - reservedUsd);
+    this.spent[phase] += actualUsd;
+  }
+
+  /**
+   * Record actual spend for a call that carried NO reservation.
+   *
+   * Do not pair this with {@link CostGuard.authorize} - that reserves, and only
+   * {@link CostGuard.settle} releases the hold. Using `record` after
+   * `authorize` leaks the reservation and permanently shrinks the budget.
+   */
   record(usd: number, phase: CostPhase = 'main'): void {
     this.spent[phase] += usd;
   }

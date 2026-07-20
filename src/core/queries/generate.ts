@@ -335,7 +335,8 @@ export async function generateQueries(
 
   try {
     const res = await judge.complete(prompt, { maxTokens });
-    guard.record(res.costUsd, 'setup');
+    // settle, not record: `authorize` reserved `projected` (see CostGuard).
+    guard.settle(projected, res.costUsd, 'setup');
     const byIntent = parseIntentQueries(res.text, intents);
     const pack = buildQueryPack({
       domain: profile.domain,

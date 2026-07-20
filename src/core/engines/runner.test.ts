@@ -10,12 +10,15 @@ function fakeAdapter(
     available?: boolean;
     costUsd?: number;
     failOn?: (prompt: string) => boolean;
+    /** Override so the adapter can use a model that IS in MODEL_PRICING. */
+    model?: string;
   } = {},
 ): EngineAdapter {
+  const model = opts.model ?? `${id}-model`;
   return {
     id,
     kind: 'parametric',
-    model: `${id}-model`,
+    model,
     available: () => opts.available ?? true,
     async ask(prompt): Promise<EngineAnswer> {
       if (opts.failOn?.(prompt)) throw new Error(`${id} boom`);
@@ -24,7 +27,7 @@ function fakeAdapter(
         kind: 'parametric',
         prompt,
         text: `${id}:${prompt}`,
-        model: `${id}-model`,
+        model,
         costUsd: opts.costUsd ?? 0.01,
         ts: 't',
       };
@@ -179,6 +182,84 @@ describe('askAll', () => {
     expect(p.answered).toBe(result.answers.length);
     expect(p.attempted).toBe(5);
     expect(p.reason.toLowerCase()).toContain('cost cap');
+  });
+
+  // The static per-call estimate assumes 500 output tokens. Gemini averaged
+  // 2584 live (thinking tokens are billed as output), so each call really cost
+  // 4.9x what was authorized. Reserving fixes the concurrency race, but a
+  // reservation that is itself 5x too small still lets a whole CONCURRENT WAVE
+  // through against headroom that cannot pay for it. Once an engine has
+  // completed a call, later calls must be authorized against what that engine
+  // actually costs (hard rule #5).
+  //
+  // Shape: cap $0.30, 4 concurrent, each call really $0.05 but statically
+  // estimated at ~$0.0057. Wave 1 spends $0.20 (unavoidable - nothing observed
+  // yet). Wave 2 then has $0.10 of headroom: reserving the stale $0.0057 lets
+  // all 4 through for another $0.20 (total $0.40, cap blown by a third);
+  // reserving the observed $0.05 admits only 2 and stops at the cap.
+  it('authorizes later waves against an engine observed cost, not the assumption', async () => {
+    const guard = new CostGuard({ maxCostUsd: 0.3 });
+    await askAll(
+      [
+        'p1',
+        'p2',
+        'p3',
+        'p4',
+        'p5',
+        'p6',
+        'p7',
+        'p8',
+        'p9',
+        'p10',
+        'p11',
+        'p12',
+      ],
+      [fakeAdapter('perplexity', { costUsd: 0.05, model: 'sonar' })],
+      { guard }, // default concurrency (4)
+    );
+
+    expect(guard.costCapped).toBe(true);
+    expect(guard.spentUsd).toBeLessThanOrEqual(0.3);
+  });
+
+  // Residual after reserving + adapting: the FIRST wave has no observation to
+  // adapt to, so `concurrency` calls all reserve the stale estimate at once and
+  // a thinking-heavy engine still overshoots (live: 74% -> 28%). Probing with a
+  // single call before fanning out buys a real cost measurement for the price
+  // of one round trip, so every later authorization is accurate.
+  //
+  // Shape: cap $0.10, 4 concurrent, each call really $0.05 vs ~$0.0057
+  // estimated. Fanning out immediately admits 4 calls ($0.20, double the cap);
+  // probing first spends $0.05, learns the real cost, and admits exactly one
+  // more.
+  it('probes with one call before fanning out, so the first wave cannot blow the cap', async () => {
+    const guard = new CostGuard({ maxCostUsd: 0.1 });
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'],
+      [fakeAdapter('perplexity', { costUsd: 0.05, model: 'sonar' })],
+      { guard }, // default concurrency (4)
+    );
+
+    expect(guard.spentUsd).toBeLessThanOrEqual(0.1);
+    expect(result.answers).toHaveLength(2);
+    expect(guard.costCapped).toBe(true);
+  });
+
+  // The probe must not change results when no cap is in play - it is a spend
+  // control, not a behaviour change.
+  it('still answers every prompt when there is no cost guard', async () => {
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4', 'p5'],
+      [fakeAdapter('openai')],
+    );
+    expect(result.answers).toHaveLength(5);
+    expect(result.answers.map((a) => a.prompt)).toEqual([
+      'p1',
+      'p2',
+      'p3',
+      'p4',
+      'p5',
+    ]);
   });
 
   // Mixed causes must not be misattributed. Blaming the rate limiter for

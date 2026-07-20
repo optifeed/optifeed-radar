@@ -125,9 +125,12 @@ export async function discoverCompetitors(
 
   try {
     const res = await judge.complete(prompt, { maxTokens });
-    guard.record(res.costUsd, 'setup');
+    // settle, not record: `authorize` reserved `projected`, and only settling
+    // releases that hold (a leaked reservation shrinks the remaining budget).
+    guard.settle(projected, res.costUsd, 'setup');
     return { competitors: parseCompetitors(res.text) };
   } catch (err) {
+    guard.settle(projected, 0, 'setup'); // failed call cost nothing; free the hold
     const reason = err instanceof Error ? err.message : String(err);
     return { competitors: [], skipped: `judge error: ${reason}` };
   }
