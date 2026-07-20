@@ -166,15 +166,21 @@ export const ESTIMATE_ASSUMPTIONS: EstimateAssumptions = {
   judgeInputTokens: 700,
   judgeOutputTokens: 100,
   judgeSampleRate: 0.3, // M7: judge calls <= 30% of answers
-  // One above the only real observation (a captured grounded call issued 3),
-  // and deliberately NOT padded further. Cap safety no longer rests on this
-  // number: the guard reserves and then settles to actual, and the runner
-  // authorizes later calls against each engine's OBSERVED cost after a probe
-  // call. What this number does drive is the figure shown at the confirm gate,
-  // where a heavily padded assumption would talk users out of runs that are
-  // cheaper than quoted. Note the fee is large either way - at 4 searches it is
-  // most of a grounded run's estimated cost, which is real, not an artifact.
-  // n=1: replace with a measured distribution at the M17 smoke test.
+  // MEASURED at the M17 smoke test (2026-07-20), live grounded Gemini over 7
+  // calls: counts 4,2,3,4,6,3,2 - median 3, mean 3.43, max 6. Sitting at 4
+  // keeps the estimate just above the mean without reaching for the tail, and
+  // deliberately NOT padded further: cap safety does not rest on this number
+  // (the guard reserves then settles to actual, and the runner authorizes
+  // later calls against each engine's OBSERVED cost after a probe), while this
+  // number DOES drive the figure shown at the confirm gate, where padding
+  // talks users out of runs cheaper than quoted.
+  //
+  // The fee is not a rounding error: those 24 searches cost $0.336, which was
+  // 57% of Gemini's total spend for the run. Token-only pricing would have
+  // under-reported that engine by more than 2x.
+  //
+  // Only Gemini bills this way today. Re-measure if OpenAI starts charging per
+  // search, or if fanout behavior visibly shifts.
   searchesPerGroundedCall: 4,
 };
 

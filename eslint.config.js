@@ -4,7 +4,10 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
+    // `scripts/` holds dev-only utilities (the M17 smoke test) that are plain
+    // .mjs, never shipped (`files` excludes them) and outside the tsconfig
+    // project, so type-aware linting has no program for them.
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'scripts/**'],
   },
   eslint.configs.recommended,
   // Type-aware linting: the modern TS "style guide" - catches real bugs
