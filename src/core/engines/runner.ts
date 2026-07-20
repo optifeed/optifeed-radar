@@ -2,8 +2,11 @@
  * Fan prompts across adapters, partial-failure tolerant (M6).
  *
  * One adapter's total failure never kills the run - it is moved to
- * `skippedEngines` with a reason. Per-provider concurrency is bounded; per-call
- * cost is recorded into an optional CostGuard.
+ * `skippedEngines` with a reason. An adapter that answers only SOME prompts is
+ * reported separately in `partialEngines` with its real counts, so a score
+ * resting on a thinner sample is never presented as full confidence (rule #6).
+ * Per-provider concurrency is bounded; per-call cost is recorded into an
+ * optional CostGuard.
  */
 import {
   type CostGuard,
@@ -11,7 +14,7 @@ import {
   MODEL_PRICING,
   costOfCall,
 } from '../costs.js';
-import type { EngineAnswer, EngineId } from '../types.js';
+import type { EngineAnswer, EngineId, PartialEngine } from '../types.js';
 import type { AskMode, EngineAdapter } from './adapter.js';
 
 export interface SkippedEngine {
@@ -22,6 +25,11 @@ export interface SkippedEngine {
 export interface AskAllResult {
   answers: EngineAnswer[];
   skippedEngines: SkippedEngine[];
+  /**
+   * Engines that answered some but not all prompts. Total failure lands in
+   * {@link AskAllResult.skippedEngines} instead - the two are separate signals.
+   */
+  partialEngines: PartialEngine[];
 }
 
 export interface AskAllOptions {
@@ -82,6 +90,7 @@ export async function askAll(
 ): Promise<AskAllResult> {
   const concurrency = opts.concurrency ?? 4;
   const skippedEngines: SkippedEngine[] = [];
+  const partialEngines: PartialEngine[] = [];
   const answers: EngineAnswer[] = [];
 
   const available: EngineAdapter[] = [];
@@ -149,16 +158,42 @@ export async function askAll(
             engine: adapter.id,
             reason: errors[0]?.error ?? 'all requests failed',
           },
+          partial: undefined,
         };
       }
-      return { answers: answersForAdapter, skip: undefined };
+
+      // PARTIAL failure: some answered, some errored. Previously `errors` was
+      // computed here and then discarded, so an engine that answered 1 of 8 was
+      // scored on that single sample and the run reported no honesty flag at all
+      // (found live 2026-07-20 against a rate-limited Gemini key). Surface it as
+      // its own signal - the engine was not skipped, but its score is thinner
+      // than the per-engine table alone suggests (rule #6, lesson #7).
+      if (errors.length > 0) {
+        return {
+          answers: answersForAdapter,
+          skip: undefined,
+          partial: {
+            engine: adapter.id,
+            attempted: prompts.length,
+            answered: answersForAdapter.length,
+            reason: errors[0]?.error ?? 'some requests failed',
+          },
+        };
+      }
+
+      return {
+        answers: answersForAdapter,
+        skip: undefined,
+        partial: undefined,
+      };
     }),
   );
 
   for (const result of perAdapter) {
     if (result.skip) skippedEngines.push(result.skip);
+    if (result.partial) partialEngines.push(result.partial);
     answers.push(...result.answers);
   }
 
-  return { answers, skippedEngines };
+  return { answers, skippedEngines, partialEngines };
 }

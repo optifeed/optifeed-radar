@@ -20,6 +20,7 @@ import {
   type EngineId,
   type Finding,
   type MentionResult,
+  type PartialEngine,
   type Reputation,
   type RunHonesty,
   type ScoreReport,
@@ -84,6 +85,8 @@ export interface VisibilityEnvelope {
   sampling: EnvelopeSampling;
   costCapped?: boolean;
   skippedEngines?: { engine: EngineId; reason: string }[];
+  /** Engines that answered only some prompts, with their real sample counts. */
+  partialEngines?: PartialEngine[];
   degraded?: boolean;
 }
 
@@ -96,13 +99,17 @@ export interface VisibilityEnvelope {
 export function isPartialRun(
   run: Pick<
     VisibilityEnvelope,
-    'costCapped' | 'degraded' | 'skippedEngines' | 'score'
+    'costCapped' | 'degraded' | 'skippedEngines' | 'partialEngines' | 'score'
   >,
 ): boolean {
   return (
     run.costCapped === true ||
     run.degraded === true ||
     (run.skippedEngines?.length ?? 0) > 0 ||
+    // An engine that answered only some prompts is scored on a thinner sample
+    // than its neighbours. Without this the run reads as complete (found live
+    // 2026-07-20: 1 of 8 answers, every other flag unset).
+    (run.partialEngines?.length ?? 0) > 0 ||
     // A run that measured nothing is the MOST partial run there is. Counting it
     // here (rather than at each call site) is why `failUnder` and `diff` cannot
     // present an unassessed run as a complete one - the M8 lesson: one shared
@@ -163,6 +170,9 @@ export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
   if (honesty?.degraded) envelope.degraded = true;
   if (honesty?.skippedEngines && honesty.skippedEngines.length > 0) {
     envelope.skippedEngines = honesty.skippedEngines;
+  }
+  if (honesty?.partialEngines && honesty.partialEngines.length > 0) {
+    envelope.partialEngines = honesty.partialEngines;
   }
 
   return envelope;

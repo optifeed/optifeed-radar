@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_JUDGE_MODELS } from '../config.js';
 import { costOfCall, MODEL_PRICING } from '../costs.js';
 import { createAdapter } from './adapter.js';
 import { anthropicSpec } from './anthropic.js';
@@ -239,5 +240,193 @@ describe('createAdapter', () => {
       'https://review.example/a',
       'https://review.example/b',
     ]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Live verification 2026-07-20 (M17 smoke debt): the anthropic/gemini/perplexity
+  // specs were hand-written and had never met a real payload. These fixtures were
+  // captured live against the real APIs.
+  // ---------------------------------------------------------------------------
+
+  function realFixture(name: string): unknown {
+    return JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL(`../../../test/fixtures/engines/${name}`, import.meta.url),
+        ),
+        'utf8',
+      ),
+    ) as unknown;
+  }
+
+  const geminiReal = realFixture('gemini-real.json');
+  const perplexityReal = realFixture('perplexity-real.json');
+  const anthropicReal = realFixture('anthropic-real.json');
+
+  // The Anthropic spec had never met a real payload either. It parses correctly:
+  // content[] text blocks, usage.input_tokens/output_tokens, and an echoed model
+  // id. Note the echo is DATED (claude-haiku-4-5-20251001) while the configured
+  // id is not - exactly the lesson #2 case the adapter handles by pricing from
+  // the CONFIGURED model, which is the key guaranteed to be in MODEL_PRICING.
+  it('parses a REAL Anthropic messages payload', async () => {
+    const { fn } = fakePost(anthropicReal);
+    const answer = await createAdapter(anthropicSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best acoustic pianos 2026?');
+
+    expect(answer.kind).toBe('parametric');
+    expect(answer.text.length).toBeGreaterThan(0);
+    expect(answer.tokens).toEqual({ input: 28, output: 239 });
+    expect(answer.model).toBe('claude-haiku-4-5-20251001');
+    // Priced from the configured id despite the dated echo.
+    expect(answer.costUsd).toBeGreaterThan(0);
+  });
+
+  // `gemini-2.5-flash` returned HTTP 404 "no longer available to new users" on
+  // 2026-07-20 - the default was not merely stale (as gpt-4o-mini was), it was
+  // DEAD, so every Gemini run failed. `gemini-flash-latest` is Google's alias for
+  // the current Flash generation (resolved live to gemini-3.5-flash), chosen for
+  // the same reason as OpenAI's `-chat-latest`: it tracks what the Gemini app
+  // actually serves and cannot 404 out from under us.
+  it('asks Gemini with a model that still exists, and prices it', () => {
+    const { fn } = fakePost({});
+    const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
+    expect(adapter.model).toBe('gemini-flash-latest');
+    expect(MODEL_PRICING.models[adapter.model]).toBeDefined();
+  });
+
+  // Gemini bills thinking tokens at the OUTPUT rate ("Output: $9.00 per 1M
+  // tokens (includes thinking tokens)", official pricing sheet 2026-07-20), but
+  // reports them in a SEPARATE field. Counting only `candidatesTokenCount` under-
+  // reported this real call by 1274 tokens - the run spends money it never shows
+  // (hard rule #5). totalTokenCount (3092) = prompt 21 + answer 1797 + thoughts
+  // 1274, which is the arithmetic proof that thoughts are billable output.
+  it('counts Gemini thinking tokens as billed output (REAL payload)', async () => {
+    const { fn } = fakePost(geminiReal);
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best acoustic pianos 2026?');
+
+    expect(answer.tokens).toEqual({ input: 21, output: 1797 + 1274 });
+    expect(answer.model).toBe('gemini-3.5-flash');
+    expect(answer.text).toContain('acoustic pianos');
+    expect(answer.costUsd).toBeGreaterThan(0);
+  });
+
+  // A thinking model can emit reasoning parts alongside the answer. Joining every
+  // part's text would splice private reasoning into the measured answer, which
+  // then gets scored and shown to the user as what the engine "said".
+  it('excludes Gemini thought parts from the answer text', async () => {
+    const { fn } = fakePost({
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: 'I should mention Yamaha here.', thought: true },
+              { text: 'Yamaha makes excellent pianos.' },
+            ],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+      usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 7 },
+      modelVersion: 'gemini-3.5-flash',
+    });
+    const answer = await createAdapter(geminiSpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('pianos?');
+
+    expect(answer.text).toBe('Yamaha makes excellent pianos.');
+    expect(answer.text).not.toContain('I should mention');
+  });
+
+  // Verified live 2026-07-20: with maxOutputTokens 60 (the scoring judge's
+  // budget), thinking consumed 55 of the 60 and the answer came back as a single
+  // stray character - finishReason MAX_TOKENS. `thinkingBudget: 0` returned a
+  // clean "Yes" on the same call. Gemini budgets thinking and answer TOGETHER, so
+  // any caller-supplied cap must exclude thinking or the answer is starved. The
+  // ask path sends no cap and keeps thinking on (that is what a real user gets).
+  it('disables Gemini thinking when the caller caps tokens', async () => {
+    const { fn, calls } = fakePost(geminiReal);
+    const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
+
+    await adapter.ask('judge this', { maxTokens: 60 });
+    const capped = JSON.parse(calls[0]!.body) as {
+      generationConfig?: { thinkingConfig?: { thinkingBudget?: number } };
+    };
+    expect(capped.generationConfig?.thinkingConfig?.thinkingBudget).toBe(0);
+
+    await adapter.ask('answer this');
+    const uncapped = JSON.parse(calls[1]!.body) as {
+      generationConfig?: { thinkingConfig?: unknown };
+    };
+    expect(uncapped.generationConfig?.thinkingConfig).toBeUndefined();
+  });
+
+  // Perplexity's hand-written spec turned out to be CORRECT: `citations` really
+  // is top-level on the raw body (unlike OpenAI, where it was an SDK-only
+  // convenience). Pinning that against a real payload so it stays true.
+  it('parses a REAL Perplexity sonar payload', async () => {
+    const { fn } = fakePost(perplexityReal);
+    const answer = await createAdapter(perplexitySpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best acoustic pianos 2026?');
+
+    expect(answer.kind).toBe('grounded');
+    expect(answer.text.length).toBeGreaterThan(0);
+    expect(answer.citations?.length).toBeGreaterThan(0);
+    expect(answer.citations?.[0]).toMatch(/^https?:\/\//);
+    expect(answer.tokens).toEqual({ input: 20, output: 816 });
+    expect(answer.model).toBe('sonar');
+  });
+
+  // The dead `gemini-2.5-flash` id was hardcoded in TWO places - the provider
+  // spec AND the judge defaults - so fixing only the spec left every Gemini-
+  // judged run failing on its setup calls (caught live 2026-07-20, not by tests).
+  // Pin both lists against the pricing table so a model id can never drift into
+  // an unpriced (silently $0, lesson #2) or forgotten second home again.
+  it('prices every default engine model and every default judge model', () => {
+    for (const spec of [
+      openaiSpec,
+      anthropicSpec,
+      geminiSpec,
+      perplexitySpec,
+    ]) {
+      expect(
+        MODEL_PRICING.models[spec.defaultModel],
+        `${spec.id} spec defaultModel "${spec.defaultModel}" is not priced`,
+      ).toBeDefined();
+    }
+    for (const [engine, model] of Object.entries(DEFAULT_JUDGE_MODELS)) {
+      expect(
+        MODEL_PRICING.models[model],
+        `${engine} judge model "${model}" is not priced`,
+      ).toBeDefined();
+    }
+  });
+
+  // Perplexity charges a flat per-request search fee ON TOP of tokens. The real
+  // payload self-reports it: request_cost $0.005 vs token cost $0.00084, so
+  // pricing by tokens alone under-reported this call by 7x. A 20-prompt run hides
+  // ~$0.10 of real spend (hard rule #5). The API hands us the true figure, so the
+  // test asserts against Perplexity's OWN total_cost.
+  it('includes the Perplexity per-request search fee in cost', async () => {
+    const { fn } = fakePost(perplexityReal);
+    const answer = await createAdapter(perplexitySpec, {
+      httpPost: fn,
+      apiKey: 'k',
+      now: () => FIXED,
+    }).ask('best acoustic pianos 2026?');
+
+    // Perplexity's own accounting for this exact call.
+    expect(answer.costUsd).toBeCloseTo(0.00584, 5);
   });
 });

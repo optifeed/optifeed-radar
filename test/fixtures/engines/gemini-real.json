@@ -1,0 +1,32 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "The market for acoustic pianos is defined by centuries of tradition, but it continues to evolve with modern manufacturing precision and innovative hybrid technologies (like silent play and self-playing systems). \n\nBecause high-quality acoustic pianos are built to last generations, the \"best\" pianos of 2026 are determined by enduring craftsmanship, structural stability, tonal character, and brand r\n[trimmed for fixture review]",
+            "thoughtSignature": "[trimmed]"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 21,
+    "candidatesTokenCount": 1797,
+    "totalTokenCount": 3092,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 21
+      }
+    ],
+    "thoughtsTokenCount": 1274,
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.5-flash",
+  "responseId": "xtZdapndFrvzxs0PobukiAU"
+}

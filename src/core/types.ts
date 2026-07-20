@@ -204,9 +204,27 @@ export interface ScoreReport {
   generatedAt?: string;
 }
 
+/**
+ * An engine that answered SOME of its prompts. Distinct from a skipped engine:
+ * it produced real, scoreable answers, but on a smaller sample than its
+ * neighbours, so its score carries less confidence. The counts are carried (not
+ * just a boolean) because "partial" without numbers hides how partial.
+ */
+export interface PartialEngine {
+  engine: EngineId;
+  /** Prompts this engine was asked. */
+  attempted: number;
+  /** Prompts it actually answered. */
+  answered: number;
+  /** Why the rest failed (first error). */
+  reason: string;
+}
+
 /** The honesty flags a run carries so partial/capped runs are never hidden. */
 export interface RunHonesty {
   costCapped?: boolean;
   skippedEngines?: { engine: EngineId; reason: string }[];
+  /** Engines that answered only some prompts (total failure -> skippedEngines). */
+  partialEngines?: PartialEngine[];
   degraded?: boolean;
 }

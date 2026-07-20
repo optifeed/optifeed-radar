@@ -10,6 +10,11 @@
 export interface ModelPricing {
   inputPerMTokens: number;
   outputPerMTokens: number;
+  /**
+   * Flat USD charged per request, on top of tokens. Some grounded engines bill a
+   * search fee per call (Perplexity), which token-only pricing misses entirely.
+   */
+  perRequestUsd?: number;
 }
 
 /**
@@ -23,14 +28,33 @@ export interface ModelPricing {
  * generic `chat-latest` row at $5/$30 and this inherits it, so the number is an
  * assumption, not a quote. (2) `-chat-latest` FLOATS: OpenAI repoints it at
  * whatever ChatGPT currently serves, so its price can change without any change
- * here. Re-verify at release (M17). The non-OpenAI rows predate this pass and
- * are stale in the same way `gpt-4o` was - see the TASKS follow-up.
+ * here. Re-verify at release (M17).
+ *
+ * Gemini + Perplexity rows verified live 2026-07-20 (M17 engine smoke):
+ * - `gemini-flash-latest` $1.50/$9.00 from the official sheet
+ *   (https://ai.google.dev/gemini-api/docs/pricing, quoting `gemini-3.5-flash`,
+ *   which the alias resolved to live). That output rate EXPLICITLY includes
+ *   thinking tokens, which is why the adapter counts `thoughtsTokenCount` as
+ *   output. Same floating caveat as `-chat-latest`. The `gemini-2.5-flash` row
+ *   is kept for historical snapshots only - that model now 404s.
+ * - `sonar` token rates confirmed against Perplexity's own `usage.cost` on a
+ *   real call ($1/$1), plus a flat `perRequestUsd` search fee of $0.005 that
+ *   token-only pricing missed entirely (7x under-report on that call).
+ *
+ * Anthropic rows verified 2026-07-20 against the official sheet: `claude-haiku-4-5`
+ * $1/$5 and `claude-sonnet-5` $3/$15 were both already correct. Note Sonnet 5 is
+ * on introductory pricing ($2/$10) through 2026-08-31, so the row over-estimates
+ * until then - deliberate, an estimate should not under-report spend.
+ *
+ * NOT modelled (known gap, logged for M17): Google Search grounding bills
+ * $14/1,000 search queries on top of tokens - one request can trigger several -
+ * so a grounded Gemini estimate is a floor, not a quote.
  */
 export const MODEL_PRICING: {
   lastUpdated: string;
   models: Record<string, ModelPricing>;
 } = {
-  lastUpdated: '2026-07-17',
+  lastUpdated: '2026-07-20',
   models: {
     // Current generation (what ChatGPT serves / what we ask + judge with).
     'gpt-5.3-chat-latest': { inputPerMTokens: 5, outputPerMTokens: 30 },
@@ -47,8 +71,12 @@ export const MODEL_PRICING: {
     'gpt-4o': { inputPerMTokens: 2.5, outputPerMTokens: 10 },
     'claude-haiku-4-5': { inputPerMTokens: 1, outputPerMTokens: 5 },
     'claude-sonnet-5': { inputPerMTokens: 3, outputPerMTokens: 15 },
+    'gemini-flash-latest': { inputPerMTokens: 1.5, outputPerMTokens: 9 },
+    'gemini-3.5-flash': { inputPerMTokens: 1.5, outputPerMTokens: 9 },
+    // Retired 2026-07-20: 404s ("no longer available to new users"). Kept only
+    // so snapshots written before the switch still price.
     'gemini-2.5-flash': { inputPerMTokens: 0.3, outputPerMTokens: 2.5 },
-    sonar: { inputPerMTokens: 1, outputPerMTokens: 1 },
+    sonar: { inputPerMTokens: 1, outputPerMTokens: 1, perRequestUsd: 0.005 },
   },
 };
 
@@ -74,7 +102,8 @@ export function costOfCall(
 ): number {
   return (
     (inputTokens / 1_000_000) * pricing.inputPerMTokens +
-    (outputTokens / 1_000_000) * pricing.outputPerMTokens
+    (outputTokens / 1_000_000) * pricing.outputPerMTokens +
+    (pricing.perRequestUsd ?? 0)
   );
 }
 

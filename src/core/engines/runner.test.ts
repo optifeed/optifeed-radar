@@ -111,4 +111,47 @@ describe('askAll', () => {
     });
     expect(guard.spentUsd).toBeCloseTo(0.04, 10);
   });
+
+  // Found live 2026-07-20: a free-tier Gemini key rate-limited 7 of 8 calls.
+  // The engine answered ONCE, was scored on that single sample, sat in the
+  // report next to engines with 8, and the run carried NO honesty flag - every
+  // derived artifact (diff, --fail-under, HTML) read it as complete. The errors
+  // were computed and then dropped on the floor (lesson #7, fetch-and-discard).
+  // Partial failure is a distinct signal from total failure, so it gets its own
+  // flag rather than being folded into `skippedEngines` (the engine was NOT
+  // skipped - it produced real, scoreable answers).
+  it('reports an engine that answered only some prompts as partial', async () => {
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4'],
+      [fakeAdapter('gemini', { failOn: (p) => p !== 'p1' })],
+    );
+
+    expect(result.answers).toHaveLength(1);
+    // Not skipped - it answered.
+    expect(result.skippedEngines).toEqual([]);
+    expect(result.partialEngines).toHaveLength(1);
+    expect(result.partialEngines[0]).toMatchObject({
+      engine: 'gemini',
+      attempted: 4,
+      answered: 1,
+    });
+    expect(result.partialEngines[0]!.reason).toContain('boom');
+  });
+
+  // The boundary between the two signals must stay exact: a TOTAL failure is
+  // skipped (already correct, verified live against a quota-exhausted Gemini),
+  // and must NOT also be double-reported as partial.
+  it('keeps a totally-failed engine skipped, not partial', async () => {
+    const result = await askAll(
+      ['p1', 'p2'],
+      [fakeAdapter('gemini', { failOn: () => true })],
+    );
+    expect(result.skippedEngines).toHaveLength(1);
+    expect(result.partialEngines).toEqual([]);
+  });
+
+  it('reports no partial engines when every call succeeds', async () => {
+    const result = await askAll(['p1', 'p2'], [fakeAdapter('openai')]);
+    expect(result.partialEngines).toEqual([]);
+  });
 });

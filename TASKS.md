@@ -18,7 +18,7 @@ reflect it here.
 > The dev plan (`optifeed-radar-docs/dev-plan.md`) is authoritative and carries
 > the same note.
 
-Last updated: 2026-07-18.
+Last updated: 2026-07-20.
 
 ## Legend
 
@@ -206,8 +206,8 @@ Owner: setup · PR: (M11) · thin over M10 + M9
 - [x] **A run with ZERO answers reported a confident `score: 0` (found + FIXED 2026-07-17, rule #6).** Fixed: `compositeScore` returns `number | null` (null when nothing was measured, replacing `totalWeight === 0 ? 0`), `score` is nullable on `ScoreReport` + `VisibilityEnvelope`, `isPartialRun` counts a null score as partial, `failUnder` never passes an unassessed run, `diffEnvelopes` returns a null `scoreDelta` rather than inventing one, and both renderers say "not assessed" (the terminal also drops the variance note, which described a score that did not exist). `schema_version` 0.1 -> 0.2 with all four goldens updated (hard rule #2). Verified live both ways: a broken key now prints "not assessed"/persists `score: null`, while a healthy run still reports a real 0/100 over 6 answers.
 - [x] `check` exited **0** when the run measured nothing (found + FIXED 2026-07-17). Fixed with the `--fail-under` wiring below - they were the same missing call site.
 - [x] Stray positional arguments now fail loudly (found + FIXED 2026-07-17). `check <domain> file.html` (a flag npm swallowed - the `--report` value left bare) used to hit commander's raw `process.exit` with a generic "too many arguments". `check`/`audit` now `allowExcessArguments(true)` and call a shared `rejectStrayArgs`, which routes an injectable error through the runtime (testable, keeps `--json` clean), names the offending token, points at `--report`, and explains the `npm run dev --` gotcha - before any spend. README documents the `--` requirement for `npm run dev`.
-- [ ] Judge selection is still purely by PRICE, which now fights the quality fix (found 2026-07-17). `resolveJudgeModel` picks the cheapest default across available engines. With openai's judge now `gpt-5.4` ($2.50/$15) and anthropic's `claude-haiku-4-5` ($1/$5), **adding an Anthropic key silently swaps the judge back to a cheap-tier model** and may reintroduce fabricated competitors. Unverified for haiku specifically (no anthropic key), so the ranking was NOT redesigned on a guess - the current behaviour is pinned by a test so it cannot change silently. Decide once other keys exist: keep "cheapest", or rank judges by recall quality.
-- [ ] Non-OpenAI engine + judge models are stale in exactly the way `gpt-4o` was (found 2026-07-17). Only the OpenAI path was verified and updated this session (the only key available). `anthropic: claude-haiku-4-5`, `gemini: gemini-2.5-flash` remain both cheap-tier AND possibly a generation behind what Claude/Gemini users actually get - the same validity gap just fixed for OpenAI. Worse, a mixed run would then compare a flagship-measured OpenAI against a mini-measured Anthropic and fold both into ONE composite score - apples to oranges inside the headline number. Verify model ids + prices from each provider's official sheet before enabling multi-engine runs.
+- [x] **Judge selection by PRICE no longer downgrades - RESOLVED 2026-07-20.** The risk was real: anthropic's judge default `claude-haiku-4-5` ($1/$5) undercut openai's `gpt-5.4` ($2.50/$15), so adding an Anthropic key silently swapped the judge to a cheap tier. Fixed at the value, not the ranking: both Anthropic defaults now name the tier real users get (`claude-sonnet-5`, $3/$15), which sits just ABOVE `gpt-5.4`, so "cheapest available" now lands on a recall-grade judge either way. Verified live on a 3-engine run - the notice read `defaulting to the cheapest available (gpt-5.4)` with an Anthropic key present. The pin test now asserts the concrete id (`gpt-5.4`) rather than `DEFAULT_JUDGE_MODELS.*`, so a future default change cannot quietly re-satisfy it. The ranking rule itself ("cheapest") is untouched and still worth revisiting if a third tier ever undercuts it.
+- [x] **Non-OpenAI engine + judge models - VERIFIED AND FIXED 2026-07-20** (anthropic/gemini/perplexity keys obtained). The staleness was worse than suspected: `gemini-2.5-flash` returned **HTTP 404 "no longer available to new users"** - not stale like `gpt-4o`, DEAD, so every Gemini run was failing. Now `gemini-flash-latest` (Google's alias for the current Flash generation, resolved live to `gemini-3.5-flash`; cannot 404 out from under us, same reasoning as `-chat-latest`). The dead id was hardcoded in TWO places - the provider spec AND `DEFAULT_JUDGE_MODELS` - and fixing only the spec still left Gemini-judged runs failing on setup calls, caught live not by tests; a structural guard test now pins every spec default and judge default against `MODEL_PRICING`. Anthropic moved `claude-haiku-4-5` -> `claude-sonnet-5` (the cheap tier was the same validity gap as `gpt-4o-mini`: nobody chats with haiku). Perplexity `sonar` confirmed correct. Prices re-verified from official sheets; the apples-to-oranges concern is resolved - all four engines now name the tier real users get.
 - [ ] Competitor QUALITY in non-English markets is weak (found 2026-07-17, after the locale fix). With `locale: tr` now reaching the judge, `www.do-re.com.tr` returns Turkish names instead of US chains - but the list is mixed: "Müzik Aletleri" is the common noun "musical instruments", not a brand, and Zuhal Müzik (the obvious real rival) is absent. The plumbing is fixed; `gpt-4o-mini` simply does not know Turkish retailers well. This is a judge-quality issue, not a wiring one - consider a stronger judge or a grounded competitor call, and re-check at the M17 smoke test on a non-English domain.
 - [ ] For RETAIL brands the share-of-voice axis is structurally mismatched (found 2026-07-17). `doremusic` is a retailer, so buyer prompts like "2026 için en iyi akustik piyanolar hangileri?" elicit MANUFACTURERS - across 20 Turkish answers: Yamaha 9, Kawai 4, Roland 4, Fender 4, Casio 2 - never rival retailers. So even with correct Turkish competitors, a retailer scores 0 and learns little: the answers simply are not about shops. Retailers are a core segment, so decide before launch whether retail brands need retailer-seeking prompts ("Türkiye'de piyano nereden alınır?") and/or a manufacturer-vs-retailer competitor axis. Product decision, not a bug.
 - [x] **`--grounded` flag WIRED 2026-07-18** (was: no flag set `mode`, so the grounded variants were unreachable - openai Responses/`web_search` and gemini grounding were dead code at runtime; third build-without-a-call-site after `CostGuard.authorize` and `failUnder`). Surface chosen: a single `--grounded` boolean on `check` (over per-engine config or run-both-and-merge - the simplest honest thing; per-engine mode can follow if asked). `flags.grounded` sets `runCheck` `opts.mode: 'grounded'`, which the existing plumbing already threads to every adapter. **Correctness fix in the same change:** the adapter now consults `supportsGrounded` (a field that existed on the openai/gemini specs but was NEVER read - a fetch-and-discard, lesson #7): a requested `grounded` mode only takes effect where the provider can actually ground (a `supportsGrounded` spec, or a natively grounded engine like perplexity); otherwise it falls back to the spec's native `kind`. So under `--grounded` with an anthropic key, anthropic's answer is honestly tagged `parametric` (no web search here) instead of being mislabelled grounded - which would be fake precision and would wrongly earn the 1.5x grounded scoring weight (rule #6). +2 tests (adapter no-mislabel; CLI flag reaches the adapter), 336 -> 338. Verified: `check --help` lists the flag; a `--grounded` run parses cleanly to the key guard. **Still unverified live against a real grounded engine call in a full `check`** (only an OpenAI key exists; the grounded PARSER itself was proven live 2026-07-17) - fold into the M17 smoke test.
@@ -258,7 +258,8 @@ Owner: ___ · PR: ___
 - [ ] Decide on the `ai-shopping` / `agentic-commerce` keywords in `package.json` before the first publish - launch #1 ships no shopping capability, so they advertise something absent. Keep (forward-looking, launch #2 adds it) or drop until then. Unpublished so far, so nothing is live yet.
 - [ ] `build` must clean `dist/` first - `tsc -p tsconfig.build.json` never removes stale output, and `files: ["dist"]` publishes whatever is there. Surfaced by the 2026-07-17 M14 removal: deleted modules stayed in `dist/` until a manual `rm -rf`, so a publish from a stale tree would ship code that is no longer in `src/` (here: deferred commerce code, at launch #1). Verified a clean rebuild emits none of it.
 - [ ] A run never tells the user what it SPENT (found 2026-07-17). The live `check` billed $0.0024 and reported it nowhere - the cost is only recoverable by summing `costUsd` across `answers` in the snapshot JSON. `--yes` skips the confirm gate that shows the estimate, so an agent or CI run (the documented path) sees no cost at all, before or after. A money-spending tool should print actual spend in the report footer. Cheap: the envelope already carries per-answer `costUsd`.
-- [ ] smoke-test script (3 real domains, prints cost); `npx` cold-run <60s; Win/macOS/Linux CI matrix. Pair it with the live-verification debt: only OpenAI parametric is proven (2026-07-17); anthropic/gemini/perplexity wire shapes and OpenAI grounded-in-a-real-`check` are still unexercised. Gemini's grounding shape is the same category of risk the OpenAI grounded bug came from - hand-written, untested, unreachable.
+- [ ] smoke-test script (3 real domains, prints cost); `npx` cold-run <60s; Win/macOS/Linux CI matrix. **Live-verification debt largely CLEARED 2026-07-20** (see the review-log entry): anthropic + perplexity + gemini-parametric wire shapes are now fixture-pinned from real captured payloads, and a live 3-engine `check` ran end to end (openai + anthropic + perplexity, 21 answers, $0.29). **Still unexercised: GEMINI GROUNDED** - the free-tier key has no Google Search grounding quota (429 on every attempt, across models) so it needs billing enabled. That is the same hand-written-and-never-tested shape the OpenAI grounded bug came from, and is now the single highest-risk unproven path at launch. OpenAI-grounded-in-a-real-`check` also still unrun.
+- [ ] Google Search grounding bills **$14/1,000 search queries on top of tokens**, and one request can trigger several (official sheet, 2026-07-20). Not modelled in `MODEL_PRICING`, so a grounded Gemini estimate is a floor, not a quote - documented in the `costs.ts` docstring. Decide before launch whether to model it or to warn on `--grounded` with gemini enabled.
 - [ ] 100-brand data-run script (budgeted) for the launch article
 - [ ] Acceptance: `npm pack` reviewed; cold `npx` in clean container; data-run aggregate JSON produced
 
@@ -562,6 +563,74 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
   token-bounded to cents, cannot approach the cap) and a copy-pasted ISO-clock
   arrow (behaviorally identical). One backward-compatible cross-module add:
   `only?` on `core/engines/registry.ts`.
+
+- 2026-07-20: **first live verification of the three unproven engines** (anthropic,
+  gemini, perplexity keys obtained). The hand-written provider specs had never
+  met a real payload; captured real responses are now fixtures
+  (`test/fixtures/engines/{anthropic,gemini,perplexity}-real.json`). Two specs
+  were already correct - **perplexity's top-level `citations` really does exist
+  on the raw body** (the OpenAI "SDK convenience" trap did NOT generalize), and
+  anthropic parses cleanly (its echoed id is DATED, `claude-haiku-4-5-20251001`,
+  the lesson-#2 case the adapter already handles by pricing from the CONFIGURED
+  id). Six real defects found, all fixed test-first (+15 tests, 398 -> 413):
+  (1) **Gemini was entirely dead** - `gemini-2.5-flash` returns HTTP 404 "no
+  longer available to new users". Not stale, DEAD. The id was hardcoded in TWO
+  places (provider spec + `DEFAULT_JUDGE_MODELS`) and fixing only the spec left
+  Gemini-judged runs failing on setup calls - **caught by the live run, not by
+  the tests**. A structural guard test now pins every spec default AND judge
+  default against `MODEL_PRICING`. Lesson: a model id with a second home is a
+  second bug; grep for the value, do not trust the one call site you found.
+  (2) **Gemini cost under-reported ~6x** - `thoughtsTokenCount` is billed at the
+  output rate (official sheet says output "includes thinking tokens") but is
+  reported in a SEPARATE field the parser ignored, and the priced rate was
+  $0.30/$2.50 against an actual $1.50/$9.00. (3) **Perplexity cost under-reported
+  7x** - a flat `request_cost` of $0.005 per search on top of tokens, unmodelled;
+  `ModelPricing` gained `perRequestUsd`. The API self-reports the true figure in
+  `usage.cost.total_cost`, which the test now asserts against. (4) **Gemini
+  thinking starved capped calls** - Gemini budgets thinking and answer from ONE
+  `maxOutputTokens` pool, so at the scoring judge's 60-token cap thinking ate 55
+  and the answer came back as a single stray character (finishReason MAX_TOKENS);
+  `thinkingBudget: 0` now applies whenever a caller caps tokens, while the ask
+  path sends no cap and keeps thinking on (that is what a real user gets).
+  (5) **Wrong Anthropic tier** - `claude-haiku-4-5` was the same validity gap as
+  `gpt-4o-mini`; now `claude-sonnet-5`, which also resolved the judge-downgrade
+  risk logged at M11. (6) Defensive: Gemini `parts[]` may carry `thought: true`
+  reasoning parts, which the parser joined into the answer text - now filtered,
+  so private reasoning is never scored as what the engine said.
+  Methodology note worth keeping: **one claimed finding was wrong and was
+  retracted** - an apparent "Gemini truncates measured answers" came from a
+  synthetic 1024-token cap in the probe, not from the ask path (which sends no
+  cap and returned 7000+ char answers). Reproduce against the REAL call path
+  before believing a probe result.
+
+- 2026-07-20: **fixed the silent-partial bug the engine verification exposed.**
+  A live run had gemini answer **1 of 8** prompts (free-tier rate limiting); the
+  engine was scored on that single sample, sat in the report beside engines with
+  8, and the run carried **no honesty flag at all** - so `diff`, `--fail-under`,
+  and the HTML report all read it as a complete measurement. Root cause in
+  `runner.ts`: an engine was flagged only when EVERY call failed, and the
+  `errors` array for the partial case was computed and then dropped on the floor
+  (lesson #7, fetch-and-discard). Fixed as a FOURTH independent honesty signal,
+  `partialEngines`, deliberately NOT folded into `skippedEngines` - the two mean
+  different things (a skipped engine produced nothing; a partial engine produced
+  real, scoreable answers) and collapsing them would have claimed gemini was
+  skipped when it in fact contributed to the score. It carries counts
+  (`attempted`/`answered`), not a boolean: "partial" without numbers hides HOW
+  partial, which is the fake-precision problem rule #6 exists to prevent.
+  Propagation was nearly free because `failUnder` and `diffEnvelopes` both route
+  through the shared `isPartialRun` predicate rather than hand-rolling subsets -
+  the M8 lesson working as designed - and both are now pinned by regression
+  tests anyway. Verified against the REAL built code on a real envelope: clean
+  run stays non-partial (no false positive), the flag survives the save->load
+  round-trip (so `diff`/`sources`/`inspect` see it - the null-score change once
+  made snapshots permanently unloadable exactly here), and both renderers print
+  the counts. Also fixed a miniature of the same hazard: the `failunder` test
+  helper typed its honesty param as a hardcoded three-flag subset, so a new
+  signal could not even be passed to it - now derived from `RunHonesty`.
+  **Not reproduced live post-fix**: gemini's free tier caps at 20 requests/day
+  and testing exhausted it, so today every gemini call fails and lands in
+  `skippedEngines` (total failure) rather than partial. Re-confirm the partial
+  path at the M17 smoke test once billing is enabled.
 
 ## Carried risks / decisions to watch
 

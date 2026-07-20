@@ -29,8 +29,16 @@ export const ENGINE_KEY_ENV: Record<EngineId, string> = {
  */
 export const DEFAULT_JUDGE_MODELS: Record<EngineId, string> = {
   openai: 'gpt-5.4',
-  anthropic: 'claude-haiku-4-5',
-  gemini: 'gemini-2.5-flash',
+  // Was `claude-haiku-4-5`. The rule above says the judge is NOT the cheapest -
+  // it does factual RECALL and cheap models fabricate - but the anthropic entry
+  // still named the cheap tier, so an added Anthropic key silently downgraded
+  // the judge (the risk logged at M11). Sonnet 5 ($3/$15) also sits just above
+  // gpt-5.4 ($2.50/$15), so the cheapest-available rule now keeps gpt-5.4 as
+  // judge on a mixed run instead of swapping to a cheap-tier model.
+  anthropic: 'claude-sonnet-5',
+  // `gemini-2.5-flash` 404s as of 2026-07-20 ("no longer available to new
+  // users"), which made a Gemini-judged run fail on every setup call.
+  gemini: 'gemini-flash-latest',
   perplexity: 'sonar',
 };
 

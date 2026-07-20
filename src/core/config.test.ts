@@ -74,21 +74,21 @@ describe('resolveJudgeModel fallback matrix', () => {
   });
 
   it('falls back to the cheapest available model non-interactively, with a notice', async () => {
-    // NOTE (2026-07-17): selection is still purely by PRICE, but the judge
-    // defaults are no longer uniformly cheap - openai's is now `gpt-5.4`,
-    // chosen for factual recall (cheap models fabricate competitors). So with
-    // both keys present the cheapest is now anthropic's haiku, NOT openai.
-    // That means adding an Anthropic key silently swaps the judge back to a
-    // cheap-tier model and may reintroduce fabricated competitors. Whether
-    // "cheapest" is still the right rule is an open question logged in TASKS -
-    // it needs per-provider recall data we do not have (no anthropic key yet).
-    // This test pins the CURRENT behaviour so the swap cannot happen silently.
+    // RESOLVED (2026-07-20): selection is still purely by PRICE, but the silent
+    // downgrade this test used to pin is gone. The anthropic judge default was
+    // `claude-haiku-4-5`, which undercut openai's `gpt-5.4` - so adding an
+    // Anthropic key swapped the judge to a cheap tier and risked reintroducing
+    // fabricated competitors. Both Anthropic defaults now name the tier real
+    // users get (`claude-sonnet-5`, $3/$15), which sits just ABOVE gpt-5.4
+    // ($2.50/$15), so "cheapest available" now lands on a recall-grade judge
+    // either way. Asserted against the concrete id, not DEFAULT_JUDGE_MODELS.*,
+    // so a future default change cannot quietly re-satisfy this test.
     const res = await resolveJudgeModel({
       interactive: false,
       availableEngines: ['anthropic', 'openai'],
     });
     expect(res.source).toBe('fallback');
-    expect(res.model).toBe(DEFAULT_JUDGE_MODELS.anthropic);
+    expect(res.model).toBe('gpt-5.4');
     expect(res.notice).toBeTruthy();
   });
 

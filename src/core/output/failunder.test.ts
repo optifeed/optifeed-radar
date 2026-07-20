@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SCHEMA_VERSION, type BrandProfile } from '../types.js';
+import {
+  SCHEMA_VERSION,
+  type BrandProfile,
+  type RunHonesty,
+} from '../types.js';
 import { VARIANCE_NOTE, type VisibilityEnvelope } from './envelope.js';
 import { failUnder } from './failunder.js';
 
@@ -13,9 +17,10 @@ const PROFILE: BrandProfile = {
 
 function envelope(
   score: number | null,
-  honesty: Partial<
-    Pick<VisibilityEnvelope, 'costCapped' | 'degraded' | 'skippedEngines'>
-  > = {},
+  // Derived from RunHonesty rather than a hand-listed subset, so a new honesty
+  // signal is usable here the moment it exists (a hardcoded list is how a flag
+  // gets forgotten at a call site in the first place).
+  honesty: RunHonesty = {},
 ): VisibilityEnvelope {
   return {
     schema_version: SCHEMA_VERSION,
@@ -82,6 +87,28 @@ describe('failUnder', () => {
           { engine: 'gemini', reason: 'no key' },
           { engine: 'perplexity', reason: 'no key' },
           { engine: 'anthropic', reason: 'no key' },
+        ],
+      }),
+      70,
+    );
+    expect(r.passed).toBe(true);
+    expect(r.partial).toBe(true);
+    expect(r.reason.toLowerCase()).toContain('partial');
+  });
+
+  // The fourth signal must reach the CI gate too. A run where an engine
+  // answered 1 of 8 arrives with every OTHER flag unset, so before this the
+  // gate passed it as a full-confidence measurement (found live 2026-07-20).
+  it('flags a partially-answered engine as partial even when it passes', () => {
+    const r = failUnder(
+      envelope(72, {
+        partialEngines: [
+          {
+            engine: 'gemini',
+            attempted: 8,
+            answered: 1,
+            reason: 'HTTP 429: quota exceeded',
+          },
         ],
       }),
       70,
