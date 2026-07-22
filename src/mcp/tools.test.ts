@@ -7,7 +7,15 @@ import type { FetchLike } from '../core/fetcher/index.js';
 import type { EngineAdapter } from '../core/engines/index.js';
 import { profilePath, type ProfileFs } from '../core/discovery/index.js';
 import { queriesPath, toYaml, type QueryFs } from '../core/queries/index.js';
-import { nodeSnapshotFs, type SnapshotFs } from '../core/output/index.js';
+import {
+  nodeSnapshotFs,
+  snapshotFileName,
+  snapshotsDir,
+  AUDIT_ONLY_NOTE,
+  FOOTER_CTA,
+  type SnapshotFs,
+} from '../core/output/index.js';
+import { join } from 'node:path';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -84,6 +92,18 @@ function fakeAdapter(id: EngineId, kind: EngineKind): EngineAdapter {
       costUsd: 0.001,
       ts: NOW(),
     }),
+  };
+}
+
+/** Answers the first cached prompt and fails the second: a partial engine. */
+function flakyAdapter(): EngineAdapter {
+  const base = fakeAdapter('openai', 'parametric');
+  return {
+    ...base,
+    ask: async (prompt, opts): Promise<EngineAnswer> => {
+      if (prompt.includes('top widget makers')) throw new Error('rate limited');
+      return base.ask(prompt, opts);
+    },
   };
 }
 
@@ -182,9 +202,159 @@ function workingContext(overrides: Partial<ToolContext> = {}): {
   return { ctx, checkDeps, fs };
 }
 
+/**
+ * A context whose snapshot store holds two comparable runs. The clock is fixed
+ * (NOW), and snapshots are keyed by `generatedAt`, so a second `check` would
+ * overwrite the first - the second snapshot is written directly instead, as a
+ * copy of the first stamped an hour later.
+ */
+async function twoSnapshots(): Promise<{
+  ctx: ToolContext;
+  fs: ReturnType<typeof memFs>;
+}> {
+  const { ctx, fs } = workingContext();
+  ctx.snapshotFs = fs;
+  await callTool(ctx, 'check_visibility', { domain: 'acme.example' });
+  const dir = normKey(snapshotsDir(STATE));
+  const firstKey = [...fs.files.keys()].find((k) => k.startsWith(`${dir}/`));
+  if (!firstKey) throw new Error('the first check saved no snapshot');
+  const later = '2026-07-19T01:00:00.000Z';
+  const envelope = JSON.parse(fs.files.get(firstKey)!) as Record<
+    string,
+    unknown
+  >;
+  envelope.generatedAt = later;
+  fs.files.set(
+    normKey(join(snapshotsDir(STATE), snapshotFileName(later))),
+    JSON.stringify(envelope),
+  );
+  return { ctx, fs };
+}
+
 function textOf(res: { content: { text: string }[] }): string {
   return res.content[0]!.text;
 }
+
+/** Every text block after the JSON one, joined - the human-readable channel. */
+function proseOf(res: { content: { text: string }[] }): string {
+  return res.content
+    .slice(1)
+    .map((b) => b.text)
+    .join('\n');
+}
+
+/**
+ * The ESC byte that opens every ANSI color sequence. Built from a char code
+ * so this file never carries a control-char literal.
+ */
+const ESC = String.fromCharCode(27);
+
+/**
+ * The rendered text block (M15 follow-up). The JSON envelope carries every
+ * field, but the honesty scaffolding - the variance note, "not assessed"
+ * instead of 0/100, run notes for a partial run, the footer CTA - lives only
+ * in the `core/output` text renderers. Without it, whether a caveat reaches
+ * the human depends on the host model choosing to repeat it (rule #6).
+ */
+describe('human-readable text block', () => {
+  it('renders check_visibility prose alongside the JSON, keeping content[0] parseable', async () => {
+    const { ctx } = workingContext();
+    const res = await callTool(ctx, 'check_visibility', {
+      domain: 'acme.example',
+    });
+    expect((res as { isError?: boolean }).isError).toBeFalsy();
+    JSON.parse(textOf(res)); // content[0] is still the pure JSON contract
+    const prose = proseOf(res);
+    expect(prose).toContain('AI Visibility Score');
+    // The variance caveat must ship with the number, not be left to the host.
+    expect(prose).toContain('estimate');
+    expect(prose).toContain(FOOTER_CTA);
+  });
+
+  it('renders audit_store prose, including the audit-only caveat', async () => {
+    const { ctx } = workingContext();
+    const res = await callTool(ctx, 'audit_store', { domain: 'acme.example' });
+    expect((res as { isError?: boolean }).isError).toBeFalsy();
+    JSON.parse(textOf(res));
+    const prose = proseOf(res);
+    expect(prose).toContain('AI Visibility Audit');
+    expect(prose).toContain(AUDIT_ONLY_NOTE);
+  });
+
+  it('renders generate_buyer_queries prose as the readable pack', async () => {
+    const { ctx } = workingContext();
+    const res = await callTool(ctx, 'generate_buyer_queries', {
+      domain: 'acme.example',
+    });
+    expect((res as { isError?: boolean }).isError).toBeFalsy();
+    JSON.parse(textOf(res));
+    // YAML, the form `queries` prints and exports - not a second copy of JSON.
+    const prose = proseOf(res);
+    expect(prose.startsWith('schema_version:')).toBe(true);
+    expect(prose).toContain('domain: acme.example');
+    expect(prose).toContain('queries:');
+  });
+
+  it('renders get_snapshot_diff prose', async () => {
+    const { ctx, fs } = await twoSnapshots();
+    const res = await callTool(ctx, 'get_snapshot_diff', {
+      domain: 'acme.example',
+    });
+    expect((res as { isError?: boolean }).isError).toBeFalsy();
+    JSON.parse(textOf(res));
+    expect(proseOf(res)).toContain('AI Visibility change');
+    expect(fs.files.size).toBeGreaterThan(0);
+  });
+
+  // Failure mode 1: MCP is a pipe, not a TTY, but picocolors auto-detects from
+  // the SERVER's stdout. If the server runs somewhere color-capable, escape
+  // codes would leak into the model's context as garbage tokens.
+  it('never emits ANSI escape codes (color forced off, not auto-detected)', async () => {
+    const { ctx } = workingContext();
+    for (const tool of ['check_visibility', 'audit_store']) {
+      const res = await callTool(ctx, tool, { domain: 'acme.example' });
+      expect(proseOf(res).includes(ESC)).toBe(false);
+    }
+  });
+
+  // Failure mode 2: the reason this block exists. A partial run's flags must
+  // reach the human as prose, not sit in a JSON field the host may summarize
+  // away. One prompt fails, so the engine answers 1 of 2.
+  it('carries a partial run’s honesty notes into the prose', async () => {
+    const fs = memFs({
+      [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE),
+      [queriesPath(STATE)]: toYaml(CACHED_PACK),
+    });
+    const { ctx } = workingContext({
+      checkDeps: async () => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch() }),
+        adapters: [flakyAdapter()],
+        judge: fakeJudge(),
+        profileFs: fs,
+        queryFs: fs,
+        snapshotFs: fs,
+        now: NOW,
+      }),
+    });
+    const res = await callTool(ctx, 'check_visibility', {
+      domain: 'acme.example',
+    });
+    const parsed = JSON.parse(textOf(res)) as { partialEngines?: unknown[] };
+    // Guard: if the run is not actually partial, this test proves nothing.
+    expect(parsed.partialEngines?.length).toBe(1);
+    const prose = proseOf(res);
+    expect(prose).toContain('Run notes');
+    expect(prose).toContain('answered 1 of 2');
+  });
+
+  // A tool that errors returns ONLY the error block - no prose to slice.
+  it('adds no prose block to an error result', async () => {
+    const { ctx } = workingContext();
+    const res = await callTool(ctx, 'check_visibility', { domain: 'bad/../x' });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(res.content).toHaveLength(1);
+  });
+});
 
 describe('check_visibility output channel', () => {
   it('returns parseable JSON as content[0].text even when a snapshot is saved', async () => {

@@ -13,12 +13,16 @@ import {
 } from '../core/run/index.js';
 import {
   renderCheckJson,
+  renderCheckText,
   renderAuditJson,
+  renderAuditText,
   renderDiffJson,
+  renderDiffText,
   listSnapshots,
   loadSnapshot,
   diffEnvelopes,
 } from '../core/output/index.js';
+import { toYaml } from '../core/queries/index.js';
 import type { ToolContext } from './deps.js';
 import { SCHEMA_VERSION, type EngineId } from '../core/types.js';
 
@@ -124,8 +128,23 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
 ];
 
-function ok(text: string, structured: unknown): ToolResult {
-  return { content: [{ type: 'text', text }], structuredContent: structured };
+/**
+ * A successful result: pure JSON on `content[0]` (the contract every consumer
+ * parses), then the same run rendered for a human.
+ *
+ * The envelope carries every field, but the honesty scaffolding lives in the
+ * `core/output` text renderers, not in the data: "not assessed" instead of
+ * 0/100, the variance note, wider-estimate markers, run notes for a partial
+ * run, the footer CTA. Without this block, whether any of that reaches the
+ * person depends on the host model choosing to repeat it - honesty (rule #6)
+ * must not be contingent on a summarizer's taste. Color is forced OFF because
+ * picocolors auto-detects from the SERVER's stdout, and MCP is a pipe: escape
+ * codes here would land in the model's context as garbage.
+ */
+function ok(text: string, structured: unknown, prose?: string): ToolResult {
+  const content: ToolResult['content'] = [{ type: 'text', text }];
+  if (prose) content.push({ type: 'text', text: prose });
+  return { content, structuredContent: structured };
 }
 
 function err(text: string): ToolResult {
@@ -155,7 +174,11 @@ export async function callTool(
     switch (name) {
       case 'audit_store': {
         const report = await runAudit(domain, { fetcher: ctx.newFetcher() });
-        return ok(renderAuditJson(report), report);
+        return ok(
+          renderAuditJson(report),
+          report,
+          renderAuditText(report, { color: false }),
+        );
       }
 
       case 'check_visibility': {
@@ -225,6 +248,7 @@ export async function callTool(
         const result0: ToolResult = ok(
           renderCheckJson(result.envelope),
           result.envelope,
+          renderCheckText(result.envelope, { color: false }),
         );
         if (result.snapshotPath) {
           result0.content.push({
@@ -259,7 +283,12 @@ export async function callTool(
           ...(result.costCapped ? { costCapped: true } : {}),
           ...(result.path ? { savedAt: result.path } : {}),
         };
-        return ok(JSON.stringify(payload, null, 2), payload);
+        // YAML is the pack's human form (what `queries` prints and exports).
+        return ok(
+          JSON.stringify(payload, null, 2),
+          payload,
+          toYaml(result.pack),
+        );
       }
 
       case 'get_snapshot_diff': {
@@ -280,7 +309,11 @@ export async function callTool(
           loadSnapshot(paths[paths.length - 1]!, ctx.snapshotFs),
         ]);
         const diff = diffEnvelopes(baseline, latest);
-        return ok(renderDiffJson(diff), diff);
+        return ok(
+          renderDiffJson(diff),
+          diff,
+          renderDiffText(diff, { color: false }),
+        );
       }
 
       default:
