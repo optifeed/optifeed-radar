@@ -257,9 +257,11 @@ describe('listSnapshots', () => {
     await saveSnapshot(envelope('2026-07-15T00:00:00.000Z'), '/state', fs);
 
     const paths = await listSnapshots('/state', fs);
-    expect(paths).toEqual([
-      `${snapshotsDir('/state')}/2026-07-15T00-00-00.000Z.json`,
-      `${snapshotsDir('/state')}/2026-07-16T00-00-00.000Z.json`,
+    // listSnapshots joins with node:path ("\\" on Windows), so normalize both
+    // sides rather than hardcoding the separator into the expectation.
+    expect(paths.map(normKey)).toEqual([
+      `${normKey(snapshotsDir('/state'))}/2026-07-15T00-00-00.000Z.json`,
+      `${normKey(snapshotsDir('/state'))}/2026-07-16T00-00-00.000Z.json`,
     ]);
   });
 

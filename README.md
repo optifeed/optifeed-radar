@@ -75,7 +75,12 @@ over stdio. Build first (`npm install && npm run build`), then point your
 client at `dist/mcp/index.js`. Replace `/path/to/optifeed-radar` with your
 clone path.
 
-Claude Desktop (`claude_desktop_config.json`):
+Claude Desktop (`claude_desktop_config.json`). The fastest way to open it is
+Settings -> Developer -> Edit Config, which creates the file if it does not
+exist yet. On disk it lives at:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -90,6 +95,8 @@ Claude Desktop (`claude_desktop_config.json`):
   }
 }
 ```
+
+Claude Desktop reads that file at startup, so quit and reopen it after editing.
 
 Claude Code (`.mcp.json` in your project):
 
