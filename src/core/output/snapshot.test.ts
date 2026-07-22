@@ -43,6 +43,14 @@ function envelope(generatedAt: string): VisibilityEnvelope {
 }
 
 /** In-memory fs the tests inject, so nothing touches disk (hard rule #3). */
+/**
+ * Core builds paths with node:path, which yields "\\" on Windows, while this
+ * fake filesystem is keyed with "/". Normalize every path in and out.
+ */
+function normKey(p: string): string {
+  return p.split('\\').join('/');
+}
+
 function fakeFs(): SnapshotFs & {
   files: Map<string, string>;
   dirs: Set<string>;
@@ -53,7 +61,7 @@ function fakeFs(): SnapshotFs & {
     files,
     dirs,
     async readFile(path) {
-      const v = files.get(path);
+      const v = files.get(normKey(path));
       if (v === undefined) {
         const err = new Error('not found') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
@@ -62,14 +70,13 @@ function fakeFs(): SnapshotFs & {
       return v;
     },
     async writeFile(path, data) {
-      files.set(path.split('\\').join('/'), data);
+      files.set(normKey(path), data);
     },
     async mkdir(path) {
-      dirs.add(path.split('\\').join('/'));
+      dirs.add(normKey(path));
     },
     async readdir(path) {
-      // Core joins with node:path ("\\" on Windows) while these seeds use "/".
-      const dir = path.split('\\').join('/');
+      const dir = normKey(path);
       if (!dirs.has(dir)) {
         const err = new Error('no dir') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
@@ -104,8 +111,8 @@ describe('saveSnapshot / loadSnapshot round-trip', () => {
 
     const path = await saveSnapshot(env, '/state', fs);
 
-    expect(path).toBe(
-      `${snapshotsDir('/state')}/2026-07-15T00-00-00.000Z.json`,
+    expect(normKey(path)).toBe(
+      `${normKey(snapshotsDir('/state'))}/2026-07-15T00-00-00.000Z.json`,
     );
     const loaded = await loadSnapshot(path, fs);
     expect(loaded).toEqual(env);

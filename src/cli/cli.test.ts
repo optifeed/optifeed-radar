@@ -93,15 +93,21 @@ const PACK: QueryPack = {
   queries: [{ id: 'q1', intent: 'best-of', prompt: 'best widgets brand?' }],
 };
 
+/**
+ * Fake filesystems below are keyed with "/" paths, but core builds paths with
+ * node:path, which yields "\\" on Windows - and seeds are built by calling the
+ * same helpers, so BOTH keys and lookups need normalizing. The CI matrix caught
+ * this twice: first lookups, then the seeded keys.
+ */
+function normKey(p: string): string {
+  return p.split('\\').join('/');
+}
+
 function memFs(
   seed: Record<string, string> = {},
 ): ProfileFs & QueryFs & SnapshotFs {
-  const files = new Map(Object.entries(seed));
+  const files = new Map(Object.entries(seed).map(([k, v]) => [normKey(k), v]));
   const dirs = new Set<string>();
-  // Core joins paths with node:path, which yields "\\" on Windows while these
-  // seeds use "/". Normalize so the fake fs is platform-agnostic (the CI
-  // matrix caught this: `diff` found no snapshots and printed nothing).
-  const norm = (p: string): string => p.split('\\').join('/');
   const nf = (): never => {
     const e = new Error('ENOENT') as NodeJS.ErrnoException;
     e.code = 'ENOENT';
@@ -109,16 +115,16 @@ function memFs(
   };
   return {
     async readFile(p: string) {
-      return files.get(norm(p)) ?? nf();
+      return files.get(normKey(p)) ?? nf();
     },
     async writeFile(p: string, d: string) {
-      files.set(norm(p), d);
+      files.set(normKey(p), d);
     },
     async mkdir(p: string) {
-      dirs.add(norm(p));
+      dirs.add(normKey(p));
     },
     async readdir(p: string) {
-      const dir = norm(p);
+      const dir = normKey(p);
       if (!dirs.has(dir)) nf();
       return [...files.keys()]
         .filter((f) => f.startsWith(`${dir}/`))

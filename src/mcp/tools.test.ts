@@ -94,14 +94,25 @@ function fakeJudge(): JudgeClient {
   };
 }
 
+/**
+ * Fake filesystems below are keyed with "/" paths, but core builds paths with
+ * node:path, which yields "\\" on Windows - and seeds are built by calling the
+ * same helpers, so BOTH keys and lookups need normalizing. The CI matrix caught
+ * this twice: first lookups, then the seeded keys.
+ */
+function normKey(p: string): string {
+  return p.split('\\').join('/');
+}
+
 function memFs(
   seed: Record<string, string> = {},
 ): ProfileFs & QueryFs & SnapshotFs & { files: Map<string, string> } {
-  const files = new Map<string, string>(Object.entries(seed));
+  const files = new Map<string, string>(
+    Object.entries(seed).map(([k, v]) => [normKey(k), v]),
+  );
   const dirs = new Set<string>();
   // Core joins paths with node:path, which yields "\\" on Windows while these
   // seeds use "/". Normalize so the fake fs is platform-agnostic.
-  const norm = (p: string): string => p.split('\\').join('/');
   const notFound = (): never => {
     const err = new Error('ENOENT') as NodeJS.ErrnoException;
     err.code = 'ENOENT';
@@ -110,16 +121,16 @@ function memFs(
   return {
     files,
     async readFile(path: string) {
-      return files.get(norm(path)) ?? notFound();
+      return files.get(normKey(path)) ?? notFound();
     },
     async writeFile(path: string, data: string) {
-      files.set(norm(path), data);
+      files.set(normKey(path), data);
     },
     async mkdir(path: string) {
-      dirs.add(norm(path));
+      dirs.add(normKey(path));
     },
     async readdir(path: string) {
-      const dir = norm(path);
+      const dir = normKey(path);
       if (!dirs.has(dir)) notFound();
       const prefix = `${dir}/`;
       return [...files.keys()]
