@@ -62,18 +62,20 @@ function fakeFs(): SnapshotFs & {
       return v;
     },
     async writeFile(path, data) {
-      files.set(path, data);
+      files.set(path.split('\\').join('/'), data);
     },
     async mkdir(path) {
-      dirs.add(path);
+      dirs.add(path.split('\\').join('/'));
     },
     async readdir(path) {
-      if (!dirs.has(path)) {
+      // Core joins with node:path ("\\" on Windows) while these seeds use "/".
+      const dir = path.split('\\').join('/');
+      if (!dirs.has(dir)) {
         const err = new Error('no dir') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
         throw err;
       }
-      const prefix = `${path}/`;
+      const prefix = `${dir}/`;
       return [...files.keys()]
         .filter((f) => f.startsWith(prefix))
         .map((f) => f.slice(prefix.length));

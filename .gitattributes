@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+# Fixtures are compared byte-for-byte against generated output, so a CRLF
+# checkout on Windows must not change them (the CI matrix caught this: the
+# queries golden failed with a visually identical diff).
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf

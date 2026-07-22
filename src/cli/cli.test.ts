@@ -98,6 +98,10 @@ function memFs(
 ): ProfileFs & QueryFs & SnapshotFs {
   const files = new Map(Object.entries(seed));
   const dirs = new Set<string>();
+  // Core joins paths with node:path, which yields "\\" on Windows while these
+  // seeds use "/". Normalize so the fake fs is platform-agnostic (the CI
+  // matrix caught this: `diff` found no snapshots and printed nothing).
+  const norm = (p: string): string => p.split('\\').join('/');
   const nf = (): never => {
     const e = new Error('ENOENT') as NodeJS.ErrnoException;
     e.code = 'ENOENT';
@@ -105,19 +109,20 @@ function memFs(
   };
   return {
     async readFile(p: string) {
-      return files.get(p) ?? nf();
+      return files.get(norm(p)) ?? nf();
     },
     async writeFile(p: string, d: string) {
-      files.set(p, d);
+      files.set(norm(p), d);
     },
     async mkdir(p: string) {
-      dirs.add(p);
+      dirs.add(norm(p));
     },
     async readdir(p: string) {
-      if (!dirs.has(p)) nf();
+      const dir = norm(p);
+      if (!dirs.has(dir)) nf();
       return [...files.keys()]
-        .filter((f) => f.startsWith(`${p}/`))
-        .map((f) => f.slice(p.length + 1));
+        .filter((f) => f.startsWith(`${dir}/`))
+        .map((f) => f.slice(dir.length + 1));
     },
   };
 }
