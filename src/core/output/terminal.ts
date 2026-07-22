@@ -6,7 +6,12 @@
 import pc from 'picocolors';
 import type { AuditReport } from '../audit/index.js';
 import type { ShareOfVoiceRow } from '../types.js';
-import { VARIANCE_MARKER, isWiderEstimate, varianceNote } from './variance.js';
+import {
+  VARIANCE_MARKER,
+  isWiderEstimate,
+  retrievalLine,
+  varianceNote,
+} from './variance.js';
 import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
 import { AUDIT_ONLY_NOTE, FOOTER_CTA } from './footer.js';
 import { spendLine } from './spend.js';
@@ -179,6 +184,10 @@ export function renderCheckText(
     lines.push(
       `  ${pad(e.engine, 12)}${score}/100  ${pad(e.kind, 11)}mentioned ${e.mentions}/${e.answers}${marker}`,
     );
+    // "grounded" is the mode that was requested; say when the engine did not
+    // actually search on every answer (it earns less of the grounded weight).
+    const retrieval = retrievalLine(e);
+    if (retrieval) lines.push(`  ${' '.repeat(12)}${c.dim(retrieval)}`);
   }
   if (widerCount > 0) {
     lines.push(`  ${VARIANCE_MARKER} ${varianceNote(widerCount)}`);

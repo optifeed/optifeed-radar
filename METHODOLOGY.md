@@ -91,18 +91,38 @@ for context but is not the value used in the formula.)
 ## Step 3 - composite score (the headline number)
 
 The headline AI Visibility Score is a weighted mean of the per-engine scores.
-Grounded engines (which cite live sources) weight higher than parametric ones:
+An engine that answers from live retrieved sources weights higher than one
+answering from its trained weights:
 
 ```
-weight(engine) = grounded ? 1.5 : 1.0
-composite = round( sum(score * weight) / sum(weight) )
+retrievalRate(engine) = answers that actually retrieved / answers
+weight(engine) = 1.0 + 0.5 * retrievalRate(engine)
+composite      = round( sum(score * weight) / sum(weight) )
 ```
 
-Worked example. A grounded engine scoring 60 and a parametric engine scoring 40:
+An engine that retrieved on every answer weights 1.5; one that never retrieved
+weights 1.0.
+
+Worked example. An engine that retrieved on every answer scoring 60, and a
+parametric engine scoring 40:
 
 ```
 composite = (60 * 1.5 + 40 * 1.0) / (1.5 + 1.0) = 130 / 2.5 = 52
 ```
+
+Asking for grounded mode is not the same as searching. A grounded-mode request
+is one the model can decline: on a live run in July 2026, 7 of 8 ChatGPT
+answers ran no search and cited nothing, while Gemini searched on 7 of 7. The
+premium is for retrieval-backed answers, so it is earned per answer rather than
+granted for the request. An engine that searched on only some of its answers
+says so in the report ("searched in 1 of 8 answers").
+
+An answer counts as retrieved when the engine reported the search queries it
+ran, the sources it cited, or both. This is only read as a signal for engines
+known to report that evidence (currently OpenAI, Gemini and Perplexity, the
+last of which reports citations but never queries). For any other engine the
+requested mode is trusted, since absent evidence there means "not reported",
+not "did not search".
 
 ## Retrieval variance (how wide is each estimate)
 
@@ -112,7 +132,9 @@ ChatGPT rewrites heavily (~91% unique queries per run) while Perplexity is
 near-stable (~14%). A high-variance engine's per-engine score is therefore a
 wider estimate and benefits from more samples. We surface this as a plain
 confidence qualifier next to those engines - it does NOT adjust the number
-(that would be false precision). The per-engine variance values are approximate
+(that would be false precision). It is shown only for engines that actually
+retrieved: an engine that ran no search cannot have rewritten your prompt
+before searching. The per-engine variance values are approximate
 and dated, like the price table, and re-verified at release; anthropic and
 gemini are inferred and least certain.
 
@@ -125,7 +147,11 @@ composite is the headline score.
 
 ## Scoring version
 
-This methodology is version 2 (`SCORING_VERSION` in `src/core/scoring/score.ts`).
+This methodology is version 3 (`SCORING_VERSION` in `src/core/scoring/score.ts`).
+Version 3 changed the composite: the retrieval premium is earned by answers
+that actually retrieved, where version 2 granted it to any engine asked for
+grounded mode. A run where every grounded answer really searched scores the
+same under both.
 The score is not comparable across a methodology change, so each run records its
 scoring version and `diff` flags a comparison whose two runs used different
 versions (or one predates versioning) as methodology-driven, not a real change.

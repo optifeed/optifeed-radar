@@ -524,3 +524,50 @@ describe('renderers over an unassessed run (score null)', () => {
     expect(html).not.toContain(VARIANCE_NOTE);
   });
 });
+
+describe('retrieval actuality is disclosed, not hidden', () => {
+  const partlyGrounded = (retrievedAnswers: number) =>
+    envelope({
+      engines: [
+        {
+          engine: 'openai',
+          kind: 'grounded',
+          score: 58,
+          mentionRate: 0.5,
+          avgPosition: 2,
+          answers: 8,
+          mentions: 4,
+          retrievedAnswers,
+        },
+      ],
+    });
+
+  it('says how many answers actually searched when not all of them did', () => {
+    // The engine still reads "grounded" (that is the mode that was asked for),
+    // so without this the reader would assume 8 retrieval-backed answers.
+    const out = renderCheckText(partlyGrounded(1), { color: false });
+    expect(out).toContain('searched in 1 of 8');
+  });
+
+  it('says nothing extra when every answer searched', () => {
+    const out = renderCheckText(partlyGrounded(8), { color: false });
+    expect(out).not.toContain('searched in');
+  });
+
+  it('does not claim prompt-rewriting for an engine that never searched', () => {
+    // The variance note says the engine "rewrites your prompt before
+    // searching" - false for an engine that ran no search (rule #6).
+    const out = renderCheckText(partlyGrounded(0), { color: false });
+    expect(out).not.toContain('rewrites your prompt');
+  });
+
+  it('still flags retrieval variance for an engine that did search', () => {
+    const out = renderCheckText(partlyGrounded(8), { color: false });
+    expect(out).toContain('rewrites your prompt');
+  });
+
+  it('carries the same disclosure into the HTML report', () => {
+    const html = renderCheckHtml(partlyGrounded(1));
+    expect(html).toContain('searched in 1 of 8');
+  });
+});

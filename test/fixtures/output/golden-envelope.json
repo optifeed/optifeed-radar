@@ -15,7 +15,7 @@
     ]
   },
   "score": 46,
-  "scoringVersion": 2,
+  "scoringVersion": 3,
   "engines": [
     {
       "engine": "openai",
@@ -33,7 +33,8 @@
       "mentionRate": 0.5,
       "avgPosition": 1,
       "answers": 2,
-      "mentions": 1
+      "mentions": 1,
+      "retrievedAnswers": 2
     },
     {
       "engine": "anthropic",

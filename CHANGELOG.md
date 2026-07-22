@@ -20,6 +20,16 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+### Changed
+
+- Scoring methodology version 3: the composite's retrieval premium is earned by
+  answers that actually retrieved, not granted to any engine asked for grounded
+  mode. Asking is not searching - a live run had 7 of 8 ChatGPT answers run no
+  search while still counting as fully grounded. A run where every grounded
+  answer really searched scores the same as before. Reports now say "searched
+  in 1 of 8 answers" when an engine did not search on all of them, and `diff`
+  flags a comparison across methodology versions as methodology-driven.
+
 ### Added
 
 - The CLI loads a `.env` from the directory you run it in, using Node's

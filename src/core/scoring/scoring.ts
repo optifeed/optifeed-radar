@@ -20,6 +20,7 @@ import {
   type ScoreReport,
 } from '../types.js';
 import { analyzeAnswer } from './detect.js';
+import { answerRetrieved } from './retrieval.js';
 import { JUDGE_RATE_CAP, refineAmbiguous } from './judge.js';
 import {
   aggregateSources,
@@ -138,6 +139,11 @@ function scorePerEngine(
   const grouped = new Map<EngineId, MentionResult[]>();
   const kinds = new Map<EngineId, EngineKind>();
 
+  // How many of each engine's answers actually retrieved. Grounded mode is a
+  // request the model can decline, so this - not `kind` - decides how much of
+  // the grounded premium the engine earns (see `effectiveWeight`).
+  const retrieved = new Map<EngineId, number>();
+
   answers.forEach((answer, i) => {
     const result = results[i];
     if (!result) return;
@@ -146,17 +152,24 @@ function scorePerEngine(
       order.push(answer.engine);
     }
     grouped.get(answer.engine)?.push(result);
+    if (answerRetrieved(answer)) {
+      retrieved.set(answer.engine, (retrieved.get(answer.engine) ?? 0) + 1);
+    }
     // A grounded answer marks the engine grounded for weighting.
     if (answer.kind === 'grounded' || !kinds.has(answer.engine)) {
       kinds.set(answer.engine, answer.kind);
     }
   });
 
-  return order.map((engine) =>
-    scoreEngine(
+  return order.map((engine) => {
+    const kind = kinds.get(engine) ?? 'parametric';
+    return scoreEngine(
       engine,
-      kinds.get(engine) ?? 'parametric',
+      kind,
       grouped.get(engine) ?? [],
-    ),
-  );
+      // Only meaningful for a grounded engine; a parametric one ran no search
+      // by definition, and a 0 there would read as a failed retrieval.
+      kind === 'grounded' ? (retrieved.get(engine) ?? 0) : undefined,
+    );
+  });
 }

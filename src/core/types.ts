@@ -146,6 +146,13 @@ export interface EngineScore {
   avgPosition: number | null;
   answers: number;
   mentions: number;
+  /**
+   * How many of `answers` show evidence of an actual retrieval (M17). `kind`
+   * records the mode that was REQUESTED; a grounded-mode call is a request the
+   * model can decline. Only set for engines that report retrieval evidence;
+   * absent on snapshots written before this was measured.
+   */
+  retrievedAnswers?: number;
 }
 
 /** A share-of-voice row: the brand or a competitor (M7). */

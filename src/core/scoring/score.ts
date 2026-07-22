@@ -19,9 +19,10 @@ import type {
  * a delta is methodology-driven, not a real visibility move (rule #2). Snapshots
  * from before this field existed carry no version and read as "changed" against
  * a versioned run. History: v1 = 1/avgPosition; v2 = coverage-aware position +
- * mid-rank credit for unranked mentions.
+ * mid-rank credit for unranked mentions; v3 = the grounded premium is earned by
+ * ACTUAL retrieval per answer, not by having requested grounded mode.
  */
-export const SCORING_VERSION = 2;
+export const SCORING_VERSION = 3;
 
 /**
  * Published scoring weights (source of truth for `METHODOLOGY.md`). Update the
@@ -90,6 +91,7 @@ export function scoreEngine(
   engine: EngineId,
   kind: EngineKind,
   results: MentionResult[],
+  retrievedAnswers?: number,
 ): EngineScore {
   const answers = results.length;
   const mentionedResults = results.filter((r) => r.mentioned);
@@ -132,11 +134,45 @@ export function scoreEngine(
     sentimentMod;
   const score = Math.round(clamp01(raw) * 100);
 
-  return { engine, kind, score, mentionRate, avgPosition, answers, mentions };
+  return {
+    engine,
+    kind,
+    score,
+    mentionRate,
+    avgPosition,
+    answers,
+    mentions,
+    ...(retrievedAnswers === undefined ? {} : { retrievedAnswers }),
+  };
 }
 
 /**
- * Weighted mean of engine scores; grounded engines weight higher.
+ * The composite weight an engine has earned.
+ *
+ * `kind` records the mode that was REQUESTED, and a grounded-mode call is a
+ * request the model can decline (7 of 8 OpenAI answers did, live, on
+ * 2026-07-20). So the grounded premium is earned in proportion to the share of
+ * the engine's answers that actually retrieved, rather than handed over for
+ * asking. This is a strict generalization: an engine whose answers all
+ * retrieved still weighs `groundedWeight`, a parametric engine still weighs
+ * `parametricWeight`, and only the mislabeled middle moves.
+ *
+ * A grounded score with no `retrievedAnswers` count comes from a snapshot
+ * written before this was measured; it keeps the full premium, so re-scoring
+ * an old snapshot reproduces the number it reported.
+ */
+export function effectiveWeight(engine: EngineScore): number {
+  const { parametricWeight, groundedWeight } = SCORE_WEIGHTS;
+  if (engine.kind !== 'grounded') return parametricWeight;
+  if (engine.retrievedAnswers === undefined || engine.answers === 0) {
+    return groundedWeight;
+  }
+  const rate = engine.retrievedAnswers / engine.answers;
+  return parametricWeight + (groundedWeight - parametricWeight) * rate;
+}
+
+/**
+ * Weighted mean of engine scores; engines that retrieved weight higher.
  *
  * `null` when nothing was measured (no engines scored). An unmeasured brand has
  * NO score - it is not a brand that scored zero, and a fabricated 0 is
@@ -147,10 +183,9 @@ export function compositeScore(engines: EngineScore[]): number | null {
   let weighted = 0;
   let totalWeight = 0;
   for (const e of engines) {
-    const weight =
-      e.kind === 'grounded'
-        ? SCORE_WEIGHTS.groundedWeight
-        : SCORE_WEIGHTS.parametricWeight;
+    // The grounded premium is earned by ACTUAL retrieval, not by having asked
+    // for grounded mode - see `effectiveWeight`.
+    const weight = effectiveWeight(e);
     weighted += e.score * weight;
     totalWeight += weight;
   }

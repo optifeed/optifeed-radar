@@ -12,7 +12,12 @@ import type { VisibilityEnvelope } from './envelope.js';
 import { FOOTER_CTA } from './footer.js';
 import { honestyNotes, samplingLine } from './terminal.js';
 import { spendLine } from './spend.js';
-import { VARIANCE_MARKER, isWiderEstimate, varianceNote } from './variance.js';
+import {
+  VARIANCE_MARKER,
+  isWiderEstimate,
+  retrievalLine,
+  varianceNote,
+} from './variance.js';
 
 /** Escape the five HTML-significant characters so untrusted text is inert. */
 function esc(s: string): string {
@@ -63,9 +68,15 @@ function enginesTable(engines: EngineScore[]): string {
       const wider = isWiderEstimate(e);
       if (wider) widerCount += 1;
       const marker = wider ? ` ${VARIANCE_MARKER}` : '';
+      // "grounded" is the requested mode; disclose when the engine did not
+      // actually search on every answer.
+      const retrieval = retrievalLine(e);
+      const retrievalNote = retrieval
+        ? `<br><span class="muted">${esc(retrieval)}</span>`
+        : '';
       return `<tr>
         <td>${esc(e.engine)}</td>
-        <td>${e.kind}</td>
+        <td>${e.kind}${retrievalNote}</td>
         <td>${e.score}/100${marker}</td>
         <td>${e.mentions}/${e.answers}</td>
       </tr>`;
