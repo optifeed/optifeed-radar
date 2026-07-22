@@ -112,3 +112,18 @@ describe('release docs', () => {
     expect(exists('CHANGELOG.md')).toBe(true);
   });
 });
+
+describe('npm metadata for publishing', () => {
+  it('declares the source repository (npm provenance is generated against it)', () => {
+    const repo = (
+      pkg as unknown as { repository?: { type: string; url: string } }
+    ).repository;
+    expect(repo?.url).toContain('github.com/optifeed/optifeed-radar');
+  });
+
+  it('points readers at the issue tracker and homepage', () => {
+    const p = pkg as unknown as { bugs?: { url: string }; homepage?: string };
+    expect(p.bugs?.url).toContain('optifeed-radar');
+    expect(p.homepage).toBeTruthy();
+  });
+});

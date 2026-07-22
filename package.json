@@ -15,6 +15,14 @@
     "openclaw-skills"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/optifeed/optifeed-radar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/optifeed/optifeed-radar/issues"
+  },
+  "homepage": "https://github.com/optifeed/optifeed-radar#readme",
   "type": "module",
   "engines": {
     "node": ">=20"
