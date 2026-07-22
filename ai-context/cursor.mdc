@@ -16,6 +16,9 @@ a brand gets recommended. It runs locally with the user's own API keys.
   `PERPLEXITY_API_KEY`); spends API credit: about $0.09 for one engine, $0.41
   to $0.46 for all four, about $1.09 with `--grounded`. Cap it with
   `--max-cost`.
+  Keys can be exported in the shell or put in a `.env` file in the working
+  directory. A `check --quick` across four engines takes 47 to 51 seconds
+  (about 97 with `--grounded`); that is the engines answering, not a hang.
 
 Scores are estimates from sampling and vary between runs. Grounded engines are
 reported separately from parametric ones. Never log or store API keys.

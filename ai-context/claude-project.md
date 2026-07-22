@@ -19,6 +19,9 @@ visibility / GEO / AEO check:
   `PERPLEXITY_API_KEY`) and spends the user's API credit: about $0.09 for one
   engine, $0.41 to $0.46 for all four, about $1.09 with `--grounded`. Cap it
   with `--max-cost`.
+  Keys can be exported in the shell or put in a `.env` file in the working
+  directory. A `check --quick` across four engines takes 47 to 51 seconds
+  (about 97 with `--grounded`); that is the engines answering, not a hang.
 
 Report scores as estimates from sampling; engines vary between runs. Report
 grounded engines (which cite sources) separately from parametric ones. Never

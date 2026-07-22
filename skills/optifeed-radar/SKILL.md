@@ -49,16 +49,28 @@ The `optifeed-mcp` server exposes the same capability to AI agents:
 
 ```bash
 npx tsx src/cli/index.ts audit example.com
-export OPENAI_API_KEY=...
+export OPENAI_API_KEY=...   # or put keys in a .env file in this directory
 npx tsx src/cli/index.ts check example.com --quick --yes
 ```
+
+The CLI loads `.env` from the directory it runs in; an exported key wins over
+the same key in `.env`. `config` reports which keys were found and which file
+they came from, never the values.
+
+How long to expect (measured 2026-07-22): `audit` takes about a second,
+`check --quick` across four engines takes 47 to 51 seconds, and about 97
+seconds with `--grounded`. That wait is the engines answering, not a hang;
+`check` streams per-phase progress to stderr while it runs.
 
 ## Honesty and cost
 
 BYO keys. Scores are estimates from sampling and say so; engines vary between
 runs. Grounded engines (which cite sources) are reported separately from
-parametric ones (which answer from model weights alone). Keys stay on the
-user's machine and are never logged or stored.
+parametric ones (which answer from model weights alone), and an engine counts
+as grounded only for the answers where it actually searched - asking for
+grounded mode is not the same as searching, and the report says so when an
+engine searched on only some of its answers. Keys stay on the user's machine
+and are never logged or stored.
 
 Cost, measured on real runs (2026-07-20, `--quick` = 8 buyer prompts): the
 zero-key `audit` is free; a single-engine `check` is about $0.09; all four

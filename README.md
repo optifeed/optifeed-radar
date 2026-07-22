@@ -63,7 +63,10 @@ Optifeed Radar asks real AI engines real buyer questions and measures whether
 your brand gets recommended - not whether you rank in a search index, but
 whether the answer an AI gives a buyer names you. Grounded engines (which cite
 web sources) are reported separately from parametric ones (which answer from
-model weights alone), because they behave differently.
+model weights alone), because they behave differently. An engine counts as
+grounded only for the answers where it actually searched: asking for grounded
+mode is a request a model can decline, so the report says when an engine
+searched on only some of its answers. METHODOLOGY.md has the formula.
 
 ## Use it from your AI agents (MCP)
 
@@ -167,8 +170,11 @@ How long it takes, measured the same way (2026-07-22):
 | `check --quick`, four engines    | 47 to 51 seconds   |
 | `check --quick --grounded`, four | about 97 seconds   |
 
-So a cold `npx optifeed-radar audit yourbrand.com` finishes in about ten
-seconds. A `check` takes as long as the engines take to answer: it queries
+The install figure was measured from the packed tarball with an empty npm
+cache, so once the package is published a cold
+`npx optifeed-radar audit yourbrand.com` should finish in about ten seconds
+(re-verified against the registry at publish). A `check` takes as long as the
+engines take to answer: it queries
 several of them across a whole prompt pack, and that wait is provider latency
 we do not control. `check` reports live progress while it runs, so you can see
 which phase it is in rather than watching a blank terminal.

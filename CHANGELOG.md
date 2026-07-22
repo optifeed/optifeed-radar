@@ -29,6 +29,17 @@ score is only comparable against snapshots taken with the same method.
   answer really searched scores the same as before. Reports now say "searched
   in 1 of 8 answers" when an engine did not search on all of them, and `diff`
   flags a comparison across methodology versions as methodology-driven.
+- `diff` also flags `retrievalChanged` when an engine searched on a different
+  share of its answers than last time. That moves the headline score without
+  moving any per-engine score, so without the flag a mechanical change would
+  read as a real visibility change.
+
+### Fixed
+
+- The MCP server resolved the home directory from `$HOME`, which Windows does
+  not set, so its state directory fell back to whatever working directory the
+  desktop client launched it with. It now uses the real home directory, as the
+  CLI already did.
 
 ### Added
 
