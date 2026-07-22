@@ -11,13 +11,14 @@ import {
   CallToolRequestSchema,
   type ServerResult,
 } from '@modelcontextprotocol/sdk/types.js';
+import { getVersion } from '../core/index.js';
 import { TOOL_SPECS, callTool } from './tools.js';
 import type { ToolContext } from './deps.js';
 
 /** Build a configured (but not yet connected) MCP server. */
 export function createServer(ctx: ToolContext): Server {
   const server = new Server(
-    { name: 'optifeed-radar', version: '0.1.0' },
+    { name: 'optifeed-radar', version: getVersion() },
     { capabilities: { tools: {} } },
   );
 

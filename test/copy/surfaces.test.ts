@@ -25,6 +25,10 @@ const SURFACES: { file: string; opts: MessagingRuleOptions }[] = [
   { file: 'ai-context/chatgpt-custom-gpt.md', opts: humanCopy },
   { file: 'ai-context/cursor.mdc', opts: humanCopy },
   { file: 'ai-context/windsurf.md', opts: humanCopy },
+  // Release docs are prose but not reports, so they get the banned-substring
+  // and roadmap gates without the report footer CTA.
+  { file: 'CHANGELOG.md', opts: { enforceRoadmapGate: true } },
+  { file: 'SECURITY.md', opts: { enforceRoadmapGate: true } },
   { file: '.claude-plugin/plugin.json', opts: {} },
 ];
 

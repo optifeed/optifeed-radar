@@ -1,29 +1,17 @@
 #!/usr/bin/env node
-import { readFileSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { Command } from 'commander';
+import { getVersion } from '../core/index.js';
 import { renderAuditJson, renderAuditText } from '../core/output/index.js';
 import { runAudit } from '../core/run/index.js';
 import { registerCheck, rejectStrayArgs } from './check.js';
 import { registerInspect } from './inspect.js';
 import { type Runtime, defaultRuntime } from './runtime.js';
 
-/**
- * Read the package version at runtime.
- *
- * Resolved relative to this module so it works both when run from source via
- * `tsx src/cli/index.ts` (this file at `src/cli/`) and from the built output
- * at `dist/cli/index.js` - in both layouts `../../package.json` is the package
- * root. package.json is always present in a published npm package.
- */
-export function getVersion(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const pkgPath = join(here, '../../package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
-  return pkg.version;
-}
+/** Re-exported so existing importers of the CLI entrypoint keep working. */
+export { getVersion };
 
 /** Register `audit <domain>` (zero-key path) on the program. */
 function registerAudit(program: Command, rt: Runtime): void {

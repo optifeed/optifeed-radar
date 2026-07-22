@@ -152,10 +152,14 @@ export function registerCheck(program: Command, rt: Runtime): void {
     .option('--quick', 'use a smaller prompt pack (8 prompts)')
     .option('--engines <list>', 'comma-separated engines to use', parseEngines)
     .option('--judge <model>', 'judge model for discovery/query-gen/scoring')
-    .option('--max-cost <usd>', 'hard cap on total spend', parseFloat)
+    .option(
+      '--max-cost <usd>',
+      'cap total spend (checked before every call; overshoot is bounded by one unmeasured call per engine and always reported)',
+      parseFloat,
+    )
     .option(
       '--max-setup-cost <usd>',
-      'hard cap on discovery/query spend',
+      'cap discovery/query-generation spend (same bound as --max-cost)',
       parseFloat,
     )
     .option(

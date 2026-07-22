@@ -9,3 +9,4 @@ export * from './types.js';
 export * from './config.js';
 export * from './costs.js';
 export * from './validation.js';
+export * from './version.js';

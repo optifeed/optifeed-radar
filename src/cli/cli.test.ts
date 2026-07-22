@@ -181,6 +181,19 @@ afterEach(() => {
   process.exitCode = 0;
 });
 
+describe('help text is honest about the cost cap', () => {
+  it('does not call --max-cost a hard cap', () => {
+    // The cap is enforced before every call, but a call's cost is unknown
+    // until it returns, so overshoot is bounded, not impossible. "Hard cap"
+    // promises a ceiling the guard cannot deliver (rule #6).
+    const help = buildProgram(testRuntime())
+      .commands.find((c) => c.name() === 'check')!
+      .helpInformation();
+    expect(help).toContain('--max-cost');
+    expect(help.toLowerCase()).not.toContain('hard cap');
+  });
+});
+
 describe('audit command (zero-key)', () => {
   it('runs with no keys and prints score + footer', async () => {
     const rt = testRuntime();

@@ -1,6 +1,6 @@
 {
   "name": "optifeed-radar",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Open-source AI visibility checker (GEO/AEO). Is your brand recommended by ChatGPT, Perplexity, Gemini and Claude? BYO keys, runs locally.",
   "keywords": [
     "geo",
@@ -26,10 +26,14 @@
   "files": [
     "dist",
     "README.md",
+    "METHODOLOGY.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "dev": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

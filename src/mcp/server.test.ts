@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -48,6 +49,18 @@ async function connectedClient(ctx: ToolContext): Promise<Client> {
 }
 
 describe('MCP server', () => {
+  it('reports the package version in the handshake (no hardcoded copy to drift)', async () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    const client = await connectedClient(auditOnlyContext());
+    expect(client.getServerVersion()).toEqual({
+      name: 'optifeed-radar',
+      version: pkg.version,
+    });
+    await client.close();
+  });
+
   it('lists the 4 launch-1 tools', async () => {
     const client = await connectedClient(auditOnlyContext());
     const { tools } = await client.listTools();
