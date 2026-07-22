@@ -27,6 +27,7 @@ const DIFF: SnapshotDiff = {
   promptSetChanged: false,
   engineSetChanged: false,
   scoringChanged: false,
+  retrievalChanged: false,
   partial: false,
 };
 
@@ -81,5 +82,23 @@ describe('renderDiffText', () => {
 describe('renderDiffJson', () => {
   it('is the stable diff object as pretty JSON (carries schema_version)', () => {
     expect(JSON.parse(renderDiffJson(DIFF))).toEqual(DIFF);
+  });
+});
+
+describe('the retrieval caveat is rendered, not only serialized', () => {
+  it('explains a headline move that the per-engine deltas cannot show', () => {
+    const out = renderDiffText(
+      { ...DIFF, retrievalChanged: true },
+      { color: false },
+    );
+    expect(out.toLowerCase()).toContain('search');
+  });
+
+  it('stays quiet when the retrieval rate held steady', () => {
+    const out = renderDiffText(
+      { ...DIFF, retrievalChanged: false },
+      { color: false },
+    );
+    expect(out.toLowerCase()).not.toContain('chose to search');
   });
 });

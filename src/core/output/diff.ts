@@ -67,6 +67,14 @@ export interface SnapshotDiff {
    */
   scoringChanged: boolean;
   /**
+   * True when a shared engine retrieved on a different share of its answers
+   * than last time. Its composite weight moves with that share (SCORING_VERSION
+   * 3), so the headline `scoreDelta` partly reflects the engines choosing to
+   * search more or less - not a change in how often you were recommended. The
+   * per-engine deltas cannot show it: those scores are weight-independent.
+   */
+  retrievalChanged: boolean;
+  /**
    * True when either compared run was partial (any signal counted by
    * `isPartialRun`; see `partialCauses` for the causes that actually fired, or
    * skipped engines). The delta is then not a full-confidence change (rule #6).
@@ -101,6 +109,35 @@ function enginesIn(env: VisibilityEnvelope): Set<EngineId> {
  * hold snapshots for more than one brand, and a cross-brand diff would be
  * silently meaningless.
  */
+/**
+ * Whether any shared engine retrieved on a different share of its answers.
+ *
+ * Since SCORING_VERSION 3 an engine's composite weight is a function of its
+ * retrieval rate, so this is a changeable input to the headline number - and it
+ * is INVISIBLE in the per-engine deltas, which compare weight-independent
+ * scores. Without this flag a purely mechanical move (the model chose not to
+ * search this time) reads as a real visibility change with every engine at +0.
+ *
+ * Compared only where BOTH runs measured it: a run predating the measurement
+ * has no rate to compare, and that case is already covered by `scoringChanged`.
+ */
+function retrievalChanged(
+  a: VisibilityEnvelope,
+  b: VisibilityEnvelope,
+  sharedEngines: EngineId[],
+): boolean {
+  const rate = (env: VisibilityEnvelope, engine: EngineId): number | null => {
+    const e = env.engines.find((x) => x.engine === engine);
+    if (e?.retrievedAnswers === undefined || e.answers === 0) return null;
+    return e.retrievedAnswers / e.answers;
+  };
+  return sharedEngines.some((engine) => {
+    const aRate = rate(a, engine);
+    const bRate = rate(b, engine);
+    return aRate !== null && bRate !== null && aRate !== bRate;
+  });
+}
+
 export function diffEnvelopes(
   a: VisibilityEnvelope,
   b: VisibilityEnvelope,
@@ -150,6 +187,7 @@ export function diffEnvelopes(
     [...aEngines].some((e) => !bEngines.has(e));
 
   return {
+    retrievalChanged: retrievalChanged(a, b, sharedEngines),
     schema_version: SCHEMA_VERSION,
     domain: b.domain,
     from: a.generatedAt,

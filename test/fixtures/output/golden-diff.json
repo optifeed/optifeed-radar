@@ -27,5 +27,6 @@
   "promptSetChanged": false,
   "engineSetChanged": false,
   "scoringChanged": false,
+  "retrievalChanged": false,
   "partial": false
 }

@@ -66,6 +66,11 @@ export function renderDiffText(
       'The two runs used different scoring methodologies, so this delta is methodology-driven, not a real change in visibility.',
     );
   }
+  if (diff.retrievalChanged) {
+    caveats.push(
+      'An engine chose to search on a different share of its answers this time, which changes its weight in the headline score. The per-engine deltas below cannot show this - those scores do not depend on the weight.',
+    );
+  }
   if (diff.partial) {
     caveats.push(
       // Deliberately does NOT list causes: the renderer receives only the diff,

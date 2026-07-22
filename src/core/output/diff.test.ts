@@ -241,3 +241,60 @@ describe('diffEnvelopes guards against comparing different brands', () => {
     expect(() => diffEnvelopes(A, other)).toThrow(/domain/i);
   });
 });
+
+describe('retrieval-rate changes are flagged (they move the headline number)', () => {
+  // Under SCORING_VERSION 3 an engine's composite weight is a function of how
+  // many of its answers actually retrieved. That makes retrieval rate a
+  // changeable input to the headline score, so it needs a caveat flag like
+  // every other changeable dimension (M8 review lesson #2).
+  const engine = (retrievedAnswers?: number): EngineScore => ({
+    engine: 'openai',
+    kind: 'grounded',
+    score: 58,
+    mentionRate: 0.5,
+    avgPosition: 2,
+    answers: 8,
+    mentions: 4,
+    ...(retrievedAnswers === undefined ? {} : { retrievedAnswers }),
+  });
+  const run = (
+    score: number,
+    retrievedAnswers?: number,
+    at = '2026-07-22T00:00:00.000Z',
+  ) =>
+    envelope(
+      at,
+      score,
+      [engine(retrievedAnswers)],
+      [
+        {
+          engine: 'openai',
+          prompt: 'p1',
+          mentioned: true,
+          position: 1,
+          sentiment: 'neutral',
+          entities: [],
+          citedDomains: [],
+          ambiguous: false,
+        },
+      ],
+    );
+
+  it('flags a run where the same engine searched on fewer answers', () => {
+    const d = diffEnvelopes(run(51, 8), run(49, 0, '2026-07-23T00:00:00.000Z'));
+    expect(d.retrievalChanged).toBe(true);
+    // The per-engine score is weight-independent, so nothing else reveals it.
+    expect(d.engines[0]?.scoreDelta).toBe(0);
+    expect(d.scoreDelta).toBe(-2);
+  });
+
+  it('does not flag a run with the same retrieval rate', () => {
+    const d = diffEnvelopes(run(51, 8), run(51, 8, '2026-07-23T00:00:00.000Z'));
+    expect(d.retrievalChanged).toBe(false);
+  });
+
+  it('does not flag when a run predates the measurement (scoringChanged covers that)', () => {
+    const d = diffEnvelopes(run(51), run(51, 8, '2026-07-23T00:00:00.000Z'));
+    expect(d.retrievalChanged).toBe(false);
+  });
+});

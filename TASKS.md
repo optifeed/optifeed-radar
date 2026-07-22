@@ -812,6 +812,42 @@ no engines')`), which locked the bug in. Now `number | null` end to end:
       and any overshoot is always reported via `costCapped` plus per-engine counts.
       README and `--help` should say this rather than implying a hard ceiling.
 
+- 2026-07-22: **high-effort workflow review of `7ed4c45..HEAD`** (this
+  session's 4 M17 commits: release plumbing, `.env` auto-load, the
+  SCORING_VERSION 3 retrieval fix, the timing decision). 40 agents, 4 finder
+  lenses (scoring semantics + backward compat, env/secret safety, release
+  safety, output honesty), each candidate then put through TWO independent
+  skeptics defaulting to refuted. **2 findings kept, both fixed test-first**
+  (+7 tests, 534 -> 542); the rest were refuted with reasoning worth keeping.
+  (1) **The scoring change re-opened the M8 asymmetry lesson in `diff`.** Under
+  v3 an engine's weight is a function of its retrieval rate, making that a new
+  changeable input to the headline number - and `diffEnvelopes` flagged
+  `promptSetChanged`/`engineSetChanged`/`scoringChanged`/`partial` but not this.
+  Worse, it is INVISIBLE in the per-engine deltas, which compare
+  weight-independent scores: two runs with identical prompts, engines and
+  per-engine scores could show "Score -2" with every engine at +0 and no
+  caveat, presenting a purely mechanical move (the model chose not to search)
+  as a real visibility change. Fixed: `retrievalChanged` on `SnapshotDiff`
+  (compared only where BOTH runs measured it - a pre-v3 run has no rate, and
+  that case is already `scoringChanged`), plus a rendered caveat, since a flag
+  that only reaches `--json` is not honest output. Golden diff updated.
+  (2) **`optifeed-mcp` resolved HOME wrongly on Windows** - `process.env.HOME ??
+process.cwd()`, but Windows sets USERPROFILE, so HOME is unset and the whole
+  state dir collapsed onto whatever cwd the desktop client launched the server
+  with, which is exactly the scattering the comment two lines below it says the
+  design avoids. With `isProjectWritable: false` every write is anchored there:
+  under Program Files that is EPERM, elsewhere it is snapshots invisible to the
+  next run. PRE-EXISTING code, not from this range - but this range added the
+  Windows CI leg whose comment claims path handling is covered, and no test
+  touched this file, so the new matrix would have vouched for it wrongly. Fixed
+  by extracting `mcp/entry.ts` `mcpContextInput()` (injectable, so the
+  entrypoint is testable without connecting a transport) using `os.homedir()`
+  like the CLI already did; mutation-checked, and the stdio handshake re-verified
+  live. Notable refutations: the "Perplexity citations may be absent" downgrade
+  was killed by this repo's own live-captured fixture, and the unused
+  `countRetrieved` helper was correctly judged dead-code tidiness rather than
+  the unwired-enforcement failure mode it resembled.
+
 ## Carried risks / decisions to watch
 
 - [x] Confirm M4/M5 truly depend only on `JudgeClient` (no concrete M6 import creeps in) - both cleared; discovery/ and queries/ import only `../types` + `../costs`, never `../engines`
