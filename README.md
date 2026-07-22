@@ -140,20 +140,39 @@ At launch the published package will also run via npx (no clone needed):
 }
 ```
 
+Once it is connected, ask your AI agent in plain language. These map onto the
+four tools and the arguments they accept:
+
+- "Run a free AI-readiness audit on yourbrand.com." -> `audit_store`, no keys,
+  no cost.
+- "What buyer questions should yourbrand.com be visible for?" ->
+  `generate_buyer_queries`, so you can review the pack before paying for a run.
+- "Check yourbrand.com's AI visibility, quick mode, cap it at 20 cents." ->
+  `check_visibility` with `quick` and `max_cost`.
+- "Check yourbrand.com on OpenAI and Perplexity only." -> `check_visibility`
+  with `engines`.
+- "What changed since the last visibility run on yourbrand.com?" ->
+  `get_snapshot_diff`, free, and it needs two saved runs before it can compare.
+
+Start with the audit prompt: it needs no keys, so it confirms the server is
+wired up before anything spends API credit. `check_visibility` runs
+non-interactively (no confirmation prompt over MCP), so the `max_cost` cap is
+what bounds a run your agent starts - it defaults to $0.50.
+
 ## Tools and cost
 
-| Surface | Name                     | What it does                                                    | Cost                          |
-| ------- | ------------------------ | --------------------------------------------------------------- | ----------------------------- |
-| CLI     | `audit`                  | Zero-key AI-readiness check (robots, llms.txt, schema, sitemap) | Free, no AI calls             |
-| CLI     | `check`                  | Full pipeline: buyer prompts, engines, AI Visibility Score      | BYO keys                      |
-| CLI     | `diff`                   | What changed between your last two runs                         | Free (reads a saved snapshot) |
-| CLI     | `sources`                | Domains the AI cited, and your share of voice                   | Free (reads a saved snapshot) |
-| CLI     | `queries`                | Show or export your buyer-prompt pack                           | Free                          |
-| CLI     | `config`                 | Which engine keys are set, where state is stored                | Free                          |
-| MCP     | `check_visibility`       | Run a visibility check for a domain                             | BYO keys                      |
-| MCP     | `audit_store`            | Run the zero-key readiness audit                                | Free                          |
-| MCP     | `generate_buyer_queries` | Produce the buyer-prompt pack                                   | Free                          |
-| MCP     | `get_snapshot_diff`      | Compare two saved runs                                          | Free                          |
+| Surface | Name                     | What it does                                                    | Cost                           |
+| ------- | ------------------------ | --------------------------------------------------------------- | ------------------------------ |
+| CLI     | `audit`                  | Zero-key AI-readiness check (robots, llms.txt, schema, sitemap) | Free, no AI calls              |
+| CLI     | `check`                  | Full pipeline: buyer prompts, engines, AI Visibility Score      | BYO keys                       |
+| CLI     | `diff`                   | What changed between your last two runs                         | Free (reads a saved snapshot)  |
+| CLI     | `sources`                | Domains the AI cited, and your share of voice                   | Free (reads a saved snapshot)  |
+| CLI     | `queries`                | Show or export your buyer-prompt pack                           | Free                           |
+| CLI     | `config`                 | Which engine keys are set, where state is stored                | Free                           |
+| MCP     | `check_visibility`       | Run a visibility check for a domain                             | BYO keys                       |
+| MCP     | `audit_store`            | Run the zero-key readiness audit                                | Free                           |
+| MCP     | `generate_buyer_queries` | Produce the buyer-prompt pack                                   | BYO keys (usually under $0.05) |
+| MCP     | `get_snapshot_diff`      | Compare two saved runs                                          | Free                           |
 
 Cost transparency: `audit` queries no AI engines and costs nothing. `check`
 spends your own API credit. Measured on real runs (2026-07-20, `--quick` =
