@@ -157,7 +157,7 @@ four tools and the arguments they accept:
 Start with the audit prompt: it needs no keys, so it confirms the server is
 wired up before anything spends API credit. `check_visibility` runs
 non-interactively (no confirmation prompt over MCP), so the `max_cost` cap is
-what bounds a run your agent starts - it defaults to $0.50.
+what bounds a run your AI agent starts - it defaults to $0.50.
 
 ## Tools and cost
 

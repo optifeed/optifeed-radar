@@ -122,6 +122,19 @@ export function renderNoteBlock(
   return out;
 }
 
+/**
+ * The shared "Run notes" block as a single string, for a caller that has notes
+ * but no envelope to render (the `generate_buyer_queries` pack). Exists so an
+ * entrypoint never hand-rolls the note formatting or reaches for picocolors
+ * itself - the palette stays inside `core/output`. Empty notes render as "".
+ */
+export function renderRunNotes(
+  notes: string[],
+  opts: TextRenderOptions = {},
+): string {
+  return renderNoteBlock('Run notes', notes, colors(opts)).join('\n');
+}
+
 /** "1 prompt" / "3 prompts" - honest, grammatical count text. */
 export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;

@@ -3,6 +3,7 @@ import { callTool } from './tools.js';
 import type { ToolContext } from './deps.js';
 import type { RunCheckDeps } from '../core/run/index.js';
 import { createFetcher } from '../core/fetcher/index.js';
+import { CostGuard } from '../core/costs.js';
 import type { FetchLike } from '../core/fetcher/index.js';
 import type { EngineAdapter } from '../core/engines/index.js';
 import { profilePath, type ProfileFs } from '../core/discovery/index.js';
@@ -308,13 +309,55 @@ describe('human-readable text block', () => {
 
   // Failure mode 1: MCP is a pipe, not a TTY, but picocolors auto-detects from
   // the SERVER's stdout. If the server runs somewhere color-capable, escape
-  // codes would leak into the model's context as garbage tokens.
+  // codes would leak into the model's context as garbage tokens. Every tool
+  // whose renderer touches picocolors is covered - render-diff.ts colors too,
+  // so get_snapshot_diff needs its own snapshot-backed context.
   it('never emits ANSI escape codes (color forced off, not auto-detected)', async () => {
     const { ctx } = workingContext();
-    for (const tool of ['check_visibility', 'audit_store']) {
+    for (const tool of [
+      'check_visibility',
+      'audit_store',
+      'generate_buyer_queries',
+    ]) {
       const res = await callTool(ctx, tool, { domain: 'acme.example' });
       expect(proseOf(res).includes(ESC)).toBe(false);
     }
+    const { ctx: diffCtx } = await twoSnapshots();
+    const diff = await callTool(diffCtx, 'get_snapshot_diff', {
+      domain: 'acme.example',
+    });
+    expect(proseOf(diff).includes(ESC)).toBe(false);
+  });
+
+  // Failure mode 3: generate_buyer_queries is the one tool here that spends
+  // money and can hit the cost cap, and its prose is the pack alone. If the
+  // cap trips, the JSON says costCapped but a YAML pack looks complete - the
+  // exact "caveat depends on the summarizer's taste" problem this block
+  // exists to remove (rule #6, and the M8 lesson on propagating honesty to
+  // every derived artifact).
+  it('carries a capped generation run into the prose, not only the JSON', async () => {
+    const fs = memFs({
+      [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE),
+      [queriesPath(STATE)]: toYaml(CACHED_PACK),
+    });
+    const { ctx } = workingContext({
+      queryDeps: async () => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch() }),
+        judge: fakeJudge(),
+        guard: new CostGuard({ maxCostUsd: 0.0000001 }),
+        profileFs: fs,
+        queryFs: fs,
+        now: NOW,
+        persist: false,
+      }),
+    });
+    const res = await callTool(ctx, 'generate_buyer_queries', {
+      domain: 'acme.example',
+    });
+    const parsed = JSON.parse(textOf(res)) as { costCapped?: boolean };
+    // Guard: if the cap did not actually trip, this test proves nothing.
+    expect(parsed.costCapped).toBe(true);
+    expect(proseOf(res)).toContain('Cost cap');
   });
 
   // Failure mode 2: the reason this block exists. A partial run's flags must

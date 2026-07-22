@@ -18,6 +18,7 @@ import {
   renderAuditText,
   renderDiffJson,
   renderDiffText,
+  renderRunNotes,
   listSnapshots,
   loadSnapshot,
   diffEnvelopes,
@@ -283,11 +284,24 @@ export async function callTool(
           ...(result.costCapped ? { costCapped: true } : {}),
           ...(result.path ? { savedAt: result.path } : {}),
         };
-        // YAML is the pack's human form (what `queries` prints and exports).
+        // YAML is the pack's human form (what `queries` prints and exports),
+        // but a pack alone always LOOKS complete. This is the one tool here
+        // that spends money and can hit the cap, so the notes and the cap flag
+        // lead - a caveat that reaches only content[0] is a caveat the host
+        // model may drop (rule #6, and the M8 lesson: honesty propagates to
+        // every derived artifact, never just the source).
+        const packNotes = [...result.notes];
+        if (result.costCapped) {
+          packNotes.push(
+            'Cost cap reached: generation stopped early to stay under budget, so the pack may be smaller than planned.',
+          );
+        }
         return ok(
           JSON.stringify(payload, null, 2),
           payload,
-          toYaml(result.pack),
+          [renderRunNotes(packNotes, { color: false }), toYaml(result.pack)]
+            .filter(Boolean)
+            .join('\n'),
         );
       }
 
