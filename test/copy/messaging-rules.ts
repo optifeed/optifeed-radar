@@ -22,6 +22,22 @@ const BANNED: { needle: string; label: string; caseInsensitive?: boolean }[] = [
     label: 'free-vs-paid equivalence framing',
     caseInsensitive: true,
   },
+  // A `check` queries several engines across a whole prompt pack: measured at
+  // 47-51s parametric and about 97s grounded, and the wait is provider latency
+  // we do not control. Only `audit` is a seconds-scale command, and it is
+  // described with its measured number rather than an adjective.
+  {
+    needle: 'results in seconds',
+    label:
+      'speed over-claim (a check takes about a minute; cite the measured time)',
+    caseInsensitive: true,
+  },
+  {
+    needle: 'instant results',
+    label:
+      'speed over-claim (a check takes about a minute; cite the measured time)',
+    caseInsensitive: true,
+  },
 ];
 
 /**

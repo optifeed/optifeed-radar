@@ -158,6 +158,21 @@ Your cost varies with engine, prompt-pack size, and provider pricing. Grounded
 runs cost roughly 3x parametric ones, because web search is billed on top of
 tokens: Google charges per search query, and one answer can trigger several.
 
+How long it takes, measured the same way (2026-07-22):
+
+| run                              | measured time      |
+| -------------------------------- | ------------------ |
+| first `npx` (install, once)      | about 8 seconds    |
+| `audit`                          | 0.3 to 1.7 seconds |
+| `check --quick`, four engines    | 47 to 51 seconds   |
+| `check --quick --grounded`, four | about 97 seconds   |
+
+So a cold `npx optifeed-radar audit yourbrand.com` finishes in about ten
+seconds. A `check` takes as long as the engines take to answer: it queries
+several of them across a whole prompt pack, and that wait is provider latency
+we do not control. `check` reports live progress while it runs, so you can see
+which phase it is in rather than watching a blank terminal.
+
 Every run reports what it actually spent, split into setup (brand discovery
 and prompt generation) and engine calls, so you can reconcile it against your
 provider bill. Declining at the confirmation prompt still reports the setup

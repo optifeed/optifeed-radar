@@ -81,3 +81,28 @@ describe('extractJsonBlocks', () => {
     expect(JSON.parse(first ?? '')).toEqual({ a: 1 });
   });
 });
+
+describe('speed claims about check', () => {
+  it('flags "results in seconds" - a check takes about a minute', () => {
+    const v = findMessagingViolations(
+      'Get your visibility results in seconds',
+      {},
+    );
+    expect(v.some((m) => m.includes('speed'))).toBe(true);
+  });
+
+  it('flags "instant results"', () => {
+    const v = findMessagingViolations('Instant results from four engines', {});
+    expect(v.some((m) => m.includes('speed'))).toBe(true);
+  });
+
+  it('leaves a measured statement alone', () => {
+    // The audit really is seconds; the rule targets the unqualified claim.
+    expect(
+      findMessagingViolations(
+        'audit finishes in about 2 seconds (measured)',
+        {},
+      ),
+    ).toHaveLength(0);
+  });
+});
