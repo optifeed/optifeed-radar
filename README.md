@@ -26,6 +26,8 @@ The npm package is not published yet, so run from a clone for now. Published
 The zero-key `audit` is verified and runs end to end - no API keys, no AI calls:
 
 ```bash
+git clone https://github.com/optifeed/optifeed-radar.git
+cd optifeed-radar
 npm install
 npx tsx src/cli/index.ts audit yourbrand.com
 ```
