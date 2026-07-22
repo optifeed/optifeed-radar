@@ -181,6 +181,47 @@ afterEach(() => {
   process.exitCode = 0;
 });
 
+describe('no-key guidance points at .env', () => {
+  it('mentions a .env as a place to put keys', async () => {
+    const rt = testRuntime({ env: {} });
+    await run(rt, ['check', 'acme.example', '--yes']);
+    expect(rt.errors.join('')).toContain('.env');
+  });
+
+  it('says so when a .env was found but could not be read', async () => {
+    // Otherwise "no keys found" reads as "you set none", when the truth is
+    // "you set some and I could not read them".
+    const rt = testRuntime({
+      env: {},
+      envFile: { reason: 'found a .env but could not read it' },
+    });
+    await run(rt, ['check', 'acme.example', '--yes']);
+    expect(rt.errors.join('')).toContain('could not read it');
+  });
+});
+
+describe('config reports where keys came from', () => {
+  it('names the .env file when one was loaded', async () => {
+    const rt = testRuntime({ envFile: { path: '/work/.env' } });
+    await run(rt, ['config']);
+    expect(rt.output.join('')).toContain('/work/.env');
+  });
+
+  it('says nothing about .env when there is none (the shell-export case)', async () => {
+    const rt = testRuntime();
+    await run(rt, ['config']);
+    expect(rt.output.join('')).not.toContain('.env');
+  });
+
+  it('surfaces the reason when a .env was found but could not be used', async () => {
+    const rt = testRuntime({
+      envFile: { reason: 'found a .env but could not read it' },
+    });
+    await run(rt, ['config']);
+    expect(rt.output.join('')).toContain('could not read it');
+  });
+});
+
 describe('help text is honest about the cost cap', () => {
   it('does not call --max-cost a hard cap', () => {
     // The cap is enforced before every call, but a call's cost is unknown

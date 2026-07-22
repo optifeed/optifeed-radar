@@ -20,6 +20,13 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+### Added
+
+- The CLI loads a `.env` from the directory you run it in, using Node's
+  built-in env-file support (no dependency). A key already exported in your
+  shell wins over the same key in `.env`, and `config` reports which file the
+  keys came from, never their values.
+
 ## [0.1.0] - 2026-07-22
 
 First public release.

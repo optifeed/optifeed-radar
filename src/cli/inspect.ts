@@ -154,6 +154,10 @@ function registerConfig(program: Command, rt: Runtime): void {
         const status = rt.env[ENGINE_KEY_ENV[engine]] ? 'set' : 'not set';
         lines.push(`  ${engine.padEnd(12)}${status}`);
       }
+      // Where the keys came from, so a stale .env is never a mystery. Only the
+      // path is ever shown, never a value (hard rule #4).
+      if (rt.envFile?.path) lines.push(`  loaded from ${rt.envFile.path}`);
+      if (rt.envFile?.reason) lines.push(`  ${rt.envFile.reason}`);
       lines.push('');
 
       let judge = 'none (set an engine API key)';

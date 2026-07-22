@@ -36,9 +36,14 @@ data, meta basics, and your sitemap, then prints a 0-100 AI-readiness score.
 The `check` pipeline runs from a clone once you set at least one engine API key:
 
 ```bash
-export OPENAI_API_KEY=...   # and/or ANTHROPIC_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY
+cp .env.example .env        # then put at least one key in it
 npx tsx src/cli/index.ts check yourbrand.com
 ```
+
+The CLI loads `.env` from the directory you run it in, so there is no shell
+setup step. Exporting the keys works too (`export OPENAI_API_KEY=...`), and an
+exported key always wins over the same key in `.env`. `config` shows which
+keys were found and which file they came from, never the values.
 
 It discovers your brand, generates a buyer-prompt pack, asks the engines, and
 scores recommendation, position, and share of voice into one AI Visibility

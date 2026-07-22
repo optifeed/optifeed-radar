@@ -208,6 +208,10 @@ export function registerCheck(program: Command, rt: Runtime): void {
       if (available.length === 0) {
         rt.err(
           `check needs at least one engine API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY).\n` +
+            `Export one in your shell, or put it in a .env file in this directory.\n` +
+            // A broken .env looks exactly like "no keys set" from here, so say
+            // which one it is.
+            (rt.envFile?.reason ? `${rt.envFile.reason}\n` : '') +
             `For a zero-key readiness check, run: audit ${domain}\n`,
         );
         process.exitCode = 1;

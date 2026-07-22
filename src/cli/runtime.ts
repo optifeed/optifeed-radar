@@ -10,6 +10,7 @@ import { accessSync, constants } from 'node:fs';
 import { writeFile as fsWriteFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import process from 'node:process';
+import { loadEnvFile } from '../core/index.js';
 import { createFetcher, type Fetcher } from '../core/fetcher/index.js';
 import { nodeQueryFs, type QueryFs } from '../core/queries/index.js';
 import { nodeSnapshotFs, type SnapshotFs } from '../core/output/index.js';
@@ -57,6 +58,11 @@ export interface Runtime {
   queryFs: QueryFs;
   /** Override the check pipeline's injected deps (tests bypass real adapters). */
   checkDeps?: (flags: CheckFlags) => RunCheckDeps;
+  /**
+   * Outcome of the `.env` auto-load, when a `.env` was present. Absent when
+   * there was none - the ordinary case of keys exported in the shell.
+   */
+  envFile?: { path?: string; reason?: string };
 }
 
 function projectWritable(cwd: string): boolean {
@@ -70,10 +76,17 @@ function projectWritable(cwd: string): boolean {
 
 /** The production runtime, wired from `process`. */
 export function defaultRuntime(): Runtime {
+  // Load `<cwd>/.env` BEFORE reading process.env, so keys in a local .env are
+  // visible to engine detection. Values already exported in the shell win.
+  const dotenv = loadEnvFile({ cwd: process.cwd() });
   return {
     out: (s) => process.stdout.write(s),
     err: (s) => process.stderr.write(s),
     env: process.env,
+    envFile:
+      dotenv.loaded || dotenv.reason
+        ? { path: dotenv.path, reason: dotenv.reason }
+        : undefined,
     cwd: process.cwd(),
     homeDir: homedir(),
     isTTY: Boolean(process.stdout.isTTY),
