@@ -347,7 +347,7 @@ optifeed.com.
 
 ## Status
 
-Under active development; the repo is public early so you can follow along. If
+Under active development; the repo opens up at launch so you can follow along. If
 this is useful to you, a star genuinely helps. Scores are estimates and say so.
 Your API keys stay on your machine and are never logged or stored.
 
