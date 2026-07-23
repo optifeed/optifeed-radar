@@ -272,6 +272,47 @@ describe('business classification (M5a)', () => {
     expect(result.competitors).toEqual(['Zuhal Müzik']);
   });
 
+  // The M14 review already fixed this exact class once ({"Products":[...]} read
+  // as 0 products because the wrapper key was matched case-sensitively). The
+  // object branch must never be a WORSE parser than the array branch it
+  // replaced: if it finds no competitors, fall back rather than return none.
+  it('does not lose competitors to an unexpected wrapper key or casing', async () => {
+    for (const text of [
+      '{"Competitors":["Estes","Quest"]}',
+      '{"rivals":["Estes","Quest"]}',
+    ]) {
+      const judge = recordingJudge(text);
+      const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+      const result = await discoverCompetitors(
+        { brand: 'Acme' },
+        { judge, guard },
+      );
+
+      expect(result.competitors).toEqual(['Estes', 'Quest']);
+    }
+  });
+
+  // A silently-dropped classification means the whole seller axis never
+  // engages and a shop is scored on maker questions again, which is the bug
+  // M5a exists to fix - so accept the casing models actually emit.
+  it('reads businessType however the model cased the key', async () => {
+    for (const text of [
+      '{"business_type":"retailer","competitors":["A"]}',
+      '{"BusinessType":"retailer","competitors":["A"]}',
+    ]) {
+      const judge = recordingJudge(text);
+      const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+      const result = await discoverCompetitors(
+        { brand: 'Acme' },
+        { judge, guard },
+      );
+
+      expect(result.businessType).toBe('retailer');
+    }
+  });
+
   it('asks the judge to classify and to match rivals to that classification', async () => {
     const judge = recordingJudge('{"businessType":"maker","competitors":[]}');
     const guard = new CostGuard({ maxSetupCostUsd: 0.05 });

@@ -161,6 +161,14 @@ export function parseCompetitors(
  * value degrades to the maker axis that shipped before M5a instead of silently
  * rewriting someone's prompt pack.
  */
+/** First value whose key matches any `names`, compared case-insensitively. */
+function pick(row: Record<string, unknown>, ...names: string[]): unknown {
+  for (const [key, value] of Object.entries(row)) {
+    if (names.includes(key.toLowerCase())) return value;
+  }
+  return undefined;
+}
+
 export function parseDiscovery(
   text: string,
   selfTerms: string[] = [],
@@ -171,18 +179,27 @@ export function parseDiscovery(
       const parsed: unknown = JSON.parse(object);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const row = parsed as Record<string, unknown>;
-        const raw = row.businessType;
+        const raw = pick(row, 'businesstype', 'business_type');
         const businessType =
           raw === 'retailer' || raw === 'maker' || raw === 'service'
             ? raw
             : undefined;
-        const list = Array.isArray(row.competitors)
-          ? row.competitors.filter((x): x is string => typeof x === 'string')
+        const named = pick(row, 'competitors', 'rivals');
+        const list = Array.isArray(named)
+          ? named.filter((x): x is string => typeof x === 'string')
           : [];
-        return {
-          ...(businessType ? { businessType } : {}),
-          competitors: capped(dropSelfReferences(dedupe(list), selfTerms)),
-        };
+        const competitors = capped(dropSelfReferences(dedupe(list), selfTerms));
+        // Only let the object branch win when it actually found something. A
+        // model that wraps the list under a key we did not anticipate must not
+        // come back EMPTY when the array parser below would have read it: this
+        // exact class (a case-sensitive wrapper-key lookup returning zero rows)
+        // already shipped once and was caught in the M14 review.
+        if (businessType || competitors.length > 0) {
+          return {
+            ...(businessType ? { businessType } : {}),
+            competitors,
+          };
+        }
       }
     } catch {
       // Fall through to the array/list parser.
