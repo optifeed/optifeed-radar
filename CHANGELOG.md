@@ -73,6 +73,16 @@ score is only comparable against snapshots taken with the same method.
 
 ### Fixed
 
+- `--max-cost` refused prompts it could comfortably afford. Once an engine had
+  answered, the reservation for its next call still used a static estimate
+  whenever that estimate ran higher than the real cost - so a cap set at three
+  times what a run actually costs could still drop half the questions, and one
+  report's per-engine score ended up resting on two answers out of eight. Runs
+  now reserve against the dearest call an engine has actually made. A cap that
+  is genuinely too small still stops the run and still says so; a call that
+  searches the web keeps reserving the safe estimate, because its per-search
+  fee swings too much for a past call to bound it.
+
 - Competitor discovery could return your own brand as a rival under a variant
   spelling ("Do Re Muzik Market" for doremusic), which put you in your own
   share-of-voice table and inflated a competitor that is you. The judge is now
