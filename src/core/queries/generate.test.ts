@@ -9,6 +9,7 @@ import {
 import {
   activeIntents,
   buildQueryPack,
+  intentQuotas,
   excludeCompetitors,
   generateQueries,
   parseIntentQueries,
@@ -64,6 +65,71 @@ describe('activeIntents', () => {
       'trust',
       'local',
     ]);
+  });
+});
+
+describe('activeIntents on the retailer axis (M5a)', () => {
+  const shop = (overrides: Partial<BrandProfile> = {}) =>
+    profile({ businessType: 'retailer', ...overrides });
+
+  // Product questions are answered with manufacturers: across 28 live answers
+  // for one music retailer, makers were named 21/16/10/8 times and not one
+  // rival shop was ever named. So best-of is a known-zero intent for a shop -
+  // it is dropped rather than asked and paid for.
+  it('gives a retailer where-to-buy and drops the known-zero best-of intent', () => {
+    expect(activeIntents(shop())).toEqual([
+      'where-to-buy',
+      'comparison',
+      'problem',
+      'trust',
+    ]);
+  });
+
+  it('leaves a maker pack exactly as it was', () => {
+    expect(activeIntents(profile({ businessType: 'maker' }))).toEqual([
+      'best-of',
+      'comparison',
+      'problem',
+      'trust',
+    ]);
+  });
+
+  // Absent, service, or anything unrecognized takes the maker path, so an
+  // older profile and a new business type both degrade to shipped behavior.
+  it('treats an absent or non-retailer businessType as a maker', () => {
+    expect(activeIntents(profile())).toEqual([
+      'best-of',
+      'comparison',
+      'problem',
+      'trust',
+    ]);
+    expect(activeIntents(profile({ businessType: 'service' }))).toEqual([
+      'best-of',
+      'comparison',
+      'problem',
+      'trust',
+    ]);
+  });
+
+  it('weights where-to-buy heaviest for a retailer', () => {
+    const intents = activeIntents(shop({ geo: 'Istanbul' }));
+    expect(intentQuotas(20, intents, 'retailer')).toEqual({
+      'where-to-buy': 8,
+      comparison: 3,
+      problem: 3,
+      trust: 3,
+      local: 3,
+    });
+  });
+
+  it('still weights best-of heaviest for a maker', () => {
+    const intents = activeIntents(profile());
+    expect(intentQuotas(20, intents, 'maker')).toEqual({
+      'best-of': 8,
+      comparison: 4,
+      problem: 4,
+      trust: 4,
+    });
   });
 });
 
@@ -163,6 +229,7 @@ describe('buildQueryPack', () => {
     const pack = buildQueryPack({
       domain: 'acme.example',
       byIntent: {
+        'where-to-buy': [],
         'best-of': ['A1', 'A2', 'A3'],
         comparison: ['B1', 'B2', 'B3'],
         problem: ['C1', 'C2', 'C3'],
@@ -213,6 +280,7 @@ describe('buildQueryPack', () => {
     const pack = buildQueryPack({
       domain: 'acme.example',
       byIntent: {
+        'where-to-buy': [],
         'best-of': ['A1', 'A2', 'A3'],
         comparison: ['B1', 'B2', 'B3'],
         problem: ['C1', 'C2', 'C3'],
@@ -235,6 +303,7 @@ describe('buildQueryPack', () => {
     const pack = buildQueryPack({
       domain: 'acme.example',
       byIntent: {
+        'where-to-buy': [],
         'best-of': ['Best kits?', 'Estes rocks', 'Best kits?'],
         comparison: [],
         problem: [],
@@ -255,6 +324,7 @@ describe('buildQueryPack', () => {
       domain: 'acme.example',
       byIntent: {
         'best-of': ['A1'],
+        'where-to-buy': [],
         comparison: ['B1'],
         problem: [],
         trust: [],

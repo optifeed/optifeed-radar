@@ -42,7 +42,6 @@ export interface Finding {
 /** Where a profile field came from; user edits are never overwritten (M4). */
 export type FieldSource = 'extracted' | 'llm' | 'user';
 
-/** The editable fields of a {@link BrandProfile} that carry a source. */
 /**
  * What kind of business this is, which decides the prompt axis (M5a).
  *
@@ -52,6 +51,7 @@ export type FieldSource = 'extracted' | 'llm' | 'user';
  */
 export type BusinessType = 'retailer' | 'maker' | 'service';
 
+/** The editable fields of a {@link BrandProfile} that carry a source. */
 export type ProfileField =
   | 'brand'
   | 'aliases'
@@ -107,7 +107,7 @@ export interface ProductEntity {
 
 /** Buyer-question intent categories for generated queries (M5). */
 export type QueryIntent =
-  'best-of' | 'comparison' | 'problem' | 'trust' | 'local';
+  'best-of' | 'where-to-buy' | 'comparison' | 'problem' | 'trust' | 'local';
 
 /** One generated buyer prompt. */
 export interface Query {

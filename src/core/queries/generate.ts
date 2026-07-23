@@ -19,31 +19,75 @@ import {
 /** The full intent set, in stable order; `local` is gated on geo. */
 export const QUERY_INTENTS: QueryIntent[] = [
   'best-of',
+  'where-to-buy',
   'comparison',
   'problem',
   'trust',
   'local',
 ];
 
+/**
+ * Which axis a pack is written on (M5a). A `maker` is measured on what buyers
+ * should buy; a `retailer` on WHERE they should buy it, because product
+ * questions are answered with manufacturers and never name shops.
+ */
+export type QueryAxis = 'maker' | 'retailer';
+
+/**
+ * The axis for a profile. Anything not explicitly a retailer - `maker`,
+ * `service`, an unrecognized value, or an older profile with no field at all -
+ * takes the maker path, which is the behavior that shipped before M5a. A new
+ * business type therefore degrades to the old default instead of silently
+ * rewriting someone's prompt pack.
+ */
+export function axisFor(profile: BrandProfile): QueryAxis {
+  return profile.businessType === 'retailer' ? 'retailer' : 'maker';
+}
+
 /** Default number of prompts in a generated pack. */
 export const DEFAULT_QUERY_COUNT = 20;
 
 /**
- * Relative weight of each intent when allocating a capped pack. `best-of` is the
- * most rewrite-stable prompt form across engines (Profound fanout study), so it
- * earns the largest share; the rest are equal.
+ * Relative weight of each intent when allocating a capped pack, per axis.
+ *
+ * For a maker, `best-of` is the most rewrite-stable prompt form across engines
+ * (Profound fanout study), so it earns the largest share. For a retailer,
+ * `where-to-buy` leads harder still, because it is the only intent whose
+ * answers name shops at all. A zero weight belongs to an intent the axis never
+ * activates, so it can never be picked.
  */
-export const INTENT_WEIGHTS: Record<QueryIntent, number> = {
-  'best-of': 2,
-  comparison: 1,
-  problem: 1,
-  trust: 1,
-  local: 1,
+export const INTENT_WEIGHTS: Record<QueryAxis, Record<QueryIntent, number>> = {
+  maker: {
+    'best-of': 2,
+    'where-to-buy': 0,
+    comparison: 1,
+    problem: 1,
+    trust: 1,
+    local: 1,
+  },
+  retailer: {
+    'best-of': 0,
+    'where-to-buy': 3,
+    comparison: 1,
+    problem: 1,
+    trust: 1,
+    local: 1,
+  },
 };
 
-/** Which intents apply to this profile - local only when it has a geo. */
+/**
+ * Which intents apply to this profile. `local` needs a geo; the two
+ * axis-specific intents are gated the same way - a retailer asks `where-to-buy`
+ * and never `best-of`, whose answers name manufacturers rather than shops.
+ */
 export function activeIntents(profile: BrandProfile): QueryIntent[] {
-  return QUERY_INTENTS.filter((i) => i !== 'local' || Boolean(profile.geo));
+  const retailer = axisFor(profile) === 'retailer';
+  return QUERY_INTENTS.filter((intent) => {
+    if (intent === 'local') return Boolean(profile.geo);
+    if (intent === 'where-to-buy') return retailer;
+    if (intent === 'best-of') return !retailer;
+    return true;
+  });
 }
 
 /**
@@ -54,15 +98,17 @@ export function activeIntents(profile: BrandProfile): QueryIntent[] {
 export function intentQuotas(
   target: number,
   intents: QueryIntent[],
+  axis: QueryAxis = 'maker',
 ): Record<QueryIntent, number> {
+  const weights = INTENT_WEIGHTS[axis];
   const quotas = Object.fromEntries(intents.map((i) => [i, 0])) as Record<
     QueryIntent,
     number
   >;
   if (intents.length === 0 || target <= 0) return quotas;
 
-  const totalWeight = intents.reduce((s, i) => s + INTENT_WEIGHTS[i], 0);
-  const raw = intents.map((i) => (target * INTENT_WEIGHTS[i]) / totalWeight);
+  const totalWeight = intents.reduce((s, i) => s + weights[i], 0);
+  const raw = intents.map((i) => (target * weights[i]) / totalWeight);
   const floors = raw.map((r) => Math.floor(r));
   let remainder = target - floors.reduce((s, f) => s + f, 0);
 
@@ -107,6 +153,7 @@ export function parseIntentQueries(
 ): Record<QueryIntent, string[]> {
   const byIntent: Record<QueryIntent, string[]> = {
     'best-of': [],
+    'where-to-buy': [],
     comparison: [],
     problem: [],
     trust: [],
@@ -143,6 +190,8 @@ export interface BuildPackInput {
   intents: QueryIntent[];
   competitors: string[];
   target: number;
+  /** Which axis to weight by (M5a); defaults to the maker axis. */
+  axis?: QueryAxis;
   generatedAt: string;
 }
 
@@ -158,6 +207,7 @@ export interface BuildPackInput {
  */
 export function buildQueryPack(input: BuildPackInput): QueryPack {
   const { domain, byIntent, intents, competitors, target, generatedAt } = input;
+  const weights = INTENT_WEIGHTS[input.axis ?? 'maker'];
 
   // Competitor exclusion + de-dupe (across the whole pack), per intent.
   const remaining = new Map<QueryIntent, string[]>();
@@ -187,8 +237,8 @@ export function buildQueryPack(input: BuildPackInput): QueryPack {
     let pick: QueryIntent | null = null;
     for (const intent of intents) {
       if ((remaining.get(intent)?.length ?? 0) === 0) continue;
-      liveWeight += INTENT_WEIGHTS[intent];
-      const c = credit.get(intent)! + INTENT_WEIGHTS[intent];
+      liveWeight += weights[intent];
+      const c = credit.get(intent)! + weights[intent];
       credit.set(intent, c);
       if (pick === null || c > credit.get(pick)!) pick = intent;
     }
@@ -204,6 +254,8 @@ export function buildQueryPack(input: BuildPackInput): QueryPack {
 /** One-sentence description of each intent, for the generation prompt. */
 const INTENT_GUIDANCE: Record<QueryIntent, string> = {
   'best-of': 'shortlist questions ("what are the best ... for ...")',
+  'where-to-buy':
+    'questions about where to buy something ("where can I buy ...", "which shop sells ...")',
   comparison: 'questions weighing options or approaches when choosing',
   problem: 'questions describing a problem this product/service solves',
   trust: 'questions about reputation, reliability, or safety',
@@ -312,7 +364,7 @@ export async function generateQueries(
   // buffer so competitor-stripping and de-dupe do not shrink the pack below
   // target. The pack still caps at target, so the buffer is over-generation,
   // never extra billed prompts in the pack.
-  const quotas = intentQuotas(target, intents);
+  const quotas = intentQuotas(target, intents, axisFor(profile));
   const counts = Object.fromEntries(
     intents.map((i) => [i, quotas[i] + 1]),
   ) as Record<QueryIntent, number>;
@@ -349,6 +401,7 @@ export async function generateQueries(
       intents,
       competitors: profile.competitors,
       target,
+      axis: axisFor(profile),
       generatedAt: opts.generatedAt,
     });
     return { pack };
