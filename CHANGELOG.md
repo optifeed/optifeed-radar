@@ -20,8 +20,28 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-23
+
+First public release.
+
 ### Added
 
+- `audit <domain>` - static AI-readiness audit with no API keys and no AI
+  calls: AI bot access in robots.txt, llms.txt, structured data, meta basics,
+  sitemap.
+- `check <domain>` - asks real buyer questions to OpenAI, Anthropic, Google and
+  Perplexity and reports an AI Visibility Score, per-engine scores, share of
+  voice, and cited sources. Grounded and parametric engines are reported
+  separately.
+- Buyer questions follow the axis your business is on. Discovery classifies the
+  site as a shop, a maker, or a service. A maker is asked what-to-buy questions
+  and measured against rival makers; a shop is asked where-to-buy questions
+  ("where can I buy a piano?", "which shop sells acoustic guitars?") and
+  measured against rival shops, because product questions get answered with
+  manufacturers and would score a shop against companies it does not compete
+  with. The classification is stored as `businessType` in `profile.json`; edit
+  it if it is wrong and it survives `--refresh`. A score is only comparable
+  within one axis.
 - `shopping <domain> --products "A, B, C"` (beta): a product-level check for
   the products you name, best first. There is no catalog or feed import - you
   name them, and that order is treated as your own ranking. The headline is the
@@ -38,97 +58,31 @@ score is only comparable against snapshots taken with the same method.
   messier) that is reported in the run's sampling metadata. Runs are saved to
   `<stateDir>/shopping/`, deliberately apart from the check snapshots `diff`
   reads.
-- `shopping_check` MCP tool over the same orchestrator, non-interactive like
-  the rest. Its default cost cap scales with the list at $0.20 per product,
-  rather than the flat $0.50 a check gets: a flat cap would truncate most
-  multi-product runs into a partial ranking that still reads like a complete
-  one. Verified live over stdio: the server now lists five tools.
-
-### Changed
-
-- Buyer questions now follow the axis your business is on. Discovery classifies
-  the site as a shop, a maker, or a service, and a shop is asked where-to-buy
-  questions ("where can I buy a piano?", "which shop sells acoustic guitars?")
-  and measured against rival shops. Product questions are answered with
-  manufacturers, so a shop scored on them collects a 0 that says nothing about
-  the shop: measured on one music retailer, makers were named Yamaha 21 /
-  Roland 16 / Casio 10 / Kawai 8 across 32 answers, and not one rival shop was
-  named even once. After the change the same store's table reads Zuhal Muzik 5,
-  MyDukkan 5, Senkop Muzik 4, itself 1. Nothing changes for a maker, whose pack
-  is byte-identical to before. The classification is stored as `businessType`
-  in `profile.json`; edit it if it is wrong and it survives `--refresh`. A
-  score is only comparable within one axis.
-
-- Scoring methodology version 3: the composite's retrieval premium is earned by
-  answers that actually retrieved, not granted to any engine asked for grounded
-  mode. Asking is not searching - a live run had 7 of 8 ChatGPT answers run no
-  search while still counting as fully grounded. A run where every grounded
-  answer really searched scores the same as before. Reports now say "searched
-  in 1 of 8 answers" when an engine did not search on all of them, and `diff`
-  flags a comparison across methodology versions as methodology-driven.
-- `diff` also flags `retrievalChanged` when an engine searched on a different
-  share of its answers than last time. That moves the headline score without
-  moving any per-engine score, so without the flag a mechanical change would
-  read as a real visibility change.
-
-### Fixed
-
-- `--max-cost` refused prompts it could comfortably afford. Once an engine had
-  answered, the reservation for its next call still used a static estimate
-  whenever that estimate ran higher than the real cost - so a cap set at three
-  times what a run actually costs could still drop half the questions, and one
-  report's per-engine score ended up resting on two answers out of eight. Runs
-  now reserve against the dearest call an engine has actually made. A cap that
-  is genuinely too small still stops the run and still says so; a call that
-  searches the web keeps reserving the safe estimate, because its per-search
-  fee swings too much for a past call to bound it.
-
-- Competitor discovery could return your own brand as a rival under a variant
-  spelling ("Do Re Muzik Market" for doremusic), which put you in your own
-  share-of-voice table and inflated a competitor that is you. The judge is now
-  told your aliases and asked to exclude variant spellings and translations,
-  and the answer is filtered through the same accent- and case-aware matcher
-  the scoring uses. The filter runs before the eight-name cap, so a judge that
-  opens with three spellings of your brand no longer costs you three rivals.
-
-- The MCP server resolved the home directory from `$HOME`, which Windows does
-  not set, so its state directory fell back to whatever working directory the
-  desktop client launched it with. It now uses the real home directory, as the
-  CLI already did.
-
-### Added
-
-- The CLI loads a `.env` from the directory you run it in, using Node's
-  built-in env-file support (no dependency). A key already exported in your
-  shell wins over the same key in `.env`, and `config` reports which file the
-  keys came from, never their values.
-
-## [0.1.0] - 2026-07-22
-
-First public release.
-
-### Added
-
-- `audit <domain>` - static AI-readiness audit with no API keys and no AI
-  calls: AI bot access in robots.txt, llms.txt, structured data, meta basics,
-  sitemap.
-- `check <domain>` - asks real buyer questions to OpenAI, Anthropic, Google and
-  Perplexity and reports an AI Visibility Score, per-engine scores, share of
-  voice, and cited sources. Grounded and parametric engines are reported
-  separately.
 - `--grounded` to run engines in web-search mode where the provider supports
-  it; an engine that cannot search is honestly tagged parametric.
+  it; an engine that cannot search is honestly tagged parametric. The
+  composite's premium for retrieval is earned per answer by engines that
+  actually searched, not granted to any engine that was asked to: asking is a
+  request a model can decline, and on a live run 7 of 8 ChatGPT answers ran no
+  search at all. A report says "searched in 1 of 8 answers" when an engine did
+  not search on all of them.
 - `diff`, `sources`, `queries` and `config` for inspecting saved runs without
-  spending anything.
+  spending anything. `diff` flags when the prompt set, the engine set, the
+  scoring method or an engine's retrieval rate changed between two runs, so a
+  mechanical move in the number is never read as a real visibility change.
 - `--json` (stable envelope carrying `schema_version`), `--report <file>`
   (self-contained HTML), and `--fail-under <n>` for CI gating.
 - Cost guard on every call that spends: an estimate before the run, a
   confirmation gate, `--max-cost` / `--max-setup-cost`, and a run cost printed
   in the report. Hitting the cap returns a partial run flagged `costCapped`
-  rather than failing.
+  rather than failing, and says which engines were cut short and why.
 - MCP server (`optifeed-mcp`) exposing `check_visibility`, `audit_store`,
-  `generate_buyer_queries` and `get_snapshot_diff` over stdio, non-interactive
-  with a default $0.50 cap.
+  `generate_buyer_queries`, `get_snapshot_diff` and `shopping_check` over
+  stdio, non-interactive with a default $0.50 cap (the shopping tool's cap
+  scales at $0.20 per product).
+- The CLI loads a `.env` from the directory you run it in, using Node's
+  built-in env-file support (no dependency). A key already exported in your
+  shell wins over the same key in `.env`, and `config` reports which file the
+  keys came from, never their values.
 - Agent surfaces: a Claude Code plugin manifest, a bundled skill, and context
   files for Claude Projects, Custom GPTs, Cursor and Windsurf.
 - Published methodology (`METHODOLOGY.md`) with the scoring weights the code
