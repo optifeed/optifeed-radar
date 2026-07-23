@@ -216,19 +216,24 @@ spends your own API credit. Measured on real runs (2026-07-20, `--quick` =
 | `audit`                          | free           |
 | `check --quick`, one engine      | about $0.09    |
 | `check --quick`, all four        | $0.41 to $0.46 |
-| `check --quick --grounded`, four | about $1.09    |
+| `check --quick --grounded`, four | $0.85 to $1.09 |
 
 Your cost varies with engine, prompt-pack size, and provider pricing. Grounded
 runs cost roughly 3x parametric ones, because web search is billed on top of
 tokens: Google charges per search query, and one answer can trigger several.
+The grounded range spans three real runs: two finished clean at about $0.85,
+and one that was reined in by its own cap spent $1.09, so treat the top of the
+range as the planning number.
 
-`shopping` has not been measured on a live multi-engine run yet, so no figure
-is published for it. Its shape is known: each product costs about 4 prompts on
-every engine with a key, and products in the same category share their category
-questions, which are asked once and scored for each product. Extrapolating from
-the measured `check` runs above puts a four-engine run near $0.20 per product,
-which is what the MCP tool caps at by default. Use `--max-cost` and start with
-two or three products.
+`shopping` was measured on 2026-07-23: two products across all four engines in
+`--grounded` mode, 32 answers, **$0.70 for the run - about $0.35 per product**.
+That is the expensive corner (grounded runs cost roughly 3x parametric ones),
+so a parametric four-engine run lands well under it. Each product costs about
+4 prompts on every engine with a key, and products in the same category share
+their category questions, which are asked once and scored for each product.
+The MCP tool's default cap is $0.20 per product, which a grounded run will
+reach, so raise `max_cost` when you want grounded across four engines. Use
+`--max-cost` and start with two or three products.
 
 How long it takes, measured the same way (2026-07-22):
 
@@ -304,13 +309,13 @@ index. It is also called generative engine optimization (GEO) or answer engine
 optimization (AEO).
 
 **Is there an MCP server?** Yes. The `optifeed-mcp` server exposes
-`check_visibility`, `audit_store`, `generate_buyer_queries`, and
-`get_snapshot_diff` to your AI agents over stdio.
+`check_visibility`, `audit_store`, `generate_buyer_queries`, `shopping_check`
+and `get_snapshot_diff` to your AI agents over stdio.
 
 **What does it cost?** The `audit` command is free and needs no keys. The
 `check` pipeline spends your own engine API credit: measured at about $0.09 for
-a quick single-engine run, $0.41 to $0.46 across all four, and about $1.09 with
-`--grounded`. Every run reports what it spent, and `--max-cost` caps it. You
+a quick single-engine run, $0.41 to $0.46 across all four, and $0.85 to $1.09
+with `--grounded`. Every run reports what it spent, and `--max-cost` caps it. You
 bring your own keys; there is no Optifeed-hosted billing.
 
 **Is my data stored anywhere?** No. It runs locally, saves snapshots on your
