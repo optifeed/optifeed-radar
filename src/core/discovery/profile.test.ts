@@ -163,3 +163,48 @@ describe('mergeProfile', () => {
     expect(merged.generatedAt).toBe(AT); // refresh stamps the new time
   });
 });
+
+describe('businessType (M5a)', () => {
+  it('carries the discovered businessType and marks it llm-sourced', () => {
+    const signals: ExtractedSignals = {
+      brand: 'Shop',
+      aliases: [],
+      sources: { brand: 'extracted', aliases: 'extracted' },
+    };
+
+    const profile = buildProfile({
+      domain: 'shop.example',
+      signals,
+      competitors: ['Rival Shop'],
+      businessType: 'retailer',
+      generatedAt: AT,
+    });
+
+    expect(profile.businessType).toBe('retailer');
+    expect(profile.sources?.businessType).toBe('llm');
+  });
+
+  // A merchant who corrects a wrong classification must not lose it on the
+  // next --refresh, the same rule every other profile field already follows.
+  it('preserves a user-edited businessType across --refresh', () => {
+    const existing: BrandProfile = {
+      schema_version: SCHEMA_VERSION,
+      domain: 'shop.example',
+      brand: 'Shop',
+      aliases: [],
+      competitors: [],
+      businessType: 'retailer',
+      sources: { businessType: 'user' },
+    };
+    const fresh: BrandProfile = {
+      ...existing,
+      businessType: 'maker',
+      sources: { businessType: 'llm' },
+    };
+
+    const merged = mergeProfile(existing, fresh);
+
+    expect(merged.businessType).toBe('retailer');
+    expect(merged.sources?.businessType).toBe('user');
+  });
+});

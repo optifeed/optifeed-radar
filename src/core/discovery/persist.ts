@@ -96,6 +96,22 @@ function validateProfile(raw: unknown, path: string): BrandProfile {
   v.string(obj, 'brand');
   v.array(obj, 'aliases');
   v.array(obj, 'competitors');
+  // Optional, but M5's `activeIntents` dereferences it to choose the prompt
+  // axis, so a hand-edited typo must fail at load rather than silently
+  // selecting the wrong axis (M8 review lesson #3: a validator vouches for
+  // every field a consumer reads).
+  const businessType = (obj as Record<string, unknown>).businessType;
+  if (
+    businessType !== undefined &&
+    businessType !== 'retailer' &&
+    businessType !== 'maker' &&
+    businessType !== 'service'
+  ) {
+    throw new ProfileParseError(
+      path,
+      new Error('businessType must be retailer, maker or service'),
+    );
+  }
   return obj as unknown as BrandProfile;
 }
 

@@ -8,6 +8,7 @@
 import {
   SCHEMA_VERSION,
   type BrandProfile,
+  type BusinessType,
   type ProfileField,
 } from '../types.js';
 import { brandFromDomain, type ExtractedSignals } from './extract.js';
@@ -20,12 +21,15 @@ const PROFILE_FIELDS: ProfileField[] = [
   'offerings',
   'locale',
   'competitors',
+  'businessType',
 ];
 
 export interface BuildProfileInput {
   domain: string;
   signals: ExtractedSignals;
   competitors: string[];
+  /** How the discovery call classified the business (M5a), when it did. */
+  businessType?: BusinessType;
   generatedAt: string;
 }
 
@@ -34,6 +38,7 @@ export function buildProfile(input: BuildProfileInput): BrandProfile {
   const { domain, signals, competitors, generatedAt } = input;
   const sources = { ...signals.sources };
   if (competitors.length > 0) sources.competitors = 'llm';
+  if (input.businessType) sources.businessType = 'llm';
 
   return {
     schema_version: SCHEMA_VERSION,
@@ -44,6 +49,7 @@ export function buildProfile(input: BuildProfileInput): BrandProfile {
     ...(signals.offerings ? { offerings: signals.offerings } : {}),
     ...(signals.locale ? { locale: signals.locale } : {}),
     competitors,
+    ...(input.businessType ? { businessType: input.businessType } : {}),
     generatedAt,
     sources,
   };

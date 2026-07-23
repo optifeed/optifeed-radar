@@ -93,3 +93,37 @@ describe('profile persistence', () => {
     );
   });
 });
+
+describe('businessType validation (M5a)', () => {
+  // M5 dereferences this to pick the prompt axis, so a hand-edited typo must
+  // fail loudly at load rather than silently selecting the wrong axis.
+  it('rejects a hand-edited businessType that is not a known value', async () => {
+    const bad = JSON.stringify({
+      schema_version: SCHEMA_VERSION,
+      domain: 'shop.example',
+      brand: 'Shop',
+      aliases: [],
+      competitors: [],
+      businessType: 'wholesaler',
+    });
+    const { fs } = memFs({ [profilePath('/state')]: bad });
+
+    await expect(loadProfile('/state', fs)).rejects.toThrow(ProfileParseError);
+  });
+
+  it('accepts a profile with no businessType at all (pre-M5a files)', async () => {
+    const { fs } = memFs({
+      [profilePath('/state')]: JSON.stringify({
+        schema_version: SCHEMA_VERSION,
+        domain: 'shop.example',
+        brand: 'Shop',
+        aliases: [],
+        competitors: [],
+      }),
+    });
+
+    const loaded = await loadProfile('/state', fs);
+
+    expect(loaded?.businessType).toBeUndefined();
+  });
+});

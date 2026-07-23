@@ -43,8 +43,23 @@ export interface Finding {
 export type FieldSource = 'extracted' | 'llm' | 'user';
 
 /** The editable fields of a {@link BrandProfile} that carry a source. */
+/**
+ * What kind of business this is, which decides the prompt axis (M5a).
+ *
+ * A `retailer` sells other makers' products, so buyers ask WHERE to buy; a
+ * `maker` sells its own, so buyers ask WHAT to buy. `service` and any unknown
+ * value take the maker path, which is the behavior that shipped before M5a.
+ */
+export type BusinessType = 'retailer' | 'maker' | 'service';
+
 export type ProfileField =
-  'brand' | 'aliases' | 'category' | 'offerings' | 'locale' | 'competitors';
+  | 'brand'
+  | 'aliases'
+  | 'category'
+  | 'offerings'
+  | 'locale'
+  | 'competitors'
+  | 'businessType';
 
 /** Per-field provenance so `--refresh` can preserve user edits (M4). */
 export type ProfileSources = Partial<Record<ProfileField, FieldSource>>;
@@ -61,6 +76,8 @@ export interface BrandProfile {
   /** A physical location/service area, if any; gates local-intent queries (M5). */
   geo?: string;
   competitors: string[];
+  /** Decides the query axis (M5a); absent means the maker path. */
+  businessType?: BusinessType;
   degraded?: boolean;
   generatedAt?: string;
   /** Provenance per field; `user` fields survive `--refresh` (M4). */
