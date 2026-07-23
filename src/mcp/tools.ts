@@ -1,13 +1,15 @@
 /**
- * The 4 launch-#1 MCP tools. Each is a THIN adapter over `core/run` + a
+ * The 5 launch MCP tools. Each is a THIN adapter over `core/run` + a
  * `core/output` JSON renderer - no pipeline logic here (hard rule #1). Tool
  * descriptions are written FOR agents: a when-to-use line and a cost hint.
- * `compare_competitors`, `shopping_check`, `lint_feed` are launch #2.
+ * `compare_competitors` and `lint_feed` are launch #2; `shopping_check` (M12a)
+ * covers the products the merchant names, with no discovery.
  */
 import {
   runAudit,
   runCheck,
   runGenerateQueries,
+  runShopping,
   selectEngines,
   type ProgressEvent,
 } from '../core/run/index.js';
@@ -19,13 +21,20 @@ import {
   renderDiffJson,
   renderDiffText,
   renderRunNotes,
+  renderShoppingJson,
+  renderShoppingText,
   listSnapshots,
   loadSnapshot,
   diffEnvelopes,
 } from '../core/output/index.js';
 import { toYaml } from '../core/queries/index.js';
+import { MAX_PRODUCTS } from '../core/shopping/index.js';
 import type { ToolContext } from './deps.js';
-import { SCHEMA_VERSION, type EngineId } from '../core/types.js';
+import {
+  SCHEMA_VERSION,
+  type EngineId,
+  type ProductEntity,
+} from '../core/types.js';
 
 /** A JSON-Schema tool definition, snapshot-tested in server.test.ts. */
 export interface ToolSpec {
@@ -108,6 +117,63 @@ export const TOOL_SPECS: ToolSpec[] = [
         },
       },
       required: ['domain'],
+    },
+  },
+  {
+    name: 'shopping_check',
+    description:
+      'Check whether AI engines recommend specific PRODUCTS you name (beta). ' +
+      'Give the products in the order the merchant ranks them, best first: the ' +
+      'headline result is the delta between that order and the order engines ' +
+      'actually recommend, plus the rival products filling the shelf. Use for ' +
+      'SKU-level questions; use check_visibility for the brand as a whole. ' +
+      'There is no product discovery, so the list must be supplied. ' +
+      'COST: spends real API money and is larger than a brand check (roughly ' +
+      '$0.15-$0.25 per product across engines); capped at $0.20 per product by ' +
+      'default - pass max_cost to change it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'The store site, e.g. example.com',
+        },
+        products: {
+          type: 'array',
+          maxItems: MAX_PRODUCTS,
+          description:
+            `Up to ${MAX_PRODUCTS} products, best first (that order is the ` +
+            'merchant ranking the result is measured against). Each item is a ' +
+            'name, or an object with name plus optional aliases and a ' +
+            'descriptor ("quiet home espresso machine") that rescues an opaque ' +
+            'product name.',
+          items: {
+            oneOf: [
+              { type: 'string' },
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  aliases: { type: 'array', items: { type: 'string' } },
+                  descriptor: { type: 'string' },
+                },
+                required: ['name'],
+              },
+            ],
+          },
+        },
+        engines: {
+          type: 'array',
+          items: { type: 'string', enum: ENGINE_ENUM },
+          description: 'Engines to query; defaults to all with keys present',
+        },
+        max_cost: {
+          type: 'number',
+          description:
+            'Hard cap on total spend in USD (default $0.20 per product)',
+        },
+      },
+      required: ['domain', 'products'],
     },
   },
   {
@@ -305,6 +371,88 @@ export async function callTool(
         );
       }
 
+      case 'shopping_check': {
+        const available = ctx.availableEngines();
+        if (available.length === 0) {
+          return err(
+            'shopping_check needs at least one engine API key ' +
+              '(OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY). ' +
+              `For a free, zero-key readiness check use audit_store on ${domain}.`,
+          );
+        }
+        const products = parseProducts(args.products);
+        if (products.kind === 'invalid') {
+          return err(
+            '"products" must be an array of product names, or objects with a ' +
+              '"name" (plus optional "aliases" and "descriptor"). There is no ' +
+              'product discovery yet, so the list has to be supplied.',
+          );
+        }
+        const parsed = parseEngines(args.engines);
+        if (parsed.kind === 'invalid') {
+          return err(
+            `"engines" must be an array of engine names (or a single name). Known engines: ${ENGINE_ENUM.join(', ')}.`,
+          );
+        }
+        if (parsed.kind === 'empty') {
+          return err(
+            `No recognized engines in "engines". Known engines: ${ENGINE_ENUM.join(', ')}.`,
+          );
+        }
+        const engines = parsed.kind === 'engines' ? parsed.engines : undefined;
+        const wantAvailable = engines
+          ? available.filter((e) => engines.includes(e))
+          : available;
+        if (engines && wantAvailable.length === 0) {
+          return err(
+            `None of the requested engines have keys. Available: ${available.join(', ')}.`,
+          );
+        }
+        const deps = await ctx.shoppingDeps({
+          productCount: products.products.length,
+          engines,
+          maxCost: parseMaxCost(args.max_cost),
+          availableEngines: wantAvailable,
+        });
+        if (onProgress) {
+          deps.onProgress = (e): void => {
+            const { fraction, message } = progressFor(e);
+            onProgress(fraction, message);
+          };
+        }
+        const result = await runShopping(domain, deps, {
+          stateDir: ctx.resolveStateDir(domain),
+          products: products.products,
+          yes: true, // non-interactive (hard rule #8)
+        });
+        if (!result.envelope) {
+          return err(
+            `shopping_check did not produce a result: ${result.notes.join('; ') || 'aborted'}.`,
+          );
+        }
+        // content[0] is the PURE JSON envelope; the rendered report and the
+        // run notes ride in their own blocks. Notes carry what was dropped
+        // (products over the cap, template fallbacks) - a caveat only in JSON
+        // is one the host model may never repeat (rule #6).
+        const out: ToolResult = ok(
+          renderShoppingJson(result.envelope),
+          result.envelope,
+          [
+            renderRunNotes(result.notes, { color: false }),
+            renderShoppingText(result.envelope, { color: false }),
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
+        if (result.savedPath) {
+          out.content.push({
+            type: 'text',
+            text: `Shopping run saved at ${result.savedPath}`,
+          });
+        }
+        return out;
+      }
+
       case 'get_snapshot_diff': {
         const stateDir = ctx.resolveStateDir(domain);
         const paths = await listSnapshots(stateDir, ctx.snapshotFs);
@@ -338,6 +486,59 @@ export async function callTool(
     // error, never a server crash or an unhandled rejection.
     return err(`${name} failed: ${e instanceof Error ? e.message : String(e)}`);
   }
+}
+
+/**
+ * Result of interpreting the raw `products` argument. A mis-shaped value must
+ * abort rather than degrade: the MCP server does not validate against
+ * `inputSchema`, and "products" is the entire subject of this tool - guessing
+ * would bill a run for the wrong thing.
+ */
+type ParsedProducts =
+  { kind: 'products'; products: ProductEntity[] } | { kind: 'invalid' };
+
+function parseProducts(raw: unknown): ParsedProducts {
+  // A single bare name is a natural shorthand; anything else non-array is
+  // mis-shaped. An EMPTY array is invalid too - there is nothing to check.
+  const list = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string' && raw.trim()
+      ? [raw]
+      : undefined;
+  if (list === undefined || list.length === 0) return { kind: 'invalid' };
+
+  const products: ProductEntity[] = [];
+  for (const item of list) {
+    if (typeof item === 'string') {
+      const name = item.trim();
+      if (name) products.push({ name });
+      continue;
+    }
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { kind: 'invalid' };
+    }
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === 'string' ? row.name.trim() : '';
+    if (!name) return { kind: 'invalid' };
+    const aliases = Array.isArray(row.aliases)
+      ? row.aliases
+          .filter((a): a is string => typeof a === 'string')
+          .map((a) => a.trim())
+          .filter(Boolean)
+      : undefined;
+    const descriptor =
+      typeof row.descriptor === 'string' && row.descriptor.trim()
+        ? row.descriptor.trim()
+        : undefined;
+    products.push({
+      name,
+      ...(aliases?.length ? { aliases } : {}),
+      ...(descriptor ? { descriptor } : {}),
+    });
+  }
+  return products.length > 0
+    ? { kind: 'products', products }
+    : { kind: 'invalid' };
 }
 
 /**
