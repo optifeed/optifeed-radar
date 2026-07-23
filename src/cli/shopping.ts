@@ -262,6 +262,9 @@ export function registerShopping(program: Command, rt: Runtime): void {
           else rt.out(s);
         };
         say('Aborted - no engines were queried.\n');
+        // The notes carry WHY (the missing confirmation, and the flag that
+        // bypasses it). Returning without them leaves no next step.
+        for (const note of result.notes) say(`${note}\n`);
         // Discovery and prompt writing bill BEFORE the gate, so an aborted run
         // is not necessarily a free one.
         const spent = result.spend;
@@ -291,6 +294,8 @@ export function registerShopping(program: Command, rt: Runtime): void {
         );
         if (reportWritten) rt.out(`HTML report written to ${reportWritten}\n`);
       }
-      for (const note of result.notes) rt.err(`${note}\n`);
+      // Notes ride the envelope now, so the text renderer already printed them
+      // and `--json` carries them in the payload. Echoing here would double
+      // them up in the terminal.
     });
 }

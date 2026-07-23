@@ -273,10 +273,27 @@ describe('shopping command', () => {
     expect(rt.output.join('')).toBe('');
   });
 
-  it('reports the abort when the cost is not confirmed', async () => {
+  it('reports the abort AND why, so the user can act on it', async () => {
     const rt = testRuntime();
     await run(rt, ['shopping', 'acme.example', '--products', 'Aria 2']);
-    expect(rt.output.join('')).toContain('Aborted');
+    const said = rt.output.join('') + rt.errors.join('');
+    expect(said).toContain('Aborted');
+    // The note names the fix; swallowing it leaves the user with no next step.
+    expect(said).toContain('yes');
+  });
+
+  it('puts the run notes in the JSON envelope, not only on stderr', async () => {
+    const rt = testRuntime();
+    await run(rt, [
+      'shopping',
+      'acme.example',
+      '--products',
+      'Aria 2, aria 2',
+      '--yes',
+      '--json',
+    ]);
+    const parsed = JSON.parse(rt.output.join('')) as { notes: string[] };
+    expect(parsed.notes.join(' ').toLowerCase()).toContain('duplicate');
   });
 });
 

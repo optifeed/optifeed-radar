@@ -38,6 +38,7 @@ function sku(product: string, merchantRank: number): SkuReport {
     merchantRank,
     visibility: 40,
     engines: [],
+    categoryPrompts: 3,
     answers: 2,
     mentions: 1,
     avgPosition: 1,

@@ -42,6 +42,7 @@ function sku(
 ): SkuReport {
   return {
     visibility: 40,
+    categoryPrompts: 3,
     engines: [
       {
         engine: 'openai',
@@ -165,6 +166,19 @@ describe('renderShoppingText', () => {
     expect(text).not.toContain('–');
   });
 
+  it('renders the run notes carried on the envelope', () => {
+    const withNotes = renderShoppingText(
+      envelope({
+        notes: [
+          'Only the first 10 products were checked; 1 further product was not run.',
+        ],
+      }),
+      { color: false },
+    );
+    expect(withNotes).toContain('Run notes');
+    expect(withNotes).toContain('1 further product was not run');
+  });
+
   it('surfaces run notes for a partial run', () => {
     const partial = renderShoppingText(
       envelope({
@@ -188,6 +202,7 @@ describe('renderShoppingText', () => {
             product: 'Opaque',
             merchantRank: 1,
             visibility: null,
+            categoryPrompts: 0,
             answers: 0,
             mentions: 0,
             engines: [],
@@ -199,7 +214,39 @@ describe('renderShoppingText', () => {
       { color: false },
     );
     expect(unmeasured).toContain('No category questions');
+    expect(unmeasured).toContain('descriptor');
     expect(unmeasured).not.toContain('Visibility: 0/100');
+  });
+
+  // A cost cap or a failed engine can leave a product's questions unasked.
+  // Blaming the merchant's product list for that is a false statement about
+  // why the number is missing, and it lands in the headline delta table.
+  it('does not blame a missing descriptor when the run could not ask', () => {
+    const capped = renderShoppingText(
+      envelope({
+        skus: [
+          sku({
+            product: 'Aria 2',
+            merchantRank: 1,
+            visibility: null,
+            categoryPrompts: 3,
+            answers: 0,
+            mentions: 0,
+            engines: [],
+            shelf: [],
+          }),
+        ],
+        products: [{ name: 'Aria 2' }],
+        honesty: { costCapped: true },
+      }),
+      { color: false },
+    );
+    expect(capped).not.toContain('descriptor');
+    expect(capped).not.toContain('No category questions were asked');
+    expect(capped).toContain('went unanswered');
+    // The headline table must not claim the questions were never written.
+    expect(capped).not.toContain('no category questions asked');
+    expect(capped).not.toContain('Visibility: 0/100');
   });
 });
 

@@ -52,6 +52,17 @@ export interface SkuReport {
   visibility: number | null;
   /** Per-engine breakdown of the visibility layer. */
   engines: EngineScore[];
+  /**
+   * Category prompts this product ASKED FOR, whatever came back.
+   *
+   * Distinct from {@link SkuReport.answers}, which counts what arrived. Zero
+   * here means the layer was never written (no descriptor and no store
+   * category) and the merchant can fix it; zero answers against a non-zero
+   * count means the run could not complete those asks (a cost cap, a failed
+   * engine), which is the RUN's problem, not the product list's. Collapsing
+   * the two told a cap-truncated merchant to go add a descriptor.
+   */
+  categoryPrompts: number;
   /** Category answers analyzed for this product. */
   answers: number;
   /** Category answers that named it. */
@@ -78,6 +89,8 @@ export interface ScoreProductInput {
   product: ProductEntity;
   /** 1-based merchant ranking (input order). */
   merchantRank: number;
+  /** Category prompts requested for this product (not how many were answered). */
+  categoryPrompts: number;
   /** Category-prompt answers, analyzed for this product. */
   visibility: AnalyzedAnswer[];
   /** Product-named answers, analyzed for this product. */
@@ -152,7 +165,14 @@ export function shelfShareOfVoice(
 
 /** Aggregate one product's analyzed answers into its {@link SkuReport}. */
 export function scoreProduct(input: ScoreProductInput): SkuReport {
-  const { product, merchantRank, visibility, reputation, owners } = input;
+  const {
+    product,
+    merchantRank,
+    categoryPrompts,
+    visibility,
+    reputation,
+    owners,
+  } = input;
 
   const answers = visibility.map((v) => v.answer);
   const results = visibility.map((v) => v.result);
@@ -173,6 +193,7 @@ export function scoreProduct(input: ScoreProductInput): SkuReport {
     // between an honest report and an accusation (rule #6).
     visibility: compositeScore(engines),
     engines,
+    categoryPrompts,
     answers: results.length,
     mentions: mentioned.length,
     avgPosition:

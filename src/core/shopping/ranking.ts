@@ -30,7 +30,9 @@ export interface RankingDeltaRow {
   visibility: number | null;
   /** Category answers that named it. */
   mentions: number;
-  /** False when this product's category layer was never asked (no subject). */
+  /** Category answers that came back for it (0 with `measured` true = the run could not ask). */
+  answers: number;
+  /** False when this product's category layer was never WRITTEN (no subject). */
   measured: boolean;
 }
 
@@ -64,7 +66,10 @@ export function computeRankingDelta(reports: SkuReport[]): RankingDeltaRow[] {
       delta: aiRank === null ? null : aiRank - report.merchantRank,
       visibility: report.visibility,
       mentions: report.mentions,
-      measured: report.answers > 0,
+      answers: report.answers,
+      // Measured = the questions existed. Whether any were ANSWERED is
+      // `answers`, and the two failures read differently to a merchant.
+      measured: report.categoryPrompts > 0,
     };
   });
 }

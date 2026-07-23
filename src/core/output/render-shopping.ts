@@ -42,9 +42,10 @@ function pad(s: string, width: number): string {
 /** How far the engines moved a product from where the merchant put it. */
 export function deltaLabel(row: RankingDeltaRow): string {
   if (row.aiRank === null) {
-    return row.measured
-      ? 'not recommended in any answer'
-      : 'no category questions asked';
+    // Three distinct facts, and only the first is the merchant's to fix.
+    if (!row.measured) return 'no category questions asked';
+    if (row.answers === 0) return 'category questions went unanswered';
+    return 'not recommended in any answer';
   }
   const delta = row.delta ?? 0;
   if (delta === 0) return `AI #${row.aiRank}  (same as yours)`;
@@ -82,11 +83,18 @@ function productBlock(sku: SkuReport, c: Palette): string[] {
   const heading = `${sku.product} (your #${sku.merchantRank})`;
   lines.push(c.bold(absent ? `${heading} - not recommended` : heading));
 
-  if (sku.answers === 0) {
+  if (sku.categoryPrompts === 0) {
     // Never measured is not the same as never recommended, and must not render
     // as a 0 (rule #6).
     lines.push(
       '  No category questions were asked for this product: give it a descriptor to measure category visibility.',
+    );
+  } else if (sku.answers === 0) {
+    // The questions existed; the run could not complete them (a cost cap, a
+    // failed engine). Pointing at a descriptor here would blame the merchant
+    // for the run's problem - the run notes carry the real cause.
+    lines.push(
+      `  Its ${plural(sku.categoryPrompts, 'category question')} went unanswered this run, so it has no visibility score. See the run notes below.`,
     );
   } else if (absent) {
     // Requirement 3: the shelf leads. This is the competitive intel a zero
@@ -151,7 +159,12 @@ export function renderShoppingText(
   lines.push(...deltaBlock(env, c));
   for (const sku of env.skus) lines.push(...productBlock(sku, c));
 
-  lines.push(...renderNoteBlock('Run notes', honestyNotes(env), c));
+  // Honesty flags first (they say how complete the run is), then what the run
+  // reported about itself. Both come off the ENVELOPE, so the terminal and the
+  // JSON say the same things.
+  lines.push(
+    ...renderNoteBlock('Run notes', [...honestyNotes(env), ...env.notes], c),
+  );
 
   const cost = spendLine(env.spend);
   if (cost) {
@@ -203,9 +216,11 @@ function productHtml(sku: SkuReport): string {
   const heading = `${esc(sku.product)} <span class="muted">(your #${sku.merchantRank})</span>`;
 
   let lead: string;
-  if (sku.answers === 0) {
+  if (sku.categoryPrompts === 0) {
     lead =
       '<p class="muted">No category questions were asked for this product: give it a descriptor to measure category visibility.</p>';
+  } else if (sku.answers === 0) {
+    lead = `<p class="muted">Its ${sku.categoryPrompts} category question${sku.categoryPrompts === 1 ? '' : 's'} went unanswered this run, so it has no visibility score. See the run notes.</p>`;
   } else if (absent) {
     // The shelf leads for an absent product, in the report as in the terminal.
     lead = `<p>Not recommended in any of the ${sku.answers} category answers. Engines recommended:</p>${shelfHtml(sku.shelf)}
@@ -241,7 +256,7 @@ function evidenceHtml(env: ShoppingEnvelope): string {
 /** Render the full self-contained HTML report for a shopping run. */
 export function renderShoppingHtml(env: ShoppingEnvelope): string {
   const date = env.generatedAt.slice(0, 10); // YYYY-MM-DD
-  const notes = honestyNotes(env);
+  const notes = [...honestyNotes(env), ...env.notes];
   const notesHtml =
     notes.length > 0
       ? `<section><h2>Run notes</h2><ul class="notes">${notes

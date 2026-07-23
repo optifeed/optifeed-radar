@@ -432,19 +432,14 @@ export async function callTool(
             `shopping_check did not produce a result: ${result.notes.join('; ') || 'aborted'}.`,
           );
         }
-        // content[0] is the PURE JSON envelope; the rendered report and the
-        // run notes ride in their own blocks. Notes carry what was dropped
-        // (products over the cap, template fallbacks) - a caveat only in JSON
-        // is one the host model may never repeat (rule #6).
+        // content[0] is the PURE JSON envelope; the rendered report follows.
+        // The run notes are ON the envelope and inside the rendered text, so
+        // both channels carry what was dropped (products over the cap,
+        // template fallbacks) rather than only the prose one (rule #6).
         const out: ToolResult = ok(
           renderShoppingJson(result.envelope),
           result.envelope,
-          [
-            renderRunNotes(result.notes, { color: false }),
-            renderShoppingText(result.envelope, { color: false }),
-          ]
-            .filter(Boolean)
-            .join('\n'),
+          renderShoppingText(result.envelope, { color: false }),
         );
         if (result.savedPath) {
           out.content.push({

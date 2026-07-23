@@ -62,6 +62,17 @@ export interface ShoppingEnvelope {
   skus: SkuReport[];
   /** Raw engine answers - the evidence renderers show, never re-derived. */
   answers: EngineAnswer[];
+  /**
+   * What the run had to say about itself: products dropped over the cap,
+   * template fallbacks, which category a descriptor-less product was measured
+   * against.
+   *
+   * ON THE ENVELOPE, not just returned to the caller, because these change how
+   * the numbers should be read and the JSON is a first-class channel: an agent
+   * reading ten products has no other way to learn that an eleventh was
+   * dropped (the M8 lesson - honesty propagates to every derived artifact).
+   */
+  notes: string[];
   sampling: ShoppingSampling;
   /** What the run actually spent. Absent means not recorded, never $0.00. */
   spend?: RunSpend;
@@ -81,6 +92,8 @@ export interface BuildShoppingEnvelopeInput {
   rowsAnalyzed: number;
   /** Rows the judge pass actually read. */
   judged: number;
+  /** Run notes; carried onto the envelope so every channel gets them. */
+  notes?: string[];
   honesty?: RunHonesty;
   spend?: RunSpend;
   /** Injected timestamp so builds are deterministic. */
@@ -98,6 +111,7 @@ export function buildShoppingEnvelope(
     answers,
     rowsAnalyzed,
     judged,
+    notes,
     honesty,
     spend,
     generatedAt,
@@ -112,6 +126,7 @@ export function buildShoppingEnvelope(
     rankingDelta: computeRankingDelta(skus),
     skus,
     answers,
+    notes: notes ?? [],
     sampling: {
       nProducts: products.length,
       nPrompts: new Set(answers.map((a) => a.prompt)).size,

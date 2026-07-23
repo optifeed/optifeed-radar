@@ -598,7 +598,9 @@ describe('shopping_check', () => {
     });
     const parsed = JSON.parse(textOf(res));
     expect(parsed.products).toHaveLength(10);
+    // Both channels: the prose a human reads AND the JSON an agent parses.
     expect(proseOf(res)).toContain('2 further products');
+    expect(parsed.notes.join(' ')).toContain('2 further products');
   });
 
   it('passes the product count so the cap can scale with it', async () => {

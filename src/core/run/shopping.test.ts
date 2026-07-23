@@ -7,7 +7,7 @@ import {
 } from '../fetcher/index.js';
 import type { EngineAdapter } from '../engines/index.js';
 import { profilePath, type ProfileFs } from '../discovery/index.js';
-import type { ShoppingFs } from '../shopping/index.js';
+import { shoppingDir, type ShoppingFs } from '../shopping/index.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -198,7 +198,9 @@ describe('runShopping', () => {
       { stateDir: STATE, products: PRODUCTS, yes: true },
     );
 
-    expect(result.savedPath).toContain('/state/shopping/');
+    // Built with node:path, so compare against the module's own directory
+    // helper rather than a hardcoded "/" path (Windows CI).
+    expect(result.savedPath?.startsWith(shoppingDir(STATE))).toBe(true);
     expect(fs.files.has(result.savedPath!)).toBe(true);
     expect([...fs.files.keys()].some((p) => p.includes('snapshots'))).toBe(
       false,
@@ -314,6 +316,60 @@ describe('runShopping', () => {
     expect(result.envelope?.spend?.setupUsd).toBeCloseTo(0.02, 10);
     expect(result.envelope?.spend?.mainUsd).toBeGreaterThan(0);
     expect(result.spend?.totalUsd).toBeGreaterThan(0.02);
+  });
+
+  it('records how many category questions each product asked for', async () => {
+    const fs = seededFs();
+    const result = await runShopping(
+      'acme.example',
+      deps(fs, [fakeAdapter('openai', 'parametric')]),
+      { stateDir: STATE, products: PRODUCTS, yes: true },
+    );
+    const env = result.envelope!;
+    expect(env.skus[0]?.categoryPrompts).toBe(3);
+    expect(env.rankingDelta[0]?.measured).toBe(true);
+  });
+
+  // A capped run leaves the questions written but unanswered. Without the
+  // requested count the report blamed the merchant's product list for it.
+  it('keeps a capped product measured, with no answers', async () => {
+    const fs = seededFs();
+    const guard = new CostGuard({ maxCostUsd: 0.0005 });
+    const result = await runShopping(
+      'acme.example',
+      deps(fs, [fakeAdapter('openai', 'parametric', { cost: 0.001 })], {
+        guard,
+      }),
+      { stateDir: STATE, products: PRODUCTS, yes: true },
+    );
+    const env = result.envelope!;
+    expect(env.costCapped).toBe(true);
+    for (const sku of env.skus) expect(sku.categoryPrompts).toBeGreaterThan(0);
+    const unanswered = env.rankingDelta.filter((r) => r.answers === 0);
+    expect(unanswered.length).toBeGreaterThan(0);
+    expect(unanswered.every((r) => r.measured)).toBe(true);
+  });
+
+  it('carries the run notes on the envelope, not only to the caller', async () => {
+    const fs = seededFs();
+    const result = await runShopping(
+      'acme.example',
+      deps(fs, [fakeAdapter('openai', 'parametric')]),
+      {
+        stateDir: STATE,
+        // 11 products: one over the cap, so a note is generated.
+        products: Array.from({ length: 11 }, (_, i) => ({
+          name: `P${i + 1}`,
+          descriptor: 'espresso machine',
+        })),
+        yes: true,
+      },
+    );
+    const env = result.envelope!;
+    // The JSON channel must carry what the terminal says: an agent reading 10
+    // products cannot otherwise tell that an 11th was dropped.
+    expect(env.notes.join(' ')).toContain('1 further product');
+    expect(env.notes).toEqual(result.notes);
   });
 
   it('carries the product-list notes into the run', async () => {

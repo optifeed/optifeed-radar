@@ -8,6 +8,7 @@ function sku(
   return {
     visibility: 0,
     engines: [],
+    categoryPrompts: 3,
     answers: 6,
     mentions: 0,
     avgPosition: null,
@@ -81,12 +82,40 @@ describe('computeRankingDelta', () => {
     expect(rows.map((r) => r.aiRank)).toEqual([2, 1, 3]);
   });
 
+  // "We never asked" and "we asked and nothing came back" are different facts,
+  // and only the first is the merchant's to fix with a descriptor.
+  it('separates a product never asked about from one whose answers never came', () => {
+    const rows = computeRankingDelta([
+      sku({
+        product: 'NoSubject',
+        merchantRank: 1,
+        visibility: null,
+        categoryPrompts: 0,
+        answers: 0,
+        mentions: 0,
+      }),
+      sku({
+        product: 'Capped',
+        merchantRank: 2,
+        visibility: null,
+        categoryPrompts: 3,
+        answers: 0,
+        mentions: 0,
+      }),
+    ]);
+    expect(rows[0]).toMatchObject({ measured: false, answers: 0 });
+    expect(rows[1]).toMatchObject({ measured: true, answers: 0 });
+    expect(rows[0]?.aiRank).toBeNull();
+    expect(rows[1]?.aiRank).toBeNull();
+  });
+
   it('does not rank a product whose category layer was never measured', () => {
     const rows = computeRankingDelta([
       sku({
         product: 'Opaque',
         merchantRank: 1,
         visibility: null,
+        categoryPrompts: 0,
         answers: 0,
         mentions: 0,
       }),

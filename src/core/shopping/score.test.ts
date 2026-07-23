@@ -47,6 +47,7 @@ describe('scoreProduct', () => {
     const report = scoreProduct({
       product: ARIA,
       merchantRank: 1,
+      categoryPrompts: 2,
       visibility: rows(
         [
           { text: WITH_ARIA, engine: 'openai' },
@@ -76,6 +77,7 @@ describe('scoreProduct', () => {
     const report = scoreProduct({
       product: { name: 'Presto X' },
       merchantRank: 2,
+      categoryPrompts: 2,
       visibility: rows(
         [
           { text: SHELF, engine: 'openai' },
@@ -103,6 +105,7 @@ describe('scoreProduct', () => {
     const report = scoreProduct({
       product: ARIA,
       merchantRank: 1,
+      categoryPrompts: 1,
       visibility: rows([{ text: WITH_ARIA }], ARIA),
       reputation: [],
       owners: [ARIA],
@@ -126,6 +129,7 @@ describe('scoreProduct', () => {
     const report = scoreProduct({
       product: ARIA,
       merchantRank: 1,
+      categoryPrompts: 1,
       visibility: rows([{ text: WITH_ARIA }], ARIA),
       reputation: named,
       owners: [ARIA],
@@ -146,6 +150,7 @@ describe('scoreProduct', () => {
     const report = scoreProduct({
       product: { name: 'Presto X' },
       merchantRank: 2,
+      categoryPrompts: 0,
       visibility: [],
       reputation: rows(
         [

@@ -281,11 +281,24 @@ export async function runShopping(
     bucket[slot.layer].push({ answer, result });
   });
 
+  // How many category prompts each product ASKED FOR. Counted from the
+  // generated pack, never from the answers: a cost cap or a failed engine
+  // leaves the questions written but unanswered, and reporting that as "no
+  // questions were asked" blames the merchant's product list for the run's
+  // problem (and told them to add a descriptor they may already have).
+  const requested = products.map(
+    (_, i) =>
+      generated.prompts.filter(
+        (p) => p.productIndex === i && p.layer === 'visibility',
+      ).length,
+  );
+
   const skus: SkuReport[] = products.map((product, i) => {
     const bucket = perProduct[i] ?? { visibility: [], reputation: [] };
     return scoreProduct({
       product,
       merchantRank: i + 1,
+      categoryPrompts: requested[i] ?? 0,
       visibility: bucket.visibility,
       reputation: bucket.reputation,
       owners: products,
@@ -312,6 +325,7 @@ export async function runShopping(
     answers: asked.answers,
     rowsAnalyzed: rows.length,
     judged,
+    notes,
     honesty,
     // Read from the guard, not by summing answers: discovery, prompt writing
     // and the judge pass all spend without producing an answer to sum. Taken

@@ -132,6 +132,7 @@ function validate(raw: unknown, path: string): ShoppingEnvelope {
   v.array(obj, 'rankingDelta');
   v.array(obj, 'skus');
   v.array(obj, 'answers');
+  v.array(obj, 'notes');
   v.objectField(obj, 'sampling');
   if ('spend' in obj && obj.spend !== undefined) {
     const spend = v.object(obj.spend, 'spend');

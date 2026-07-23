@@ -11,11 +11,21 @@ import {
   type ShoppingFs,
 } from './persist.js';
 
+/**
+ * Seeds below are keyed with "/" paths, but the module builds paths with
+ * node:path, which yields "\\" on Windows - so BOTH keys and lookups need
+ * normalizing, exactly as the CLI suite already does. The CI matrix has caught
+ * this shape of bug twice before.
+ */
+function normKey(p: string): string {
+  return p.split('\\').join('/');
+}
+
 function memFs(seed: Record<string, string> = {}) {
-  const files = new Map(Object.entries(seed));
+  const files = new Map(Object.entries(seed).map(([k, v]) => [normKey(k), v]));
   const fs: ShoppingFs = {
     async readFile(path) {
-      const data = files.get(path);
+      const data = files.get(normKey(path));
       if (data === undefined) {
         const err = new Error('ENOENT') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
@@ -24,11 +34,11 @@ function memFs(seed: Record<string, string> = {}) {
       return data;
     },
     async writeFile(path, data) {
-      files.set(path, data);
+      files.set(normKey(path), data);
     },
     async mkdir() {},
     async readdir(path) {
-      const prefix = `${path}/`;
+      const prefix = `${normKey(path)}/`;
       return [...files.keys()]
         .filter((p) => p.startsWith(prefix))
         .map((p) => p.slice(prefix.length));
@@ -55,6 +65,7 @@ function envelope(generatedAt = '2026-07-23T09:00:00.000Z'): ShoppingEnvelope {
         merchantRank: 1,
         visibility: 40,
         engines: [],
+        categoryPrompts: 3,
         answers: 2,
         mentions: 1,
         avgPosition: 1,
@@ -79,7 +90,7 @@ describe('saveShoppingRun', () => {
     expect(path).not.toContain('snapshots');
     expect(path.endsWith('.json')).toBe(true);
     // Windows-safe filename: no colons from the ISO timestamp.
-    expect(path.split('/').pop()).not.toContain(':');
+    expect(normKey(path).split('/').pop()).not.toContain(':');
     expect(files.size).toBe(1);
   });
 
