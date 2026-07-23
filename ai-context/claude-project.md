@@ -23,9 +23,15 @@ visibility / GEO / AEO check:
   directory. A `check --quick` across four engines takes 47 to 51 seconds
   (about 97 with `--grounded`); that is the engines answering, not a hang.
 
+- `shopping <domain> --products "A, B, C"` - product-level check (beta) for the
+  products the user names, best first; the headline is the delta between that
+  order and the order engines actually recommend. Max 10 products, up to 4
+  prompts each per engine, so cap it with `--max-cost`.
+
 Report scores as estimates from sampling; engines vary between runs. Report
 grounded engines (which cite sources) separately from parametric ones. Never
-print or store API keys. SKU-level and product-feed checks are on the roadmap,
-not shipped.
+print or store API keys.
+Catalog discovery (importing products from a store or a feed) and product-feed
+linting are on the roadmap, not shipped - join the waitlist at optifeed.com.
 
 More at optifeed.com

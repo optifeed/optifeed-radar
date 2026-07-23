@@ -13,4 +13,5 @@ export * from './footer.js';
 export * from './spend.js';
 export * from './terminal.js';
 export * from './render-diff.js';
+export * from './render-shopping.js';
 export * from './html.js';

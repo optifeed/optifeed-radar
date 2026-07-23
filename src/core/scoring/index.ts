@@ -18,5 +18,5 @@ export {
 } from './score.js';
 export { refineAmbiguous, parseVerdict, JUDGE_RATE_CAP } from './judge.js';
 export type { RefineDeps, RefineOptions, RefineResult } from './judge.js';
-export { scoreAnswers } from './scoring.js';
+export { scoreAnswers, scorePerEngine } from './scoring.js';
 export type { ScoreDeps, ScoreOptions } from './scoring.js';

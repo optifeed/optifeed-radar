@@ -8,6 +8,7 @@ import { renderAuditJson, renderAuditText } from '../core/output/index.js';
 import { runAudit } from '../core/run/index.js';
 import { registerCheck, rejectStrayArgs } from './check.js';
 import { registerInspect } from './inspect.js';
+import { registerShopping } from './shopping.js';
 import { type Runtime, defaultRuntime } from './runtime.js';
 
 /** Re-exported so existing importers of the CLI entrypoint keep working. */
@@ -48,6 +49,7 @@ export function buildProgram(rt: Runtime = defaultRuntime()): Command {
 
   registerAudit(program, rt);
   registerCheck(program, rt);
+  registerShopping(program, rt);
   registerInspect(program, rt);
 
   return program;

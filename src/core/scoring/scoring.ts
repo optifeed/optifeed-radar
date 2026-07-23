@@ -130,8 +130,15 @@ function summarizeReputation(
   return { prompts, answers: results.length, positive, neutral, negative };
 }
 
-/** Group results by engine (in first-seen order) and score each. */
-function scorePerEngine(
+/**
+ * Group results by engine (in first-seen order) and score each.
+ *
+ * Exported because M12a scores products with the SAME per-engine aggregation
+ * (including the retrieval accounting that decides how much of the grounded
+ * premium an engine earned). A second copy of this in `core/shopping` would be
+ * a second scoring methodology in everything but name.
+ */
+export function scorePerEngine(
   answers: EngineAnswer[],
   results: MentionResult[],
 ): EngineScore[] {

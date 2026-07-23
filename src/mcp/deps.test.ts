@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { defaultToolContext, DEFAULT_MCP_MAX_COST } from './deps.js';
+import {
+  defaultToolContext,
+  DEFAULT_MCP_MAX_COST,
+  DEFAULT_MCP_SHOPPING_PER_PRODUCT_USD,
+} from './deps.js';
 import { createFetcher } from '../core/fetcher/index.js';
 
 describe('defaultToolContext', () => {
@@ -55,5 +59,51 @@ describe('defaultToolContext', () => {
       fetcher: injected,
     });
     expect(withInjected.newFetcher()).toBe(injected);
+  });
+});
+
+describe('shopping_check cost cap', () => {
+  const env = { OPENAI_API_KEY: 'sk-test' } as Record<
+    string,
+    string | undefined
+  >;
+  const ctx = defaultToolContext({
+    env,
+    cwd: '/proj',
+    homeDir: '/home/u',
+    isProjectWritable: false,
+    fetcher: createFetcher(),
+  });
+
+  // A shopping run is much bigger than a check, so the flat check cap would
+  // truncate most multi-product runs into a partial ranking. The cap scales
+  // with the list instead, and an explicit max_cost always wins.
+  it('scales the default cap with the number of products', async () => {
+    const deps = await ctx.shoppingDeps({
+      productCount: 4,
+      availableEngines: ['openai'],
+    });
+    const guard = deps.guard!;
+    expect(DEFAULT_MCP_SHOPPING_PER_PRODUCT_USD).toBeCloseTo(0.2);
+    // 4 products x $0.20 = $0.80: authorized just under, refused just over.
+    expect(guard.authorize(0.79)).toBe(true);
+    expect(guard.authorize(0.02)).toBe(false);
+  });
+
+  it('lets an explicit max_cost win over the scaled default', async () => {
+    const deps = await ctx.shoppingDeps({
+      productCount: 10,
+      maxCost: 0.1,
+      availableEngines: ['openai'],
+    });
+    expect(deps.guard!.authorize(0.2)).toBe(false);
+  });
+
+  it('never builds a zero cap from an empty list', async () => {
+    const deps = await ctx.shoppingDeps({
+      productCount: 0,
+      availableEngines: ['openai'],
+    });
+    expect(deps.guard!.authorize(0.05)).toBe(true);
   });
 });

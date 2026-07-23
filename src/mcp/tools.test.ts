@@ -1,13 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { callTool } from './tools.js';
 import type { ToolContext } from './deps.js';
-import type { RunCheckDeps } from '../core/run/index.js';
+import type { RunCheckDeps, RunShoppingDeps } from '../core/run/index.js';
 import { createFetcher } from '../core/fetcher/index.js';
 import { CostGuard } from '../core/costs.js';
 import type { FetchLike } from '../core/fetcher/index.js';
 import type { EngineAdapter } from '../core/engines/index.js';
 import { profilePath, type ProfileFs } from '../core/discovery/index.js';
 import { queriesPath, toYaml, type QueryFs } from '../core/queries/index.js';
+import { shoppingDir } from '../core/shopping/index.js';
 import {
   nodeSnapshotFs,
   snapshotFileName,
@@ -193,6 +194,11 @@ function workingContext(overrides: Partial<ToolContext> = {}): {
       now: NOW,
       persist: false,
     }),
+    // Overridden by shoppingContext below; throwing here means a shopping test
+    // that forgets to wire deps fails loudly instead of silently doing nothing.
+    shoppingDeps: async () => {
+      throw new Error('shoppingDeps not wired in this context');
+    },
     newFetcher: () => createFetcher({ fetchImpl: fakeFetch() }),
     snapshotFs: nodeSnapshotFs(),
     availableEngines: () => ['openai'],
@@ -497,5 +503,141 @@ describe('generate_buyer_queries payload', () => {
     expect(Array.isArray(parsed.pack.queries)).toBe(true);
     expect(parsed.pack.schema_version).toBeTruthy();
     expect(Array.isArray(parsed.notes)).toBe(true);
+  });
+});
+
+describe('shopping_check', () => {
+  /** A context whose shoppingDeps run against stubs (no network, no disk). */
+  function shoppingContext(overrides: Partial<ToolContext> = {}): {
+    ctx: ToolContext;
+    shoppingDeps: ReturnType<typeof vi.fn>;
+    fs: ReturnType<typeof memFs>;
+  } {
+    const { ctx, fs } = workingContext(overrides);
+    const shoppingDeps = vi.fn(
+      async (): Promise<Omit<RunShoppingDeps, 'confirm' | 'onProgress'>> => ({
+        fetcher: createFetcher({ fetchImpl: fakeFetch() }),
+        adapters: [fakeAdapter('openai', 'parametric')],
+        judge: fakeJudge(),
+        profileFs: fs,
+        shoppingFs: fs,
+        now: NOW,
+      }),
+    );
+    // `ctx` already carries the overrides (workingContext applied them), so the
+    // shopping deps go on last and stay concretely typed.
+    return { ctx: { ...ctx, shoppingDeps }, shoppingDeps, fs };
+  }
+
+  it('returns the ranking delta as JSON plus the rendered report', async () => {
+    const { ctx } = shoppingContext();
+    const res = await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: ['Aria 2', 'Presto X'],
+    });
+
+    expect((res as { isError?: boolean }).isError).toBeFalsy();
+    const parsed = JSON.parse(textOf(res));
+    expect(parsed.schema_version).toBe(SCHEMA_VERSION);
+    expect(
+      parsed.rankingDelta.map((r: { product: string }) => r.product),
+    ).toEqual(['Aria 2', 'Presto X']);
+    // The honesty scaffolding lives in the renderers, so the prose block must
+    // ride along - a caveat only in JSON is one the host model may drop.
+    const prose = proseOf(res);
+    expect(prose).toContain('Your ranking vs AI:');
+    expect(prose).toContain(FOOTER_CTA);
+    expect(prose).not.toContain(ESC);
+    // The rendered path is whatever node:path produced, so compare against the
+    // same helper - normalizing here would just reintroduce the separator bug.
+    expect(prose).toContain(shoppingDir(STATE));
+  });
+
+  it('accepts product objects with aliases and a descriptor', async () => {
+    const { ctx } = shoppingContext();
+    const res = await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: [
+        {
+          name: 'Aria 2',
+          aliases: ['Aria II'],
+          descriptor: 'espresso machine',
+        },
+      ],
+    });
+    const parsed = JSON.parse(textOf(res));
+    expect(parsed.products[0]).toEqual({
+      name: 'Aria 2',
+      aliases: ['Aria II'],
+      descriptor: 'espresso machine',
+    });
+  });
+
+  it('refuses to spend when no products were named', async () => {
+    const { ctx, shoppingDeps } = shoppingContext();
+    const res = await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(textOf(res)).toContain('products');
+    expect(shoppingDeps).not.toHaveBeenCalled();
+  });
+
+  it('rejects a mis-shaped products argument rather than guessing', async () => {
+    const { ctx, shoppingDeps } = shoppingContext();
+    const res = await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: 42,
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(shoppingDeps).not.toHaveBeenCalled();
+  });
+
+  it('caps the product list and says so instead of silently truncating', async () => {
+    const { ctx } = shoppingContext();
+    const res = await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: Array.from({ length: 12 }, (_, i) => `P${i + 1}`),
+    });
+    const parsed = JSON.parse(textOf(res));
+    expect(parsed.products).toHaveLength(10);
+    // Both channels: the prose a human reads AND the JSON an agent parses.
+    expect(proseOf(res)).toContain('2 further products');
+    expect(parsed.notes.join(' ')).toContain('2 further products');
+  });
+
+  it('passes the product count so the cap can scale with it', async () => {
+    const { ctx, shoppingDeps } = shoppingContext();
+    await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: ['Aria 2', 'Presto X', 'Brew Mini'],
+    });
+    const opts = shoppingDeps.mock.calls[0]![0] as {
+      productCount: number;
+      maxCost?: number;
+    };
+    expect(opts.productCount).toBe(3);
+    expect(opts.maxCost).toBeUndefined();
+  });
+
+  it('honors an explicit max_cost', async () => {
+    const { ctx, shoppingDeps } = shoppingContext();
+    await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: ['Aria 2'],
+      max_cost: 0.25,
+    });
+    const opts = shoppingDeps.mock.calls[0]![0] as { maxCost?: number };
+    expect(opts.maxCost).toBeCloseTo(0.25);
+  });
+
+  it('needs an engine key', async () => {
+    const { ctx } = shoppingContext({ availableEngines: () => [] });
+    const res = await callTool(ctx, 'shopping_check', {
+      domain: 'acme.example',
+      products: ['Aria 2'],
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(textOf(res)).toContain('API key');
   });
 });

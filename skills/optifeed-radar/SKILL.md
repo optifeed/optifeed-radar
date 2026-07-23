@@ -1,6 +1,6 @@
 ---
 name: optifeed-radar
-description: Check whether AI engines (ChatGPT, Perplexity, Gemini, Claude) recommend a brand when buyers ask, and score its AI visibility. Use when someone asks "does AI recommend my brand", wants an AI visibility / GEO / AEO check, or wants to audit a site's AI-readiness. Runs locally with the user's own engine API keys. The zero-key audit is free; the check pipeline spends the user's API credit, from about $0.09 for one engine to about $1.09 for four engines with web search.
+description: Check whether AI engines (ChatGPT, Perplexity, Gemini, Claude) recommend a brand when buyers ask, and score its AI visibility. Use when someone asks "does AI recommend my brand", wants an AI visibility / GEO / AEO check, wants to know whether AI recommends specific products they name, or wants to audit a site's AI-readiness. Runs locally with the user's own engine API keys. The zero-key audit is free; the check pipeline spends the user's API credit, from about $0.09 for one engine to about $1.09 for four engines with web search.
 ---
 
 # Optifeed Radar
@@ -26,6 +26,13 @@ optifeed-radar <command>` at launch).
 - `check <domain>` - the full pipeline: generate buyer prompts, ask the
   engines, score recommendation, position, and share of voice into one AI
   Visibility Score. Needs at least one API key.
+- `shopping <domain> --products "A, B, C"` - product-level check (beta) for
+  the products the user NAMES, best first. That order is treated as their own
+  ranking, and the headline result is the delta against the order engines
+  actually recommend. `--products-file products.yml` takes a name, aliases,
+  and a descriptor per product; the descriptor ("quiet home espresso machine")
+  is what rescues an opaque product name. Max 10 products per run. There is no
+  catalog import, so ask the user which products to check.
 - `diff <domain>` - what changed between the last two saved runs.
 - `sources <domain>` - domains the AI cited, and the brand's share of voice.
 - `queries <domain>` - show or export the buyer-prompt pack.
@@ -43,6 +50,8 @@ The `optifeed-mcp` server exposes the same capability to AI agents:
 - `check_visibility` - run a visibility check for a domain.
 - `audit_store` - run the zero-key readiness audit.
 - `generate_buyer_queries` - produce the buyer-prompt pack.
+- `shopping_check` - product-level check for products the user names, in their
+  ranking order.
 - `get_snapshot_diff` - compare two saved runs.
 
 ## Worked example
@@ -82,6 +91,14 @@ can exceed the cap by at most one unmeasured call per engine; any overshoot is
 always reported. Confirm the cost with the user before running `check` on a
 large prompt pack or with `--grounded`.
 
-SKU-level and product-feed checks are on the roadmap, not shipped.
+A `shopping` run is bigger than a check: up to 4 prompts per product on every
+engine with a key (products that share a category share their category
+questions, which are asked once), so start with two or three products and
+`--max-cost`. No shopping run has been measured across multiple engines yet,
+so do not quote a cost figure for it. What IS fixed: the MCP tool caps at
+$0.20 per product by default.
+
+Catalog discovery (importing products from a store or a feed) and product-feed
+linting are on the roadmap, not shipped - join the waitlist at optifeed.com.
 
 More at optifeed.com

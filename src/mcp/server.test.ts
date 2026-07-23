@@ -27,6 +27,9 @@ function auditOnlyContext(): ToolContext {
     checkDeps: async () => {
       throw new Error('not used in this test');
     },
+    shoppingDeps: async () => {
+      throw new Error('not used in this test');
+    },
     queryDeps: async () => ({ fetcher }),
     newFetcher: () => fetcher,
     snapshotFs: nodeSnapshotFs(),
@@ -61,7 +64,7 @@ describe('MCP server', () => {
     await client.close();
   });
 
-  it('lists the 4 launch-1 tools', async () => {
+  it('lists the 5 launch tools', async () => {
     const client = await connectedClient(auditOnlyContext());
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
@@ -69,6 +72,7 @@ describe('MCP server', () => {
       'check_visibility',
       'generate_buyer_queries',
       'get_snapshot_diff',
+      'shopping_check',
     ]);
     for (const t of tools)
       expect((t.description ?? '').length).toBeGreaterThan(20);
@@ -166,6 +170,68 @@ describe('MCP tool schemas', () => {
           },
           "required": [
             "domain",
+          ],
+          "type": "object",
+        },
+        "shopping_check": {
+          "properties": {
+            "domain": {
+              "description": "The store site, e.g. example.com",
+              "type": "string",
+            },
+            "engines": {
+              "description": "Engines to query; defaults to all with keys present",
+              "items": {
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "gemini",
+                  "perplexity",
+                ],
+                "type": "string",
+              },
+              "type": "array",
+            },
+            "max_cost": {
+              "description": "Hard cap on total spend in USD (default $0.20 per product)",
+              "type": "number",
+            },
+            "products": {
+              "description": "Up to 10 products, best first (that order is the merchant ranking the result is measured against). Each item is a name, or an object with name plus optional aliases and a descriptor ("quiet home espresso machine") that rescues an opaque product name.",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "properties": {
+                      "aliases": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                      "descriptor": {
+                        "type": "string",
+                      },
+                      "name": {
+                        "type": "string",
+                      },
+                    },
+                    "required": [
+                      "name",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "maxItems": 10,
+              "type": "array",
+            },
+          },
+          "required": [
+            "domain",
+            "products",
           ],
           "type": "object",
         },

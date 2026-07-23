@@ -1,6 +1,6 @@
 # How the AI Visibility Score is calculated
 
-This document is the published methodology for the score Optifeed Visibility
+This document is the published methodology for the score Optifeed Radar
 reports. The weights below are the source of truth in code
 (`SCORE_WEIGHTS` in `src/core/scoring/score.ts`); if they change, this file and
 its worked examples change with them.
@@ -145,6 +145,54 @@ across all answers, as a percentage of the total. Sources aggregate the domains
 that grounded engines cite, most-cited first. Both are descriptive; only the
 composite is the headline score.
 
+## Product-level scores (`shopping`)
+
+`shopping` measures individual products you name, one level below the brand.
+The maths is the same: Steps 2 and 3 above are reused unchanged, so a product's
+0-100 means what a brand's does. What differs is what gets detected, and what
+gets reported as the headline.
+
+**There is no aggregate shopping score.** The headline of a shopping run is the
+RANKING DELTA: your own order (the order you list the products in, best first)
+against the order engines actually recommend. Per-product 0-100 numbers appear
+inside each product's section; they are never rolled up into a single number,
+because one score per run belongs to `check`.
+
+**Detection has no known rival list.** For a brand, competitors come from the
+brand profile and are matched by name. One level down there is no such list: the
+rival products in an answer are whatever the engine happened to recommend. So
+pass 1 parses the answer's own recommendation list - the shelf - out of its
+numbered lists, bullets, headings and bold lead-ins, and reads the product's
+rank off that. A mention with no shelf position gets the same mid-list default
+(1/4) an unranked brand mention gets. That parser is a heuristic over messy
+prose and will always trail real answer formats, which is what the judge pass
+is for.
+
+**The judge pass is capped at 50%, not 30%.** Product names are messier than
+brand names: single-word names, model codes, and engines that recommend in
+prose all land as ambiguous. Each run reports the cap it ran with and how many
+rows it actually judged.
+
+**Two layers per product**, the same split as unbranded vs branded questions:
+three category buying questions that never name the product (these produce the
+visibility number), and one that names it (reputation, sentiment only, kept out
+of the number).
+
+**Product-level share of voice** counts what the engines recommended instead,
+once per answer rather than once per mention. When a product is absent this
+leads its section: the shelf that beat it is the useful half of a zero.
+
+**Three ways a product can have no number, never collapsed into one:**
+
+| state                         | what it means                                                                                           | what fixes it                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| no category questions asked   | the product had no descriptor and the store had no usable category, so the questions were never written | give the product a descriptor                      |
+| questions went unanswered     | the questions existed but the run could not complete them (cost cap, engine failure)                    | raise `--max-cost`, or rerun                       |
+| not recommended in any answer | a real zero: the questions ran and engines named other products                                         | the shelf in that section is the competitive intel |
+
+A product engines never named has no AI rank at all, rather than being placed
+last: "absent from the conversation" and "ranked bottom" are different claims.
+
 ## Scoring version
 
 This methodology is version 3 (`SCORING_VERSION` in `src/core/scoring/score.ts`).
@@ -167,3 +215,6 @@ versions (or one predates versioning) as methodology-driven, not a real change.
   pack is editable so you can make them match how your buyers actually ask.
 - High-variance engines are flagged as wider estimates; retrieval variance is
   framing only and never changes the score.
+- In `shopping`, a missing product number always says WHICH of the three causes
+  above produced it, so a capped run is never reported as a product the
+  merchant failed to describe.

@@ -9,6 +9,12 @@ reflect it here.
 > The dev plan moved to the `optifeed-radar-docs` git repo on 2026-07-18 (doc
 > consolidation). `docs/dev-plan.md` in this repo is now a pointer stub to it.
 
+> **SCOPE REVISION 2 (2026-07-18): Shopping-lite is IN the launch build.**
+> M12 split: **M12a** (manual product lists - `shopping --products`) ships in
+> the single launch and is built; **M12b** (discovery adapters), M13 and M14
+> stay deferred. Launch build = M0-M11 + M12a + M15-M17. The note below is the
+> earlier revision, kept for history.
+>
 > **SCOPE REVISION (2026-07-17): launch #1 is brand visibility only.** The
 > commerce modules - M12 (shopping), M13 (protocol spike), M14 (lint-feed) -
 > are deferred to a separate launch #2 (~4-8 weeks post-launch). Current build
@@ -18,7 +24,7 @@ reflect it here.
 > The dev plan (`optifeed-radar-docs/dev-plan.md`) is authoritative and carries
 > the same note.
 
-Last updated: 2026-07-20.
+Last updated: 2026-07-23.
 
 ## Legend
 
@@ -38,7 +44,7 @@ Last updated: 2026-07-20.
 - [x] **`check` ships** - full pipeline with ≥1 engine key (M4-M8, M10, M11 `check` cmd). Done at the code level: `runCheck` (M10) wires M3-M8, M9 renders, M11 `check` command is thin over both, all mocked-e2e covered. **LIVE-VERIFIED 2026-07-17** against real OpenAI (`check optifeed.com --quick --engines openai`): discovery → query-gen → 6 buyer prompts + 2 branded → scoring → share of voice → reputation split → snapshot, 34s, ask spend $0.0024. Confirmed live: no key material in the snapshot (rule #4), `schema_version` present, and the provider-echoed DATED model id (`gpt-4o-mini-2024-07-18`) still priced non-zero - the M0-M6 `$0`-cost bug regression-checked against reality. Still unverified live: anthropic, gemini, perplexity (no keys yet).
 - [x] **MCP ships** - stdio server over the same M10 core (M15). 4 tools (check_visibility / audit_store / generate_buyer_queries / get_snapshot_diff), non-interactive with a default $0.50 cap; integration + schema-snapshot + failure-mode tested, and live-verified over real stdio (initialize + tools/list). Live multi-engine `check_visibility` still folds into the M17 smoke test (no non-OpenAI keys yet).
 - [ ] **Public launch** - surfaces + README + release QA + conversion surfaces live (M16, M17)
-- [ ] **`shopping` beta ships** - DEFERRED to launch #2 (not a launch #1 gate): Shopify + `--feed`, sampled SKU checks, lint-feed (M12 + M13-M14)
+- [x] **`shopping` beta ships** - Shopping-lite (M12a) is IN the launch build per scope revision 2 (2026-07-18): `shopping <domain> --products/--products-file` over manually named products, ranking delta as the headline, shelf-led output for an absent product, plus the `shopping_check` MCP tool. Code complete, mocked-e2e green, and LIVE-VERIFIED 2026-07-23 against a real store (single engine); only the multi-engine / `--grounded` run remains, which folds into the M17 smoke run. Discovery adapters (M12b), the protocol spike (M13) and lint-feed (M14) stay DEFERRED to later releases.
 
 ---
 
@@ -202,7 +208,7 @@ Owner: setup · PR: (M9) · needs M8
 
 Owner: setup · PR: (M11) · thin over M10 + M9
 
-- [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) and `shopping` (M12) deferred to launch #2 - `lint-feed` shipped 2026-07-16 and was removed 2026-07-17 (scope revision)
+- [~] commands: `audit` [x] `check` [x] `diff` [x] `sources` [x] `queries` [x] `config` [x] · `compare` deferred (fuzzy - competitor-focused view overlaps `check`; needs design); `mcp` (M15) lands with its module; `lint-feed` (M14) deferred to a later release (it shipped 2026-07-16 and was removed 2026-07-17 under the first scope revision - history, not current status); `shopping` (M12a) SHIPPED 2026-07-23
 - [x] **A run with ZERO answers reported a confident `score: 0` (found + FIXED 2026-07-17, rule #6).** Fixed: `compositeScore` returns `number | null` (null when nothing was measured, replacing `totalWeight === 0 ? 0`), `score` is nullable on `ScoreReport` + `VisibilityEnvelope`, `isPartialRun` counts a null score as partial, `failUnder` never passes an unassessed run, `diffEnvelopes` returns a null `scoreDelta` rather than inventing one, and both renderers say "not assessed" (the terminal also drops the variance note, which described a score that did not exist). `schema_version` 0.1 -> 0.2 with all four goldens updated (hard rule #2). Verified live both ways: a broken key now prints "not assessed"/persists `score: null`, while a healthy run still reports a real 0/100 over 6 answers.
 - [x] `check` exited **0** when the run measured nothing (found + FIXED 2026-07-17). Fixed with the `--fail-under` wiring below - they were the same missing call site.
 - [x] Stray positional arguments now fail loudly (found + FIXED 2026-07-17). `check <domain> file.html` (a flag npm swallowed - the `--report` value left bare) used to hit commander's raw `process.exit` with a generic "too many arguments". `check`/`audit` now `allowExcessArguments(true)` and call a shared `rejectStrayArgs`, which routes an injectable error through the runtime (testable, keeps `--json` clean), names the offending token, points at `--report`, and explains the `npm run dev --` gotcha - before any spend. README documents the `--` requirement for `npm run dev`.
@@ -220,15 +226,30 @@ Owner: setup · PR: (M11) · thin over M10 + M9
 - Follow-up (2026-07-16): shipped `lint-feed <url>`, the M14 CLI surface that M14 deferred (M12 cross-references it, so it lands first). THIN over `lintFeedUrl` + a NEW M9 renderer (`render-lintfeed.ts`: `renderFeedLintText`/`renderFeedLintJson`), no lint logic in `cli/` (rule #1); zero-key, zero-spend. Exit code: non-zero ONLY when the feed could not be assessed (`feedScore === null` - unfetchable/malformed/empty), never on findings alone - reporting is not gating, consistent with `--fail-under` being the explicit opt-in gate. Renderer carries M14's honesty forward (rule #6): an unassessed feed shows "not assessed", never a fabricated 0, and never "no findings" (which would read as a pass); parse errors (incl. the truncation flag) always surface as notes. +13 tests (336->352, 9 renderer + 4 CLI). Live-verified on the built CLI against all four fixtures over a local HTTP server (real fetcher path): missing-gtin 100/100 + info-only (gtin advisory confirmed not to lower the score), thin-desc 87/100 warn, malformed -> "not assessed" + exit 1, 404 -> honest fetch note + exit 1, clean `--json` schema_version 0.1. The live run caught 3 copy defects the unit tests missed (fixed test-first): "2 advisorys" pluralization, a duplicated "not assessed (not assessed)" readiness line, and "No findings" claimed over an unassessed feed. README moved `lint-feed` from the roadmap into present-tense shipped capability (copy rules). Deferred: CSV/TSV feeds (honest parseError, M14's gap), a local-file path argument (plan scopes the command to `<url>`; M12 owns `--feed`), and a `--fail-on <severity>` gating flag if CI users ask.
 - Follow-up (2026-07-16): built the four read-only inspect commands - `diff`, `sources`, `queries`, `config` - in `cli/inspect.ts`, each THIN over existing core (no spend). `diff <domain>` compares the two most recent snapshots (`listSnapshots`/`loadSnapshot`/`diffEnvelopes`) through a NEW M9 diff renderer (`render-diff.ts`: `renderDiffText`/`renderDiffJson`, honest about the promptSetChanged/engineSetChanged/partial caveats, single footer CTA). `sources <domain>` renders cited domains + share of voice from the latest snapshot via a new `renderSourcesText` (honest empty state when a parametric-only run cited nothing). `queries <domain>` prints/`--export`s the persisted pack (`toYaml`). `config` shows engine-key presence (never the value - rule #4), the resolved judge model, and the state dir. `Runtime` gained `snapshotFs`/`queryFs` (mirroring `fetcher`) so all four test with an in-memory fs and zero disk. 20 new tests (279→299; the validation-helper pass took 269→279 separately); verified all four live against the built CLI. Still deferred: `compare` (design first) and live `check` with a real key (M17).
 
-### [ ] M12 - Shopping beta (after M10)
+### [x] M12a - Shopping-lite: manual product lists (IN LAUNCH SCOPE, 2026-07-18)
+
+Owner: setup · PR: (M12a)
+
+- [x] `--products "A, B, C"` / `--products-file products.yml` (name, aliases, descriptor); 10-product cap and de-dupe, both reported
+- [x] two layers per product: 3 category prompts (visibility) + 1 named prompt (reputation), one guarded judge call, keyed by product index
+- [x] shelf extraction (numbered/bulleted/heading/bold-lead-in) -> rank + product-level share of voice; 50% judge budget, reported in sampling metadata
+- [x] ranking delta as THE headline (terminal, JSON `rankingDelta`, HTML); absent product is unranked, never fabricated into last place
+- [x] `runShopping` orchestrator reusing discover/askAll/scorePerEngine/compositeScore; shared category prompts asked once, scored per product
+- [x] `<stateDir>/shopping/<ISO>.json` persistence, apart from the check snapshots `diff` reads
+- [x] `shopping_check` MCP tool with a cap that scales at $0.20/product
+- [x] Acceptance: fixture product lists incl. opaque names + aliases; delta golden tests; zero-mention product renders shelf-led; judge cap enforced; `--products`/`--products-file` parity
+- [x] LIVE-VERIFIED 2026-07-23 against breville.com (openai only, 5 runs, $0.08-$0.12 each): delta table leads, absent product renders shelf-led with `aiRank: null`, `--products-file` with aliases + descriptors, HTML report, saved run carries `schema_version` 0.2 and no key material, MCP stdio lists 5 tools. The live runs found 6 real defects unit fixtures could not (see the module report); all fixed test-first against a checked-in fixture of the real answers.
+- [ ] Live multi-engine + `--grounded` shopping run (folds into the M17 smoke run)
+- OUT of scope (unchanged): ANY discovery (Shopify/feed/crawl), sampling, full-catalog runs, lint-feed cross-references
+
+### [ ] M12b - Shopping discovery adapters (DEFERRED - post-launch)
 
 Owner: ___ · PR: ___
 
 - [ ] `shopify.ts` (`/products.json`) + `feed.ts` (Google XML/CSV) → `ProductEntity[]`
-- [ ] sampler (category clustering, top-N, cap 20 SKUs); shopping query pack
-- [ ] reuse M10 (catalog entity source); `SkuReport`; cross-ref M14 findings
-- [ ] Acceptance: fixture catalog + feeds; seeded sampling determinism; graceful non-Shopify message
-- [ ] OUT of beta scope: VTEX/Woo, crawl discovery, full-catalog
+- [ ] sampler (category clustering, top-N, cap 20 SKUs)
+- [ ] builds ON M12a: discovery only constructs the `ProductEntity[]` M12a already consumes
+- [ ] OUT of scope: VTEX/Woo, crawl discovery, full-catalog
 
 ---
 
@@ -238,9 +259,9 @@ Owner: ___ · PR: ___
 
 Owner: setup · PR: (M15) · thin over M10 (owns final tool names)
 
-- [x] tools: check_visibility / audit_store / generate_buyer_queries / get_snapshot_diff (launch #1 4-tool set). `compare_competitors` DEFERRED to launch #2 with the CLI `compare` view (M11 parked it as "needs design"); `shopping_check` + `lint_feed` are launch #2 (M12/M14). The 4 final tool names are now authoritative.
+- [x] tools: check_visibility / audit_store / generate_buyer_queries / get_snapshot_diff (the 4 M15 shipped; `shopping_check` was added by M12a on 2026-07-23, so the launch set is FIVE). `compare_competitors` DEFERRED to launch #2 with the CLI `compare` view (M11 parked it as "needs design"); `lint_feed` stays deferred (M14). Tool names are authoritative.
 - [x] stdio + official SDK (`@modelcontextprotocol/sdk`, low-level `Server` + raw JSON-Schema, no zod); non-interactive semantics (`yes:true`, no confirm gate, default $0.50 cap + `max_cost` override, cap -> partial not throw); agent-written tool descriptions (when-to-use + cost hints); progress notifications wired to `runCheck`'s `ProgressEvent`s (real `done/total` fraction, only when the client sends a `progressToken`); snapshot path returned so the agent can reference the on-disk report.
-- [x] Acceptance: MCP-over-stdio integration test (in-memory transport, `initialize` -> `list_tools` -> `audit_store` over a mocked fetcher, zero network); tool JSON schemas snapshot-tested; 2 failure-mode tests (no-key `check_visibility` -> honest isError; `get_snapshot_diff` <2 snapshots -> honest note, no fabricated diff). Live-verified over real stdio: `initialize` + `tools/list` return the 4 tools, stderr clean of protocol pollution.
+- [x] Acceptance: MCP-over-stdio integration test (in-memory transport, `initialize` -> `list_tools` -> `audit_store` over a mocked fetcher, zero network); tool JSON schemas snapshot-tested; 2 failure-mode tests (no-key `check_visibility` -> honest isError; `get_snapshot_diff` <2 snapshots -> honest note, no fabricated diff). Live-verified over real stdio: `initialize` + `tools/list` return the tools (4 at M15, 5 once M12a added `shopping_check`), stderr clean of protocol pollution.
 - Module report: `src/mcp/` is 4 thin files - `index.ts` (stdio entrypoint `optifeed-mcp`), `server.ts` (`createServer(ctx)` registers the 4 tools over the low-level SDK), `tools.ts` (`TOOL_SPECS` + `callTool` dispatch, thin over `core/run` + `core/output` renderers), `deps.ts` (`ToolContext` + `defaultToolContext`, non-interactive dep construction). Two shared orchestration pieces were extracted into `core/run` first so `mcp/` never imports `cli/` (hard rule #1): `buildCheckDeps` (the judge+adapter+fs wiring the CLI already did - `cli/check.ts` now delegates to it, behavior pinned by M11's tests) and `runGenerateQueries` (discover -> resolveQueries, the front half of `runCheck`; the CLI `queries` command is read-only so this was genuinely new). Every tool payload carries `schema_version` (rule #2) and all honesty flags ride the envelope (rule #6). Two code-review fixes applied test-first: an all-invalid `engines` array now errors instead of silently billing every engine (mirrors the CLI `--engines` guard - a money bug), and progress reports a real monotonic fraction from the ask `done/total` instead of a hardcoded 0.5. New dep `@modelcontextprotocol/sdk` (pre-authorized). Still unverified live: a real multi-engine `check_visibility` end-to-end (only the audit path and the stdio handshake were exercised without keys) - folds into the M17 smoke test. Follow-ups logged from the end-of-module review (not blocking launch #1): (1) `check_visibility` has no `grounded`/`mode` param, so MCP agents cannot reach the CLI's `--grounded` flag - a conscious parity gap, add if asked. (2) `domain` is now validated at the MCP tool boundary (`isPlausibleDomain`), but the underlying `resolveStateDir` still joins `domain` into a path unvalidated - harden it in `core` so the CLI benefits too. (3) MCP writes state under HOME while the CLI prefers `<cwd>/.optifeed`, so `get_snapshot_diff` over MCP does not see CLI-written snapshots (documented deliberate choice in `mcp/index.ts`); revisit if agents and humans need shared per-brand history.
 
 ### [x] M16 - Agent surfaces + README (after M11/M15)

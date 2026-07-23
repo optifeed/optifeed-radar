@@ -14,7 +14,8 @@ import { loadEnvFile } from '../core/index.js';
 import { createFetcher, type Fetcher } from '../core/fetcher/index.js';
 import { nodeQueryFs, type QueryFs } from '../core/queries/index.js';
 import { nodeSnapshotFs, type SnapshotFs } from '../core/output/index.js';
-import type { RunCheckDeps } from '../core/run/index.js';
+import type { RunCheckDeps, RunShoppingDeps } from '../core/run/index.js';
+import type { EngineId } from '../core/types.js';
 
 /** Parsed `check` flags, normalized from commander options. */
 export interface CheckFlags {
@@ -35,6 +36,25 @@ export interface CheckFlags {
   brand?: string;
   category?: string;
   queries?: string;
+}
+
+/** Parsed `shopping` flags (M12a), normalized from commander options. */
+export interface ShoppingFlags {
+  yes?: boolean;
+  json?: boolean;
+  report?: string;
+  /** Comma-separated product names, in the merchant's ranking order. */
+  products?: string;
+  /** Path to a products file (name, aliases, descriptor). */
+  productsFile?: string;
+  engines?: EngineId[];
+  judge?: string;
+  maxCost?: number;
+  maxSetupCost?: number;
+  grounded?: boolean;
+  refresh?: boolean;
+  brand?: string;
+  category?: string;
 }
 
 /** All the process-level effects the CLI commands need, injectable for tests. */
@@ -58,6 +78,8 @@ export interface Runtime {
   queryFs: QueryFs;
   /** Override the check pipeline's injected deps (tests bypass real adapters). */
   checkDeps?: (flags: CheckFlags) => RunCheckDeps;
+  /** Override the shopping pipeline's injected deps (M12a), same purpose. */
+  shoppingDeps?: (flags: ShoppingFlags) => RunShoppingDeps;
   /**
    * Outcome of the `.env` auto-load, when a `.env` was present. Absent when
    * there was none - the ordinary case of keys exported in the shell.

@@ -56,6 +56,40 @@ export function rejectStrayArgs(
 }
 
 /**
+ * Reject a cost cap that cannot be enforced, before anything spends.
+ *
+ * `parseFloat` yields NaN for `--max-cost oops`, and EVERY CostGuard comparison
+ * against NaN is false - so a typo'd cap did not cap: it ran the command
+ * completely unbounded while the user believed they had set a limit. A cap that
+ * silently does nothing is worse than no cap, and hard rule #5 requires money to
+ * be spent only through an enforced guard. Zero and negatives are refused for
+ * the same reason: they are not caps anyone can run under, and the likeliest
+ * cause is a typo. Returns true when a flag was bad (the caller should stop).
+ */
+export function rejectUnusableCostCaps(
+  rt: Runtime,
+  caps: { maxCost?: number; maxSetupCost?: number },
+): boolean {
+  const named: [string, number | undefined][] = [
+    ['--max-cost', caps.maxCost],
+    ['--max-setup-cost', caps.maxSetupCost],
+  ];
+  for (const [flag, value] of named) {
+    if (value === undefined) continue;
+    if (!Number.isFinite(value) || value <= 0) {
+      rt.err(
+        `${flag} needs a positive number of dollars, for example ${flag} 0.50.\n` +
+          'Refusing to run: an unreadable cap would not cap anything, and the ' +
+          'run would spend without a limit.\n',
+      );
+      process.exitCode = 1;
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Parse `--engines a,b` into known engine ids via the shared classifier (same
  * drop-unknown / all-unknown policy the MCP tool uses). An all-unknown value
  * yields `[]`, which the action treats as an error (rather than silently
@@ -191,6 +225,9 @@ export function registerCheck(program: Command, rt: Runtime): void {
       }
 
       const flags = toFlags(options as Record<string, unknown>);
+
+      // Before anything else that could spend: a cap that cannot be enforced.
+      if (rejectUnusableCostCaps(rt, flags)) return;
 
       // `--engines` was given but nothing in it was recognized: error rather
       // than silently falling back to querying (and billing) every engine.
