@@ -18,7 +18,9 @@ and ACP/UCP feed linting stay FUTURE tense with a waitlist link (enforced by
 `/Users/erdem/workspace/optifeed-radar-docs/dev-plan.md`** (modules M0-M17 +
 the Global decisions section - read it before writing any code; it carries the
 same scope revision). If that path is not accessible in your session, ask
-before proceeding - do not guess module scope. `TASKS.md` tracks status only.
+before proceeding - do not guess module scope. `TASKS.md` lives in the same
+docs repo and tracks status only (it moved out of this repo on 2026-07-23, so
+the published package carries no internal build tracker).
 Implement one module per session unless told otherwise. Where this file and
 the plan disagree, the plan wins. Fuller product strategy and the messaging
 guide live in `/Users/erdem/workspace/optifeed-radar-docs/source-of-truth.html`.
