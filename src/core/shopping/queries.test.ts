@@ -73,7 +73,10 @@ describe('generateProductQueries', () => {
     expect(first.filter((p) => p.layer === 'visibility')).toHaveLength(3);
     expect(first.filter((p) => p.layer === 'reputation')).toHaveLength(1);
     expect(result.prompts.filter((p) => p.productIndex === 1)).toHaveLength(4);
-    expect(result.notes).toEqual([]);
+    // Presto X has no descriptor, so its questions came from the store
+    // category - reported, never silent. Aria 2 has one, so it is not named.
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes[0]).toContain('Presto X');
   });
 
   it('seeds the judge with the brand category, locale and the descriptors', async () => {
@@ -89,6 +92,51 @@ describe('generateProductQueries', () => {
     expect(prompt).toContain('en-US');
     expect(prompt).toContain('quiet home espresso machine');
     expect(judge.calls).toHaveLength(1);
+  });
+
+  // Live, 2026-07-23: an opaque product name with no descriptor ("Zephyr Q9
+  // Pro") at an espresso-machine store had the judge invent a robot-vacuum
+  // category from the name alone, and the merchant was then scored against
+  // questions from a category they do not sell into.
+  it('tells the judge not to guess a category from the product name', async () => {
+    const judge = judgeReturning(GOOD_RESPONSE);
+    await generateProductQueries(
+      PROFILE,
+      [{ name: 'Zephyr Q9 Pro' }],
+      { judge, guard: new CostGuard() },
+      opts,
+    );
+    const prompt = (judge.calls[0] ?? '').toLowerCase();
+    expect(prompt).toContain('never guess');
+    expect(prompt).toContain('store category');
+  });
+
+  it('gives the judge each product resolved subject, so it need not invent one', async () => {
+    const judge = judgeReturning(GOOD_RESPONSE);
+    await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard: new CostGuard() },
+      opts,
+    );
+    const prompt = judge.calls[0] ?? '';
+    // Aria 2 carries its own descriptor; Presto X has none, so it must be
+    // handed the store category rather than left for the model to guess.
+    expect(prompt).toContain('Aria 2 (a quiet home espresso machine)');
+    expect(prompt).toContain('Presto X (a home espresso machines)');
+  });
+
+  it('says which products were measured against the store category', async () => {
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge: judgeReturning(GOOD_RESPONSE), guard: new CostGuard() },
+      opts,
+    );
+    const notes = result.notes.join(' ');
+    expect(notes).toContain('Presto X');
+    expect(notes).toContain('home espresso machines');
+    expect(notes).not.toContain('Aria 2');
   });
 
   it('keys prompts by product index, not by the name the judge echoed', async () => {

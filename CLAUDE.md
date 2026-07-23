@@ -4,12 +4,15 @@ Open-source AI visibility checker: CLI + MCP server that asks real AI engines
 (OpenAI, Gemini, Perplexity, Claude) real buyer questions and scores whether a
 brand gets recommended. Runs locally, BYO API keys, MIT.
 
-**Scope (revised 2026-07-15): launch #1 is brand visibility only.** The
-commerce modules - M12 (shopping/SKU), M13 (protocol spike), M14 (lint-feed) -
-are DEFERRED to launch #2. Build scope = M0-M11 + M15-M17. Do not implement,
-stub, or scaffold M12-M14. M13/M14 were built and then removed on 2026-07-17
-(recoverable at `faf351f`); do not reintroduce them. SKU-level visibility and
-ACP/UCP feed checks are FUTURE tense in all copy, with a waitlist link only.
+**Scope (revised 2026-07-18, revision 2): the launch build is M0-M11 + M12a +
+M15-M17.** M12a (Shopping-lite: `shopping <domain> --products`, manually named
+products only) is IN and shipped. Still DEFERRED: M12b (catalog/feed discovery
+adapters), M13 (protocol spike), M14 (lint-feed). Do not implement, stub, or
+scaffold M12b/M13/M14; M13/M14 were built and then removed on 2026-07-17
+(recoverable at `faf351f`), do not reintroduce them. Copy rule that follows
+from this: the products a user NAMES are present tense; catalog/feed discovery
+and ACP/UCP feed linting stay FUTURE tense with a waitlist link (enforced by
+`test/copy/messaging-rules.ts`).
 
 **The module plan is authoritative and lives in the docs repo:
 `/Users/erdem/workspace/optifeed-radar-docs/dev-plan.md`** (modules M0-M17 +

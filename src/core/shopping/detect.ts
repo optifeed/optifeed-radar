@@ -28,6 +28,21 @@ const MAX_SHELF = 10;
 const MAX_NAME_LENGTH = 60;
 
 /**
+ * Most words a product name has. Measured against real answers: the longest
+ * genuine name seen was "Nespresso Lattissima or Creatista line" (5), while the
+ * feature bullets that used to leak onto the shelf ("Automatic milk steaming
+ * with adjustable temp and texture") run longer.
+ */
+const MAX_NAME_WORDS = 6;
+
+/**
+ * Share of a multi-word candidate's words that must be capitalized for it to
+ * read as a NAME rather than a sentence fragment. "Breville Bambino Plus" is
+ * 3 of 3; "Heats up in ~3 seconds" is 1 of 5.
+ */
+const MIN_CAPITALIZED_SHARE = 0.5;
+
+/**
  * How long an answer must be before "no list and no mention" is treated as
  * unclear rather than simply negative. A one-line "it depends" answer really
  * does recommend nothing; a 200+ character answer that our parser found no
@@ -84,7 +99,50 @@ const SECTION_PHRASES = [
   'comparison table',
   'other options',
   'quick picks',
+  // Feature and verdict words that survive the delimiter cut of a spec bullet:
+  // "Compact, reliable, and quiet" cuts to "Compact", "Downside: you still
+  // grind" cuts to "Downside". All observed on real answers (2026-07-23).
+  'compact',
+  'downside',
+  'downsides',
+  'upside',
+  'upsides',
+  'drawback',
+  'drawbacks',
+  'touchscreen',
+  'pros',
+  'cons',
+  'price',
+  'pricing',
+  'verdict',
+  'features',
+  'specs',
+  'specifications',
+  'warranty',
+  'design',
+  'performance',
+  'value',
+  'quality',
+  'caveat',
+  'tradeoff',
+  'trade-off',
 ];
+
+/** Words that open a price band rather than a product name. */
+const PRICE_LEADS = new Set([
+  'around',
+  'about',
+  'under',
+  'over',
+  'from',
+  'up',
+  'starting',
+  'approximately',
+  'roughly',
+  'budget',
+  'price',
+  'cost',
+]);
 
 /** Delimiters that end a product name and begin its blurb. */
 const DELIMITERS = [': ', ':', ' - ', ' -- ', ' | ', ' (', ', ', '; ', '. '];
@@ -100,13 +158,33 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-/** Strip a leading list marker or heading; returns null for an unstructured line. */
-function stripMarker(line: string): string | null {
+/**
+ * How a candidate line was marked up. Bold is the strongest signal that a line
+ * names a product; an UNMARKED line (a bare paragraph naming the product, with
+ * its features bulleted underneath - a real and common shape) is the weakest,
+ * so it has to clear a higher bar.
+ */
+type Marking = 'bold' | 'list' | 'unmarked';
+
+interface Candidate {
+  text: string;
+  marking: Marking;
+}
+
+/** Strip a leading list marker or heading; returns null for a blank line. */
+function stripMarker(line: string): Candidate | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
+  // Bold anywhere inside a marker is still bold: "1. **Bambino** - the pick"
+  // and "- **Bambino**" are the same signal as a bare "**Bambino**".
+  const as = (text: string, marking: Marking): Candidate | null => {
+    const inner = text.trim();
+    if (!inner) return null;
+    return { text: inner, marking: inner.startsWith('**') ? 'bold' : marking };
+  };
 
   if (trimmed.startsWith('#')) {
-    return trimmed.replace(/^#{1,6}\s*/, '').trim() || null;
+    return as(trimmed.replace(/^#{1,6}\s*/, ''), 'list');
   }
   // "1. ", "12) " - walked by hand rather than matched, so no regex state or
   // exec-style extraction is involved.
@@ -116,16 +194,17 @@ function stripMarker(line: string): string | null {
     const punct = trimmed[digits];
     const space = trimmed[digits + 1];
     if ((punct === '.' || punct === ')') && space === ' ') {
-      const rest = trimmed.slice(digits + 2).trim();
-      return rest === '' ? null : rest;
+      return as(trimmed.slice(digits + 2), 'list');
     }
   }
   for (const bullet of ['- ', '* ', '• ', '+ ']) {
-    if (trimmed.startsWith(bullet)) return trimmed.slice(bullet.length).trim();
+    if (trimmed.startsWith(bullet))
+      return as(trimmed.slice(bullet.length), 'list');
   }
-  // A bold lead-in with no marker at all ("**Aria 2** is the one to beat").
-  if (trimmed.startsWith('**')) return trimmed;
-  return null;
+  // A bare paragraph line. Real answers do name a product this way and bullet
+  // its features underneath, so these are candidates - but weak ones, held to
+  // the extra bar in `isPlausibleName`.
+  return as(trimmed, 'unmarked');
 }
 
 /** Whether `text` is an editorial slot label ("Best overall", "Budget pick"). */
@@ -146,15 +225,25 @@ function isSection(text: string): boolean {
   );
 }
 
+/** Whether a string opens like a proper name: a capital letter or a digit. */
+function startsLikeName(text: string): boolean {
+  const first = [...text.trim()].find((ch) => /[\p{L}\p{N}]/u.test(ch));
+  if (first === undefined) return false;
+  return /\p{N}/u.test(first) || first === first.toUpperCase();
+}
+
 /** Cut a candidate at its first delimiter, stepping past an editorial label. */
 function nameFromCandidate(candidate: string, depth = 0): string {
   const text = candidate.trim();
   if (!text) return '';
 
   // A bold run wins outright: engines bold the product name and nothing else.
-  if (text.startsWith('**')) {
+  // Its CONTENT still goes through the delimiter pass, because the bold often
+  // wraps the editorial label too ("**Best overall for beginners: Breville
+  // Barista Express Impress**" - live, 2026-07-23).
+  if (text.startsWith('**') && depth === 0) {
     const end = text.indexOf('**', 2);
-    if (end > 2) return stripMarkdown(text.slice(2, end));
+    if (end > 2) return nameFromCandidate(stripMarkdown(text.slice(2, end)), 1);
   }
 
   let cut = -1;
@@ -172,16 +261,61 @@ function nameFromCandidate(candidate: string, depth = 0): string {
   const right = text.slice(cut + delimiter.length);
   // "Best overall: Breville Bambino Plus" - the name is on the RIGHT of the
   // label. Bounded recursion so a chain of labels cannot loop.
+  //
+  // What follows a label is only taken when it READS as a name: a slot label is
+  // as often followed by its own justification as by a product ("Best overall
+  // (reliable, great app, strong mapping)" put "reliable" on a live shelf,
+  // 2026-07-23). A proper name starts with a capital or carries a model number.
   if (depth < 2 && right.trim() && isLabel(left)) {
-    return nameFromCandidate(right, depth + 1);
+    const behind = nameFromCandidate(right, depth + 1);
+    return startsLikeName(behind) ? behind : '';
   }
   return stripMarkdown(left);
 }
 
-function isPlausibleName(name: string): boolean {
+/**
+ * Whether a candidate reads as a NAME rather than as a sentence about a
+ * product. Real answers bullet a product's FEATURES under its name, and those
+ * bullets survive every structural test - they are bulleted, short enough, and
+ * start with a capital. What separates them is prose shape: they run long and
+ * their words are mostly lowercase ("Heats up in ~3 seconds", "Built-in grinder
+ * + auto milk steaming"), while a product name is title-cased or carries a
+ * model code.
+ *
+ * Words without letters (model numbers like "3200/4300") are neutral: they are
+ * neither evidence for nor against, so they leave the ratio alone.
+ */
+function readsAsName(name: string, marking: Marking): boolean {
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length > MAX_NAME_WORDS) return false;
+
+  // A price band read as a name: "Around $700-$800", "Under $500".
+  const lead = fold(words[0] ?? '').replace(/[^\p{L}]/gu, '');
+  if (PRICE_LEADS.has(lead)) return false;
+
+  if (words.length < 2) {
+    // One-word candidates are only trusted when the answer BOLDED them. A
+    // bulleted comparison writes its spec keys exactly like this - "Height:",
+    // "Corners:", "Bonus:" - and those went onto a real shelf as rival
+    // products (live, 2026-07-23). A genuinely one-word product name
+    // ("Bambino") is almost always bolded or numbered as a pick.
+    return marking === 'bold';
+  }
+
+  const alphabetic = words.filter((w) => /\p{L}/u.test(w));
+  if (alphabetic.length === 0) return true;
+  const capitalized = alphabetic.filter((w) => {
+    const first = [...w].find((ch) => /\p{L}/u.test(ch));
+    return first?.toUpperCase() === first;
+  }).length;
+  return capitalized / alphabetic.length > MIN_CAPITALIZED_SHARE;
+}
+
+function isPlausibleName(name: string, marking: Marking): boolean {
   if (name.length < 2 || name.length > MAX_NAME_LENGTH) return false;
   if (!/\p{L}/u.test(name)) return false;
-  return !isSection(name);
+  if (isSection(name)) return false;
+  return readsAsName(name, marking);
 }
 
 /**
@@ -192,22 +326,29 @@ function isPlausibleName(name: string): boolean {
  * paragraphs. Anything with no such structure yields an empty shelf, which is a
  * signal in itself - `analyzeProductAnswer` sends those to the judge rather
  * than reading them as "recommends nothing".
+ *
+ * What a candidate must survive to reach the shelf is `isPlausibleName`: real
+ * answers bullet a product's FEATURES underneath its name, and those bullets
+ * are structurally identical to a list of products. Live runs on 2026-07-23 put
+ * "Automatic milk steaming with adjustable temp and texture", "Compact" and
+ * "Height" on merchants' shelves as if they were rival products, which is what
+ * those filters exist to stop.
  */
 export function extractRecommendations(text: string): string[] {
-  const names: string[] = [];
+  const all: { name: string; marking: Marking }[] = [];
   const seen = new Set<string>();
   for (const line of text.split('\n')) {
     const candidate = stripMarker(line);
-    if (candidate === null || isSection(candidate)) continue;
-    const name = nameFromCandidate(candidate);
-    if (!isPlausibleName(name)) continue;
+    if (candidate === null || isSection(candidate.text)) continue;
+    const name = nameFromCandidate(candidate.text);
+    if (!isPlausibleName(name, candidate.marking)) continue;
     const key = fold(name);
     if (seen.has(key)) continue;
     seen.add(key);
-    names.push(name);
-    if (names.length >= MAX_SHELF) break;
+    all.push({ name, marking: candidate.marking });
   }
-  return names;
+
+  return all.slice(0, MAX_SHELF).map((c) => c.name);
 }
 
 /**

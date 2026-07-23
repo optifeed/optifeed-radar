@@ -146,7 +146,12 @@ function buildGenPrompt(
 
   const productLines = products.map((p, i) => {
     const bits = [`${i}: ${p.name}`];
-    if (p.descriptor) bits.push(`(a ${p.descriptor})`);
+    // The RESOLVED subject (its descriptor, else the store category), never
+    // just the name: handed a bare opaque name, a model invents a category and
+    // the merchant is then scored against a market they are not in (live,
+    // 2026-07-23, where "Zephyr Q9 Pro" became a robot vacuum).
+    const subject = subjectOf(p, profile);
+    if (subject) bits.push(`(a ${subject})`);
     if (p.aliases?.length) bits.push(`[also called: ${p.aliases.join(', ')}]`);
     return `- ${bits.join(' ')}`;
   });
@@ -163,6 +168,10 @@ function buildGenPrompt(
     '  question that DOES name the product, asking whether it is any good.',
     '',
     'Rules for every question:',
+    "- Take each product's category from its descriptor when it has one, and",
+    '  otherwise from the Store category below. NEVER guess a category from the',
+    '  product name: an opaque model name tells you nothing, and questions from',
+    '  the wrong category measure nothing about this store.',
     "- Write in the shopper's language, matching the Locale below.",
     '- Make each question self-contained: it is sent on its own, with no',
     '  earlier conversation and no back-references ("this product", "it").',
@@ -266,11 +275,15 @@ export async function generateProductQueries(
 
   const prompts: ProductPrompt[] = [];
   const missingSubject: string[] = [];
+  const borrowedCategory: string[] = [];
 
   products.forEach((product, productIndex) => {
     const terms = productTerms(product);
     const row = generated.get(productIndex);
     const subject = subjectOf(product, profile);
+    if (subject && !product.descriptor?.trim()) {
+      borrowedCategory.push(product.name);
+    }
 
     // Visibility prompts must not name the product - a prompt that names it
     // measures nothing about unprompted discovery. Reuses the query module's
@@ -301,6 +314,15 @@ export async function generateProductQueries(
       prompts.push({ productIndex, layer: 'reputation', prompt });
     }
   });
+
+  // A product with no descriptor was measured against the STORE's category,
+  // which is a real answer to a different question than the merchant may think
+  // they asked. Say which products those were, and what category they got.
+  if (borrowedCategory.length > 0 && profile.category?.trim()) {
+    notes.push(
+      `Category questions for ${borrowedCategory.join(', ')} were built from the store category "${profile.category.trim()}" (no descriptor given). Add a descriptor per product for questions that match what each one actually is.`,
+    );
+  }
 
   if (missingSubject.length > 0) {
     notes.push(

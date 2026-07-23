@@ -41,16 +41,48 @@ const BANNED: { needle: string; label: string; caseInsensitive?: boolean }[] = [
 ];
 
 /**
- * Present-tense Shopping claims - Shopping is roadmap (future tense only). This
- * list is illustrative, not exhaustive; the real structural guard is the
- * `waitlist` requirement below (any surface that says "shopping" must gate on a
- * waitlist). Add phrases here as they come up, but do not rely on it alone.
+ * What is still roadmap after scope revision 2 (2026-07-18).
+ *
+ * Shopping-lite SHIPPED, so present tense about the products a user NAMES is
+ * now correct and must not be flagged. What has NOT shipped is everything that
+ * would find those products for them (catalog/feed discovery) and feed linting
+ * against the agentic-commerce protocols. Those two are what the gate now
+ * guards, in both directions: no present-tense claim, and a waitlist link
+ * whenever they are mentioned.
  */
+const ROADMAP_TERMS = [
+  'catalog discovery',
+  'product discovery',
+  'feed linting',
+  'lint-feed',
+  'lint your feed',
+  'lints your feed',
+  'shopify import',
+];
+
+/** Present-tense claims about work that has not shipped. */
 const ROADMAP_PRESENT_TENSE = [
-  'shopping checks',
-  'shopping supports',
-  'shopping scores',
-  'now supports sku',
+  'lints your feed',
+  'lint your feed today',
+  'checks your feed',
+  'now supports feeds',
+];
+
+/**
+ * Claims that the tool finds products by itself. It does not: the merchant
+ * names them. This is the single most tempting overstatement in shopping copy,
+ * and it is the one a merchant would discover is false within one run.
+ */
+const FALSE_DISCOVERY = [
+  'scans your catalog',
+  'scan your catalog',
+  'reads your product feed',
+  'read your product feed',
+  'imports your shopify',
+  'import your shopify',
+  'finds your products',
+  'discovers your products',
+  'crawls your products',
 ];
 
 export function findMessagingViolations(
@@ -68,14 +100,25 @@ export function findMessagingViolations(
     if (hay.includes(needle)) violations.push(`banned: ${rule.label}`);
   }
 
-  if (opts.enforceRoadmapGate && lower.includes('shopping')) {
-    for (const phrase of ROADMAP_PRESENT_TENSE) {
+  if (opts.enforceRoadmapGate) {
+    // Never claim the tool finds the products - the merchant names them.
+    for (const phrase of FALSE_DISCOVERY) {
       if (lower.includes(phrase)) {
-        violations.push(`roadmap: present-tense Shopping claim ("${phrase}")`);
+        violations.push(`discovery: claims product discovery ("${phrase}")`);
       }
     }
-    if (!lower.includes('waitlist')) {
-      violations.push('waitlist: Shopping mentioned without a waitlist gate');
+    for (const phrase of ROADMAP_PRESENT_TENSE) {
+      if (lower.includes(phrase)) {
+        violations.push(`roadmap: present-tense claim ("${phrase}")`);
+      }
+    }
+    // Naming unshipped work is fine, but only alongside the waitlist link that
+    // makes it a roadmap statement rather than a promise.
+    const namesRoadmap = ROADMAP_TERMS.some((term) => lower.includes(term));
+    if (namesRoadmap && !lower.includes('waitlist')) {
+      violations.push(
+        'waitlist: roadmap work mentioned without a waitlist gate',
+      );
     }
   }
 

@@ -70,6 +70,16 @@ grounded only for the answers where it actually searched: asking for grounded
 mode is a request a model can decline, so the report says when an engine
 searched on only some of its answers. METHODOLOGY.md has the formula.
 
+One level down, `shopping` does the same thing for individual products you
+name (beta). You list your products best first, and that order is treated as
+your own ranking: the headline result is the delta between it and the order
+the engines actually recommend, so you can see that your best seller never
+comes up while your third product carries the shelf. Each product is checked
+twice over - category buying questions that never name it, and questions that
+do - and when a product is absent the report leads with the rival products the
+engines named instead, which is the more useful half of a zero. You name the
+products; nothing is imported or crawled.
+
 ## Use it from your AI agents (MCP)
 
 The `optifeed-mcp` server exposes the same capability to AI agents. It runs
@@ -141,7 +151,7 @@ At launch the published package will also run via npx (no clone needed):
 ```
 
 Once it is connected, ask your AI agent in plain language. These map onto the
-four tools and the arguments they accept:
+five tools and the arguments they accept:
 
 - "Run a free AI-readiness audit on yourbrand.com." -> `audit_store`, no keys,
   no cost.
@@ -151,6 +161,9 @@ four tools and the arguments they accept:
   `check_visibility` with `quick` and `max_cost`.
 - "Check yourbrand.com on OpenAI and Perplexity only." -> `check_visibility`
   with `engines`.
+- "Check whether AI recommends my products: Aria 2, Presto X, Brew Mini, in
+  that order, for yourbrand.com." -> `shopping_check`, which answers with the
+  delta between your order and the engines'.
 - "What changed since the last visibility run on yourbrand.com?" ->
   `get_snapshot_diff`, free, and it needs two saved runs before it can compare.
 
@@ -158,6 +171,8 @@ Start with the audit prompt: it needs no keys, so it confirms the server is
 wired up before anything spends API credit. `check_visibility` runs
 non-interactively (no confirmation prompt over MCP), so the `max_cost` cap is
 what bounds a run your AI agent starts - it defaults to $0.50.
+`shopping_check` is bigger, so its default cap scales with the list, at $0.20
+per product you name.
 
 ## Tools and cost
 
@@ -165,6 +180,7 @@ what bounds a run your AI agent starts - it defaults to $0.50.
 | ------- | ------------------------ | --------------------------------------------------------------- | ------------------------------ |
 | CLI     | `audit`                  | Zero-key AI-readiness check (robots, llms.txt, schema, sitemap) | Free, no AI calls              |
 | CLI     | `check`                  | Full pipeline: buyer prompts, engines, AI Visibility Score      | BYO keys                       |
+| CLI     | `shopping`               | Products you name: your ranking vs AI's, and the rival shelf    | BYO keys                       |
 | CLI     | `diff`                   | What changed between your last two runs                         | Free (reads a saved snapshot)  |
 | CLI     | `sources`                | Domains the AI cited, and your share of voice                   | Free (reads a saved snapshot)  |
 | CLI     | `queries`                | Show or export your buyer-prompt pack                           | Free                           |
@@ -172,6 +188,7 @@ what bounds a run your AI agent starts - it defaults to $0.50.
 | MCP     | `check_visibility`       | Run a visibility check for a domain                             | BYO keys                       |
 | MCP     | `audit_store`            | Run the zero-key readiness audit                                | Free                           |
 | MCP     | `generate_buyer_queries` | Produce the buyer-prompt pack                                   | BYO keys (usually under $0.05) |
+| MCP     | `shopping_check`         | Same product check, for your AI agents                          | BYO keys                       |
 | MCP     | `get_snapshot_diff`      | Compare two saved runs                                          | Free                           |
 
 Cost transparency: `audit` queries no AI engines and costs nothing. `check`
@@ -188,6 +205,14 @@ spends your own API credit. Measured on real runs (2026-07-20, `--quick` =
 Your cost varies with engine, prompt-pack size, and provider pricing. Grounded
 runs cost roughly 3x parametric ones, because web search is billed on top of
 tokens: Google charges per search query, and one answer can trigger several.
+
+`shopping` has not been measured on a live multi-engine run yet, so no figure
+is published for it. Its shape is known: each product costs about 4 prompts on
+every engine with a key, and products in the same category share their category
+questions, which are asked once and scored for each product. Extrapolating from
+the measured `check` runs above puts a four-engine run near $0.20 per product,
+which is what the MCP tool caps at by default. Use `--max-cost` and start with
+two or three products.
 
 How long it takes, measured the same way (2026-07-22):
 
@@ -229,12 +254,31 @@ AI agent can run it unattended).
 ```bash
 npx tsx src/cli/index.ts audit example.com      # free readiness score
 npx tsx src/cli/index.ts check example.com --quick --yes
+npx tsx src/cli/index.ts shopping example.com --products "Aria 2, Presto X" --yes
 npx tsx src/cli/index.ts diff example.com        # what changed since last run
 npx tsx src/cli/index.ts sources example.com     # who the AI cited
 npx tsx src/cli/index.ts config                  # which keys are set
 ```
 
 `config` reports only whether each key is present, never the key value.
+
+For `shopping`, the order of `--products` is your own ranking, best first (up
+to 10 per run). A file gives each product a descriptor, which is what rescues
+an opaque product name - "Aria 2" tells an engine nothing, "quiet home espresso
+machine" tells it everything:
+
+```yaml
+products:
+  - name: Aria 2
+    aliases: [Aria II]
+    descriptor: quiet home espresso machine
+  - name: Presto X
+    descriptor: fast dual-boiler espresso machine
+```
+
+```bash
+npx tsx src/cli/index.ts shopping example.com --products-file products.yml --yes
+```
 
 ## FAQ
 
@@ -271,8 +315,8 @@ One-liners for awesome-mcp-servers, ClawHub, and Smithery listings:
 - **Optifeed Radar** - Ask real AI engines real buyer questions and score
   whether a brand gets recommended. CLI plus MCP server, runs locally, BYO keys.
 - **Optifeed Radar (MCP)** - `check_visibility`, `audit_store`,
-  `generate_buyer_queries`, and `get_snapshot_diff` for measuring brand AI
-  visibility (GEO / AEO) from your AI agents.
+  `generate_buyer_queries`, `shopping_check`, and `get_snapshot_diff` for
+  measuring brand and product AI visibility (GEO / AEO) from your AI agents.
 
 Search intents this serves: AI visibility checker, does AI recommend my brand,
 generative engine optimization (GEO) tool, answer engine optimization (AEO),
@@ -283,14 +327,14 @@ ChatGPT brand visibility, AI-SEO, MCP server for brand visibility.
 - It is a point-in-time check, not continuous monitoring.
 - Scores are estimates from sampling and vary between runs - they are not a
   guaranteed ranking.
-- It does not check SKU-level product visibility or product feeds yet.
-- `check` spends your own API credit; only `audit` is free.
+- It does not find your products for you. `shopping` checks the products you
+  name, up to 10 per run; there is no catalog or feed import.
+- `check` and `shopping` spend your own API credit; only `audit` is free.
 - It is not a traditional SEO rank tracker.
 
-Optifeed Shopping will extend this to SKU-level visibility and product-feed
-checks against the Agentic Commerce Protocol (ACP) and the Universal Commerce
-Protocol (UCP). It is a separate, later release - join the waitlist at
-optifeed.com.
+Catalog discovery (pulling your products from a store or a feed) and feed
+linting against the Agentic Commerce Protocol (ACP) and the Universal Commerce
+Protocol (UCP) are later releases - join the waitlist at optifeed.com.
 
 ## Status
 

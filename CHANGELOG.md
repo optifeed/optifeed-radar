@@ -20,6 +20,30 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+### Added
+
+- `shopping <domain> --products "A, B, C"` (beta): a product-level check for
+  the products you name, best first. There is no catalog or feed import - you
+  name them, and that order is treated as your own ranking. The headline is the
+  delta between it and the order engines actually recommend ("your #1 is AI's
+  #4"; "your best seller never appears, your #3 carries the shelf"). Each
+  product is measured twice over, mirroring the brand check one level down:
+  category buying questions that never name it (product visibility) and
+  questions that do (product reputation). When a product is absent the report
+  leads with the rival products the engines named instead, because a bare zero
+  is the least useful half of that result. `--products-file` takes a name,
+  aliases, and a descriptor per product; the descriptor is what rescues an
+  opaque product name. Capped at 10 products per run, with a shopping-specific
+  judge budget of 50% (vs the brand check's 30%, since product names are
+  messier) that is reported in the run's sampling metadata. Runs are saved to
+  `<stateDir>/shopping/`, deliberately apart from the check snapshots `diff`
+  reads.
+- `shopping_check` MCP tool over the same orchestrator, non-interactive like
+  the rest. Its default cost cap scales with the list at $0.20 per product,
+  rather than the flat $0.50 a check gets: a flat cap would truncate most
+  multi-product runs into a partial ranking that still reads like a complete
+  one.
+
 ### Changed
 
 - Scoring methodology version 3: the composite's retrieval premium is earned by

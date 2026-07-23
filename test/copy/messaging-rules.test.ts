@@ -29,23 +29,46 @@ describe('findMessagingViolations', () => {
     expect(v.some((m) => m.includes('free-vs-paid'))).toBe(true);
   });
 
-  it('flags present-tense Shopping claims', () => {
-    const v = findMessagingViolations('Optifeed Shopping checks your SKUs', {
+  // Scope revision 2 (2026-07-18): Shopping-lite SHIPPED, so present tense is
+  // now correct for the products a user names. What stays roadmap is
+  // everything the tool does not do: finding products by itself, and linting
+  // product feeds.
+  it('accepts present-tense copy about the products a user names', () => {
+    const ok = 'shopping checks the products you name, in your own order';
+    expect(
+      findMessagingViolations(ok, { enforceRoadmapGate: true }),
+    ).toHaveLength(0);
+  });
+
+  it('flags a claim that it discovers products by itself', () => {
+    for (const claim of [
+      'Optifeed Radar scans your catalog',
+      'it reads your product feed automatically',
+      'Shopping imports your Shopify products',
+    ]) {
+      const v = findMessagingViolations(claim, { enforceRoadmapGate: true });
+      expect(v.some((m) => m.includes('discovery'))).toBe(true);
+    }
+  });
+
+  it('flags a present-tense feed-linting claim', () => {
+    const v = findMessagingViolations('Optifeed Radar lints your feed', {
       enforceRoadmapGate: true,
     });
     expect(v.some((m) => m.includes('roadmap'))).toBe(true);
   });
 
-  it('requires a waitlist when Shopping is mentioned under the gate', () => {
-    const v = findMessagingViolations('Optifeed Shopping is coming later', {
-      enforceRoadmapGate: true,
-    });
+  it('requires a waitlist when roadmap work is named', () => {
+    const v = findMessagingViolations(
+      'Catalog discovery and feed linting are coming later',
+      { enforceRoadmapGate: true },
+    );
     expect(v.some((m) => m.includes('waitlist'))).toBe(true);
   });
 
   it('passes clean roadmap copy that gates on a waitlist', () => {
     const ok =
-      'Optifeed Shopping will extend this later - join the waitlist at optifeed.com';
+      'Catalog discovery and feed linting will arrive later - join the waitlist at optifeed.com';
     expect(
       findMessagingViolations(ok, { enforceRoadmapGate: true }),
     ).toHaveLength(0);

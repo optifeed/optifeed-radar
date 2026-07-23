@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { EngineAnswer } from '../types.js';
 import { analyzeProductAnswer, extractRecommendations } from './detect.js';
@@ -170,5 +171,142 @@ describe('analyzeProductAnswer', () => {
     expect(result.engine).toBe('perplexity');
     expect(result.prompt).toBe('best quiet home espresso machine');
     expect(result.citedDomains).toEqual(['example.com']);
+  });
+});
+
+/**
+ * Real OpenAI answers captured from a live `shopping breville.com` run
+ * (2026-07-23). Unit fixtures written by hand had every list item BE a product;
+ * real answers bold the product and then bullet its FEATURES underneath, which
+ * the first version of the parser happily read as more products ("Automatic
+ * milk steaming with adjustable temp and texture" appeared on the shelf).
+ */
+const REAL_ANSWERS = JSON.parse(
+  readFileSync(
+    new URL(
+      '../../../test/fixtures/shopping/real-answers.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+) as EngineAnswer[];
+
+describe('extractRecommendations over real engine answers', () => {
+  it('reads the products and not the feature bullets under them', () => {
+    const withFeatureBullets = REAL_ANSWERS.find((a) =>
+      a.text.includes('Automatic milk steaming'),
+    )!;
+    const shelf = extractRecommendations(withFeatureBullets.text);
+
+    expect(shelf).toContain('Breville Bambino Plus');
+    expect(shelf.some((s) => s.includes('Automatic milk steaming'))).toBe(
+      false,
+    );
+    expect(shelf).not.toContain('Compact');
+    expect(shelf).not.toContain('Downside');
+    expect(shelf.some((s) => s.toLowerCase().startsWith('heats up'))).toBe(
+      false,
+    );
+  });
+
+  it('keeps real product names with punctuation and model codes', () => {
+    const shelf = REAL_ANSWERS.flatMap((a) => extractRecommendations(a.text));
+    expect(shelf).toContain('De’Longhi Dedica Arte');
+    expect(shelf.some((s) => s.includes('Philips 3200/4300'))).toBe(true);
+  });
+
+  it('never returns a whole sentence as a product', () => {
+    for (const answer of REAL_ANSWERS) {
+      for (const name of extractRecommendations(answer.text)) {
+        expect(name.split(/\s+/).length).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  it('scores the merchant product against the real shelf', () => {
+    const answer = REAL_ANSWERS.find((a) =>
+      a.text.includes('Automatic milk steaming'),
+    )!;
+    const result = analyzeProductAnswer(answer, { name: 'Bambino Plus' });
+    expect(result.mentioned).toBe(true);
+    expect(result.shelf.length).toBeGreaterThan(1);
+    expect(result.shelf.length).toBeLessThan(8);
+  });
+});
+
+describe('extractRecommendations rejects spec lines', () => {
+  // Live, 2026-07-23: an answer comparing robot vacuums put "Height", "Corners",
+  // "Bonus" and "Navigation" on a merchant's shelf as if they were rival
+  // products. They are spec labels in a bulleted comparison.
+  it('drops single-word spec labels from a comparison list', () => {
+    const text = [
+      '- Height: ~8.2 cm (one of the lowest)',
+      '- Corners: good, especially with improved edge algorithms',
+      '- Bonus: very good value for performance',
+      '- Navigation: a slimmer sensor setup',
+    ].join('\n');
+    expect(extractRecommendations(text)).toEqual([]);
+  });
+
+  // Live, 2026-07-23: "**Best overall (reliable, great app, strong mapping)**"
+  // put "reliable" on the shelf. The editorial-label split handed back whatever
+  // followed the label without checking that it reads as a name.
+  it('drops a spec word sitting behind an editorial label', () => {
+    const text = [
+      '**Best overall (reliable, great app, strong mapping)**',
+      '**Best balance of size, speed, and quality**',
+    ].join('\n');
+    expect(extractRecommendations(text)).toEqual([]);
+  });
+
+  it('still takes the product from behind an editorial label', () => {
+    const text =
+      '- **Best budget: Gaggia Classic Pro**\n- Best overall: Aria 2';
+    expect(extractRecommendations(text)).toEqual([
+      'Gaggia Classic Pro',
+      'Aria 2',
+    ]);
+  });
+
+  it('drops a price range read as a name', () => {
+    expect(extractRecommendations('- Around $700-$800 for this tier')).toEqual(
+      [],
+    );
+  });
+
+  it('still keeps a one-word product name when the answer bolds it', () => {
+    const text = '1. **Bambino** - the compact pick\n2. **Silvia** - a classic';
+    expect(extractRecommendations(text)).toEqual(['Bambino', 'Silvia']);
+  });
+});
+
+describe('extractRecommendations rejects feature lines', () => {
+  it('drops a bullet that reads as a sentence rather than a name', () => {
+    const text = [
+      '- Heats up in ~3 seconds (thermojet system)',
+      '- Built-in grinder + auto milk steaming',
+      '- One-touch drinks, quick startup',
+    ].join('\n');
+    expect(extractRecommendations(text)).toEqual([]);
+  });
+
+  it('drops a spec word standing on its own', () => {
+    const text =
+      '- Compact, reliable, and quiet\n- Touchscreen, guided workflow';
+    expect(extractRecommendations(text)).toEqual([]);
+  });
+
+  it('keeps the bolded product names and not their feature bullets', () => {
+    const text = [
+      '**Breville Bambino Plus**',
+      '- Probably the best pick',
+      '- Fast heat up',
+      '**Gaggia Classic Pro**',
+      '- Cheaper option',
+    ].join('\n');
+    expect(extractRecommendations(text)).toEqual([
+      'Breville Bambino Plus',
+      'Gaggia Classic Pro',
+    ]);
   });
 });

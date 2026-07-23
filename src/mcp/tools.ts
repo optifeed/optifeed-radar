@@ -128,9 +128,11 @@ export const TOOL_SPECS: ToolSpec[] = [
       'actually recommend, plus the rival products filling the shelf. Use for ' +
       'SKU-level questions; use check_visibility for the brand as a whole. ' +
       'There is no product discovery, so the list must be supplied. ' +
-      'COST: spends real API money and is larger than a brand check (roughly ' +
-      '$0.15-$0.25 per product across engines); capped at $0.20 per product by ' +
-      'default - pass max_cost to change it.',
+      'COST: spends real API money and is larger than a brand check. Each ' +
+      'product costs about 4 prompts on every engine with a key, which ' +
+      'extrapolates from measured check runs to roughly $0.20 per product ' +
+      'across four engines; capped at $0.20 per product by default - pass ' +
+      'max_cost to change it.',
     inputSchema: {
       type: 'object',
       properties: {
