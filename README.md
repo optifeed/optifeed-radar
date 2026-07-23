@@ -70,6 +70,14 @@ grounded only for the answers where it actually searched: asking for grounded
 mode is a request a model can decline, so the report says when an engine
 searched on only some of its answers. METHODOLOGY.md has the formula.
 
+The questions match what you sell. If you make your own products, buyers are
+asked what to buy and you are measured against rival makers. If you are a shop
+selling other companies' products, buyers are asked where to buy and you are
+measured against rival shops - product questions get answered with
+manufacturers, so scoring a shop on them reports a zero that says nothing about
+the shop. The tool works this out from your site and stores it as
+`businessType` in `profile.json`; edit it if it guessed wrong.
+
 One level down, `shopping` does the same thing for individual products you
 name (beta). You list your products best first, and that order is treated as
 your own ranking: the headline result is the delta between it and the order

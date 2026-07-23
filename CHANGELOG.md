@@ -46,6 +46,19 @@ score is only comparable against snapshots taken with the same method.
 
 ### Changed
 
+- Buyer questions now follow the axis your business is on. Discovery classifies
+  the site as a shop, a maker, or a service, and a shop is asked where-to-buy
+  questions ("where can I buy a piano?", "which shop sells acoustic guitars?")
+  and measured against rival shops. Product questions are answered with
+  manufacturers, so a shop scored on them collects a 0 that says nothing about
+  the shop: measured on one music retailer, makers were named Yamaha 21 /
+  Roland 16 / Casio 10 / Kawai 8 across 32 answers, and not one rival shop was
+  named even once. After the change the same store's table reads Zuhal Muzik 5,
+  MyDukkan 5, Senkop Muzik 4, itself 1. Nothing changes for a maker, whose pack
+  is byte-identical to before. The classification is stored as `businessType`
+  in `profile.json`; edit it if it is wrong and it survives `--refresh`. A
+  score is only comparable within one axis.
+
 - Scoring methodology version 3: the composite's retrieval premium is earned by
   answers that actually retrieved, not granted to any engine asked for grounded
   mode. Asking is not searching - a live run had 7 of 8 ChatGPT answers run no
@@ -59,6 +72,14 @@ score is only comparable against snapshots taken with the same method.
   read as a real visibility change.
 
 ### Fixed
+
+- Competitor discovery could return your own brand as a rival under a variant
+  spelling ("Do Re Muzik Market" for doremusic), which put you in your own
+  share-of-voice table and inflated a competitor that is you. The judge is now
+  told your aliases and asked to exclude variant spellings and translations,
+  and the answer is filtered through the same accent- and case-aware matcher
+  the scoring uses. The filter runs before the eight-name cap, so a judge that
+  opens with three spellings of your brand no longer costs you three rivals.
 
 - The MCP server resolved the home directory from `$HOME`, which Windows does
   not set, so its state directory fell back to whatever working directory the

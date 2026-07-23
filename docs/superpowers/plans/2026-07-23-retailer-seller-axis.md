@@ -26,16 +26,16 @@ are untouched.
 
 ## File Structure
 
-| File | Responsibility | Change |
-| --- | --- | --- |
-| `src/core/types.ts` | shared types | add `BusinessType`, `BrandProfile.businessType`, extend `ProfileField`, add `'where-to-buy'` to `QueryIntent` |
-| `src/core/discovery/competitors.ts` | the one discovery judge call | parse `{businessType, competitors}`, keep bare-array fallback, ask for rivals of the right kind |
-| `src/core/discovery/profile.ts` | profile assembly + merge | carry `businessType` through `buildProfile`/`mergeProfile` |
-| `src/core/discovery/persist.ts` | profile load validation | vouch for `businessType` when present |
-| `src/core/discovery/discover.ts` | discovery orchestration | pass the classified type into the profile |
-| `src/core/queries/generate.ts` | pack shape + generation prompt | per-type weights/guidance, gate `where-to-buy`, facts line |
-| `METHODOLOGY.md` | published methodology | document the two pack shapes |
-| `TASKS.md` | status | record the live verification |
+| File                                | Responsibility                 | Change                                                                                                        |
+| ----------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `src/core/types.ts`                 | shared types                   | add `BusinessType`, `BrandProfile.businessType`, extend `ProfileField`, add `'where-to-buy'` to `QueryIntent` |
+| `src/core/discovery/competitors.ts` | the one discovery judge call   | parse `{businessType, competitors}`, keep bare-array fallback, ask for rivals of the right kind               |
+| `src/core/discovery/profile.ts`     | profile assembly + merge       | carry `businessType` through `buildProfile`/`mergeProfile`                                                    |
+| `src/core/discovery/persist.ts`     | profile load validation        | vouch for `businessType` when present                                                                         |
+| `src/core/discovery/discover.ts`    | discovery orchestration        | pass the classified type into the profile                                                                     |
+| `src/core/queries/generate.ts`      | pack shape + generation prompt | per-type weights/guidance, gate `where-to-buy`, facts line                                                    |
+| `METHODOLOGY.md`                    | published methodology          | document the two pack shapes                                                                                  |
+| `TASKS.md`                          | status                         | record the live verification                                                                                  |
 
 ---
 
@@ -159,7 +159,7 @@ In `src/core/discovery/profile.ts`, add `'businessType'` to the end of
 and inside `buildProfile`, after the `competitors` source line:
 
 ```ts
-  if (input.businessType) sources.businessType = 'llm';
+if (input.businessType) sources.businessType = 'llm';
 ```
 
 and in the returned object, directly after `competitors,`:
@@ -172,20 +172,20 @@ In `src/core/discovery/persist.ts`, inside `validateProfile` after
 `v.array(obj, 'competitors');`:
 
 ```ts
-  // Optional, but a consumer (M5 activeIntents) reads it, so vouch for the
-  // value when present rather than letting a typo silently pick an axis.
-  const businessType = (obj as Record<string, unknown>).businessType;
-  if (
-    businessType !== undefined &&
-    businessType !== 'retailer' &&
-    businessType !== 'maker' &&
-    businessType !== 'service'
-  ) {
-    throw new ProfileParseError(
-      path,
-      new Error('businessType must be retailer, maker or service'),
-    );
-  }
+// Optional, but a consumer (M5 activeIntents) reads it, so vouch for the
+// value when present rather than letting a typo silently pick an axis.
+const businessType = (obj as Record<string, unknown>).businessType;
+if (
+  businessType !== undefined &&
+  businessType !== 'retailer' &&
+  businessType !== 'maker' &&
+  businessType !== 'service'
+) {
+  throw new ProfileParseError(
+    path,
+    new Error('businessType must be retailer, maker or service'),
+  );
+}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -218,7 +218,10 @@ it('parses businessType and competitors from one judge call', async () => {
   );
   const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
 
-  const result = await discoverCompetitors({ brand: 'doremusic' }, { judge, guard });
+  const result = await discoverCompetitors(
+    { brand: 'doremusic' },
+    { judge, guard },
+  );
 
   expect(result.businessType).toBe('retailer');
   expect(result.competitors).toEqual(['Zuhal Müzik', 'MyDukkan']);
@@ -319,8 +322,8 @@ export function parseDiscovery(
 Replace the two closing lines of the `try` block in `discoverCompetitors`:
 
 ```ts
-    const selfTerms = [input.brand, ...(input.aliases ?? [])];
-    return parseDiscovery(res.text, selfTerms);
+const selfTerms = [input.brand, ...(input.aliases ?? [])];
+return parseDiscovery(res.text, selfTerms);
 ```
 
 In `buildPrompt`, replace the two closing instruction lines with:
@@ -394,13 +397,13 @@ In `src/core/discovery/discover.ts`, alongside the existing `competitors` and
 `competitorNote` locals:
 
 ```ts
-  let businessType: BusinessType | undefined;
+let businessType: BusinessType | undefined;
 ```
 
 inside the `if (deps.judge)` branch after `competitors = res.competitors;`:
 
 ```ts
-    businessType = res.businessType;
+businessType = res.businessType;
 ```
 
 and in the `buildProfile` call:
@@ -505,12 +508,7 @@ In `src/core/types.ts`:
 
 ```ts
 export type QueryIntent =
-  | 'best-of'
-  | 'where-to-buy'
-  | 'comparison'
-  | 'problem'
-  | 'trust'
-  | 'local';
+  'best-of' | 'where-to-buy' | 'comparison' | 'problem' | 'trust' | 'local';
 ```
 
 In `src/core/queries/generate.ts`:
@@ -541,7 +539,10 @@ function isRetailer(profile: BrandProfile): boolean {
  * rewrite-stable form, Profound fanout study); `where-to-buy` leads harder for
  * a retailer because it is the only intent whose answers name shops at all.
  */
-export const INTENT_WEIGHTS: Record<'maker' | 'retailer', Record<QueryIntent, number>> = {
+export const INTENT_WEIGHTS: Record<
+  'maker' | 'retailer',
+  Record<QueryIntent, number>
+> = {
   maker: {
     'best-of': 2,
     'where-to-buy': 0,
@@ -620,10 +621,14 @@ it('tells the judge the brand is a shop and asks for shop-shaped questions', asy
   const judge = recordingJudge('{"where-to-buy":["nereden alınır?"]}');
   const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
 
-  await generateQueries(retailer, { judge, guard }, {
-    count: 8,
-    generatedAt: AT,
-  });
+  await generateQueries(
+    retailer,
+    { judge, guard },
+    {
+      count: 8,
+      generatedAt: AT,
+    },
+  );
 
   expect(judge.prompts[0]).toContain('sells products made by other companies');
   expect(judge.prompts[0]).toContain('where to buy');
@@ -633,12 +638,18 @@ it('keeps the maker generation prompt free of shop framing', async () => {
   const judge = recordingJudge('{"best-of":["best beginner piano?"]}');
   const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
 
-  await generateQueries({ ...retailer, businessType: 'maker' }, { judge, guard }, {
-    count: 8,
-    generatedAt: AT,
-  });
+  await generateQueries(
+    { ...retailer, businessType: 'maker' },
+    { judge, guard },
+    {
+      count: 8,
+      generatedAt: AT,
+    },
+  );
 
-  expect(judge.prompts[0]).not.toContain('sells products made by other companies');
+  expect(judge.prompts[0]).not.toContain(
+    'sells products made by other companies',
+  );
 });
 ```
 
@@ -652,7 +663,10 @@ Expected: FAIL - neither phrase appears in the generated prompt.
 Replace the single `INTENT_GUIDANCE` map with a per-axis pair:
 
 ```ts
-const INTENT_GUIDANCE: Record<'maker' | 'retailer', Record<QueryIntent, string>> = {
+const INTENT_GUIDANCE: Record<
+  'maker' | 'retailer',
+  Record<QueryIntent, string>
+> = {
   maker: {
     'best-of': 'shortlist questions ("what are the best ... for ...")',
     'where-to-buy': 'unused on the maker axis',
@@ -679,13 +693,13 @@ In `buildGenPrompt`, take the axis, read guidance from it, and add one facts
 line for a retailer directly after the `Brand:` line:
 
 ```ts
-  if (axis === 'retailer') {
-    facts.push(
-      'Business: a shop. It sells products made by other companies, so buyers',
-      'ask where to buy, not what to buy. Never write questions whose natural',
-      'answer is a product brand.',
-    );
-  }
+if (axis === 'retailer') {
+  facts.push(
+    'Business: a shop. It sells products made by other companies, so buyers',
+    'ask where to buy, not what to buy. Never write questions whose natural',
+    'answer is a product brand.',
+  );
+}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -724,7 +738,10 @@ it('writes a retailer pack led by where-to-buy (golden)', async () => {
 
   expect(toYaml(pack)).toBe(
     readFileSync(
-      new URL('../../../test/fixtures/queries/golden-retailer-pack.yml', import.meta.url),
+      new URL(
+        '../../../test/fixtures/queries/golden-retailer-pack.yml',
+        import.meta.url,
+      ),
       'utf8',
     ),
   );
