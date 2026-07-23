@@ -19,6 +19,8 @@ function fakeAdapter(
     /** Override so the adapter can use a model that IS in MODEL_PRICING. */
     model?: string;
     supportsGrounded?: boolean;
+    /** Hold the call open so concurrent asks really overlap in flight. */
+    delayMs?: number;
   } = {},
 ): EngineAdapter {
   const model = opts.model ?? `${id}-model`;
@@ -29,6 +31,9 @@ function fakeAdapter(
     supportsGrounded: opts.supportsGrounded,
     available: () => opts.available ?? true,
     async ask(prompt): Promise<EngineAnswer> {
+      if (opts.delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, opts.delayMs));
+      }
       if (opts.failOn?.(prompt)) throw new Error(`${id} boom`);
       return {
         engine: id,
@@ -513,5 +518,62 @@ describe('askAll', () => {
     const reason = result.partialEngines[0]!.reason.toLowerCase();
     expect(reason).toContain('boom'); // the real error
     expect(reason).toContain('cost cap'); // and the cap, not blamed on the error
+  });
+});
+
+describe('reservations follow observed cost, not a stale estimate', () => {
+  // Found live 2026-07-23, three independent reproductions: a run capped at
+  // $0.30 spent $0.048 and refused 4 of its 8 prompts; over MCP a $0.45 cap
+  // answered gemini 2 of 8, so that report's "gemini 100/100" rested on two
+  // answers and still fed the headline. `projectedCost` reserved
+  // `Math.max(estimate * margin, observedAvg)`, so once the static estimate
+  // ran higher than reality the observed figure could NEVER take over - the
+  // opposite of what the comment above it promised. gpt-5.3-chat-latest
+  // estimates $0.0790 per call against a measured ~$0.0117.
+  it('does not refuse prompts a budget can comfortably afford', async () => {
+    const realCost = 0.0117;
+    const prompts = Array.from({ length: 8 }, (_, i) => `q${i + 1}`);
+    // 3.2x headroom over the real spend of 8 * $0.0117 = $0.0936.
+    const guard = new CostGuard({ maxCostUsd: 0.3 });
+
+    const res = await askAll(
+      prompts,
+      [
+        fakeAdapter('openai', {
+          costUsd: realCost,
+          model: 'gpt-5.3-chat-latest',
+          delayMs: 5,
+        }),
+      ],
+      { guard },
+    );
+
+    expect(res.answers).toHaveLength(8);
+    expect(res.partialEngines).toEqual([]);
+    expect(guard.costCapped).toBe(false);
+  });
+
+  // The cap still has to hold when the budget genuinely cannot cover the run:
+  // adapting to observed cost must buy coverage, never breach (hard rule #5).
+  it('still refuses prompts once the budget really is gone', async () => {
+    const prompts = Array.from({ length: 8 }, (_, i) => `q${i + 1}`);
+    const guard = new CostGuard({ maxCostUsd: 0.05 });
+
+    const res = await askAll(
+      prompts,
+      [
+        fakeAdapter('openai', {
+          costUsd: 0.0117,
+          model: 'gpt-5.3-chat-latest',
+          delayMs: 5,
+        }),
+      ],
+      { guard },
+    );
+
+    expect(res.answers.length).toBeLessThan(8);
+    expect(guard.costCapped).toBe(true);
+    expect(guard.spentUsd).toBeLessThanOrEqual(0.05);
+    expect(res.partialEngines[0]?.reason).toContain('cost cap');
   });
 });

@@ -138,30 +138,55 @@ export async function askAll(
       // concurrent wave could be admitted against headroom that could not pay
       // for it. Once a call has completed we know better, so authorize against
       // the observed cost (hard rule #5: respect --max-cost).
-      let observedTotal = 0;
       let observedCount = 0;
+      let observedMax = 0;
       const projectedCost = (): number => {
-        const observedAvg =
-          observedCount > 0 ? observedTotal / observedCount : 0;
-        // Until this engine has answered once its cost is a GUESS, and a guess
-        // that lands low is money already spent that the cap cannot claw back.
-        // Live 2026-07-20, even with corrected token assumptions, first calls
-        // came in up to ~1.3x their reservation and four concurrent engines
-        // each contributed one such call, taking a $0.20 cap to $0.2322.
-        // The margin applies ONLY while blind: once a real cost is known the
-        // observed figure takes over, so a long run does not keep
-        // over-reserving and refusing calls it can afford.
-        const margin = observedCount === 0 ? UNMEASURED_CALL_MARGIN : 1;
         // `supportsGrounded` gates this the same way the adapter does: an
         // engine that cannot search is not reserved for searches it will never
         // run, even under --grounded (rule #6 - no fake precision).
         const willSearch =
           opts.mode === 'grounded' &&
           (adapter.kind === 'grounded' || adapter.supportsGrounded === true);
-        return Math.max(
-          estimateCall(adapter.model, willSearch) * margin,
-          observedAvg,
-        );
+
+        // Blind: the cost is a GUESS, and a guess that lands low is money
+        // already spent that the cap cannot claw back. Live 2026-07-20, even
+        // with corrected token assumptions, first calls came in up to ~1.3x
+        // their reservation and four concurrent engines each contributed one
+        // such call, taking a $0.20 cap to $0.2322 - hence the margin.
+        if (observedCount === 0) {
+          return (
+            estimateCall(adapter.model, willSearch) * UNMEASURED_CALL_MARGIN
+          );
+        }
+
+        // Measured: reserve the DEAREST call this engine has actually made,
+        // and stop consulting the static estimate entirely.
+        //
+        // Keeping the estimate as a floor (`Math.max(estimate, observedAvg)`)
+        // meant the observed figure only ever took over when it was HIGHER,
+        // so an estimate that ran high could never be corrected by reality.
+        // Found live 2026-07-23 in three independent runs: a $0.30 cap spent
+        // $0.048 and refused 4 of 8 prompts, and over MCP a $0.45 cap answered
+        // gemini 2 of 8, leaving a headline score resting on two answers.
+        // gpt-5.3-chat-latest estimates $0.0790 a call against a measured
+        // ~$0.0117, so the cap was rationing against a number 6.75x too big.
+        //
+        // The MAX rather than the mean: costs vary per answer, and reserving
+        // the dearest one seen keeps headroom for the next call being pricier
+        // than average without reintroducing a number nothing measured.
+        //
+        // A SEARCHING call keeps the estimate as a floor, because there the
+        // observed maximum is not a trustworthy ceiling: the per-search fee
+        // dominates and its count swings hard. Live measurements show 2 to 6
+        // searches on one engine, and OpenAI declining to search at all on 6
+        // of 8 answers - so a no-search answer would set a low observedMax and
+        // then badly under-reserve the next answer that runs six searches.
+        // Under-reserving a fee-bearing call is exactly how --max-cost was
+        // breached by 74% on 2026-07-20, so grounded keeps the safe number.
+        if (willSearch) {
+          return Math.max(observedMax, estimateCall(adapter.model, true));
+        }
+        return observedMax;
       };
 
       const askOne = async (prompt: string): Promise<Settled> => {
@@ -195,7 +220,7 @@ export async function askAll(
             // Settle, never record: settling releases the reservation this call
             // is holding and books the real figure in its place.
             guard?.settle(reserved, answer.costUsd);
-            observedTotal += answer.costUsd;
+            observedMax = Math.max(observedMax, answer.costUsd);
             observedCount += 1;
             return { kind: 'ok', answer };
           } catch (err) {
