@@ -102,18 +102,35 @@ export interface VisibilityEnvelope {
 }
 
 /**
+ * Anything a run produced that carries honesty flags: the check envelope, the
+ * shopping envelope (M12a), and any future artifact with the same signals.
+ *
+ * Structural rather than a `Pick` of one envelope so the ONE partial predicate
+ * serves every artifact - the M8 lesson is that a second, hand-rolled version of
+ * this check eventually enumerates a SUBSET of the signals and relaunders a
+ * partial run as complete.
+ */
+export interface PartialRunLike {
+  costCapped?: boolean;
+  degraded?: boolean;
+  skippedEngines?: { engine: EngineId; reason: string }[];
+  partialEngines?: PartialEngine[];
+  /**
+   * The headline score, for artifacts that have one. `null` means the run
+   * measured nothing; absent means this artifact has no single score (a
+   * shopping run reports a ranking delta and per-product numbers instead).
+   */
+  score?: number | null;
+}
+
+/**
  * Whether a run's score is a partial sample rather than a full-confidence
  * measurement: cost-capped, degraded, missing whole engines, or an engine that
  * answered only some prompts. The single
  * source of truth for {@link failUnder} and {@link diffEnvelopes} so they never
  * present a partial run as complete (hard rule #6).
  */
-export function isPartialRun(
-  run: Pick<
-    VisibilityEnvelope,
-    'costCapped' | 'degraded' | 'skippedEngines' | 'partialEngines' | 'score'
-  >,
-): boolean {
+export function isPartialRun(run: PartialRunLike): boolean {
   return (
     run.costCapped === true ||
     run.degraded === true ||
@@ -141,7 +158,7 @@ export function isPartialRun(
  * honesty must call this rather than listing fields, so the NEXT signal is
  * carried automatically (hard rule #6).
  */
-export function honestyFields(env: VisibilityEnvelope): Partial<RunHonesty> {
+export function honestyFields(env: PartialRunLike): Partial<RunHonesty> {
   const out: Partial<RunHonesty> = {};
   if (env.costCapped) out.costCapped = true;
   if (env.degraded) out.degraded = true;
@@ -161,12 +178,7 @@ export function honestyFields(env: VisibilityEnvelope): Partial<RunHonesty> {
  * named three causes after a fourth existed, so a partialEngines-only run was
  * explained by three things that did not happen.
  */
-export function partialCauses(
-  run: Pick<
-    VisibilityEnvelope,
-    'costCapped' | 'degraded' | 'skippedEngines' | 'partialEngines' | 'score'
-  >,
-): string[] {
+export function partialCauses(run: PartialRunLike): string[] {
   const causes: string[] = [];
   if (run.score === null) causes.push('nothing measured');
   if (run.costCapped === true) causes.push('cost-capped');

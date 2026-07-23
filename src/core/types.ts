@@ -67,6 +67,27 @@ export interface BrandProfile {
   sources?: ProfileSources;
 }
 
+/**
+ * One product the merchant named for a `shopping` run (M12a).
+ *
+ * There is no discovery: the merchant types this list, and its ORDER is their
+ * own ranking of the products (index 0 = their #1). That belief is the thing
+ * discovery could never capture, and the delta against the ranking AI engines
+ * actually show is the headline of a shopping run.
+ */
+export interface ProductEntity {
+  /** The product name as a shopper would see it, e.g. "Aria 2". */
+  name: string;
+  /** Other names the same product goes by ("Aria II"), matched at scoring. */
+  aliases?: string[];
+  /**
+   * What the product IS ("quiet home espresso machine"). Rescues opaque names:
+   * without it, a name like "Aria 2" tells the query generator nothing about
+   * which category prompts would surface it.
+   */
+  descriptor?: string;
+}
+
 /** Buyer-question intent categories for generated queries (M5). */
 export type QueryIntent =
   'best-of' | 'comparison' | 'problem' | 'trust' | 'local';

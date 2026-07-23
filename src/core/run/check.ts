@@ -63,6 +63,11 @@ export interface ConfirmContext {
   nPrompts: number;
   /** Engines that will be asked (available ones). */
   engines: EngineId[];
+  /**
+   * Products this run covers, for a `shopping` run. Absent on a brand check -
+   * the gate then describes prompts and engines only, as it always has.
+   */
+  nProducts?: number;
 }
 
 /** Injected collaborators. Anything that spends or hits the network lives here. */
@@ -305,8 +310,14 @@ export async function runCheck(
   };
 }
 
-/** Best-effort cost estimate; undefined when no judge or an unpriced model. */
-function priceRun(
+/**
+ * Best-effort cost estimate; undefined when no judge or an unpriced model.
+ *
+ * Exported so the `shopping` orchestrator quotes its confirm gate exactly the
+ * way `check` does - a second copy would drift, and the gate is the only place
+ * a user sees a number before money is spent.
+ */
+export function priceRun(
   nPrompts: number,
   availableEngines: EngineAdapter[],
   judge?: JudgeClient,

@@ -12,7 +12,11 @@ import {
   retrievalLine,
   varianceNote,
 } from './variance.js';
-import { isPartialRun, type VisibilityEnvelope } from './envelope.js';
+import {
+  isPartialRun,
+  type PartialRunLike,
+  type VisibilityEnvelope,
+} from './envelope.js';
 import { AUDIT_ONLY_NOTE, FOOTER_CTA } from './footer.js';
 import { spendLine } from './spend.js';
 
@@ -290,8 +294,12 @@ export function renderSourcesText(
   return lines.join('\n');
 }
 
-/** Human-readable honesty notes for a partial/degraded run (rule #6). */
-export function honestyNotes(env: VisibilityEnvelope): string[] {
+/**
+ * Human-readable honesty notes for a partial/degraded run (rule #6). Takes the
+ * structural {@link PartialRunLike} so the check envelope and the shopping
+ * envelope produce the SAME notes from the same flags.
+ */
+export function honestyNotes(env: PartialRunLike): string[] {
   if (!isPartialRun(env)) return [];
   const notes: string[] = [];
   if (env.costCapped) {
