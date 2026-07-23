@@ -9,7 +9,7 @@
  */
 import { CostGuard } from '../costs.js';
 import { type Fetcher, extractPage } from '../fetcher/index.js';
-import type { BrandProfile, JudgeClient } from '../types.js';
+import type { BrandProfile, BusinessType, JudgeClient } from '../types.js';
 import { discoverCompetitors } from './competitors.js';
 import { extractSignals } from './extract.js';
 import {
@@ -171,6 +171,7 @@ export async function discover(
 
   let competitors: string[] = [];
   let competitorNote: string | undefined;
+  let businessType: BusinessType | undefined;
   if (deps.judge) {
     const res = await discoverCompetitors(
       {
@@ -183,6 +184,7 @@ export async function discover(
       { judge: deps.judge, guard },
     );
     competitors = res.competitors;
+    businessType = res.businessType;
     competitorNote = res.skipped;
   } else {
     competitorNote = 'no judge configured';
@@ -192,6 +194,7 @@ export async function discover(
     domain,
     signals,
     competitors,
+    ...(businessType ? { businessType } : {}),
     generatedAt: now(),
   });
   const profile = existing ? mergeProfile(existing, fresh) : fresh;

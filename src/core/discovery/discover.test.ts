@@ -117,6 +117,24 @@ describe('discover', () => {
     expect(result.profile.competitors).toEqual(['Estes']);
   });
 
+  it('persists the businessType the discovery call returned', async () => {
+    const { fetcher } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const j = judge('{"businessType":"retailer","competitors":["Rival Shop"]}');
+    const { fs } = memFs();
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.profile.businessType).toBe('retailer');
+    expect(result.profile.sources?.businessType).toBe('llm');
+    expect(result.profile.competitors).toEqual(['Rival Shop']);
+  });
+
   it('discovers a full profile from a schema-rich site and persists it', async () => {
     const { fetcher, calls } = fakeFetcher({
       'https://acme.example/': fixture('schema-rich.html'),
