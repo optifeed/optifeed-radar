@@ -237,13 +237,28 @@ function nameFromCandidate(candidate: string, depth = 0): string {
   const text = candidate.trim();
   if (!text) return '';
 
-  // A bold run wins outright: engines bold the product name and nothing else.
-  // Its CONTENT still goes through the delimiter pass, because the bold often
-  // wraps the editorial label too ("**Best overall for beginners: Breville
-  // Barista Express Impress**" - live, 2026-07-23).
+  // A bold run usually holds the product name and nothing else, so its content
+  // is what we read - but only after checking what the bold actually contains.
+  // Two real shapes:
+  //   "**Best overall for beginners: Breville Barista Express Impress**"
+  //       -> the label is INSIDE the bold; the delimiter pass finds the name.
+  //   "**Overall**: Breville Bambino Plus"
+  //       -> the bold holds ONLY the label; the name is AFTER it, and reading
+  //          the bold alone put "Overall" on the shelf as a rival product.
   if (text.startsWith('**') && depth === 0) {
     const end = text.indexOf('**', 2);
-    if (end > 2) return nameFromCandidate(stripMarkdown(text.slice(2, end)), 1);
+    if (end > 2) {
+      const bolded = stripMarkdown(text.slice(2, end));
+      const after = text.slice(end + 2).trim();
+      // A bolded label with a name after it: read the whole line instead, so
+      // the label pass can step over the label to the name.
+      if (isLabel(bolded) && after) {
+        return nameFromCandidate(`${bolded}${after}`, depth);
+      }
+      // A bolded label with nothing after it names no product at all.
+      if (isLabel(bolded) && !after) return '';
+      return nameFromCandidate(bolded, 1);
+    }
   }
 
   let cut = -1;
@@ -388,6 +403,16 @@ function isRiskyName(name: string): boolean {
   return fold(name).trim().split(/\s+/).filter(Boolean).length < 2;
 }
 
+/**
+ * Whether ANY term this product answers to is risky. Matching runs over the
+ * name and its aliases alike, so a multi-word name with a one-word alias
+ * ("Aria 2 Pro" / "Aria") can be matched through the risky term and must still
+ * reach the judge.
+ */
+function hasRiskyTerm(terms: string[]): boolean {
+  return terms.some(isRiskyName);
+}
+
 /** Analyze one engine answer for one product (deterministic pass 1). */
 export function analyzeProductAnswer(
   answer: EngineAnswer,
@@ -422,7 +447,7 @@ export function analyzeProductAnswer(
   const position = base.mentioned && shelfIndex >= 0 ? shelfIndex + 1 : null;
 
   const ambiguous = base.mentioned
-    ? position === null || isRiskyName(product.name)
+    ? position === null || hasRiskyTerm(terms)
     : // No mention AND no structure we could parse, on an answer long enough to
       // be recommending something: pass 1 cannot tell "recommends nothing" from
       // "recommends in prose we did not parse". Ask the judge.

@@ -25,7 +25,7 @@ visibility / GEO / AEO check:
 
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for the
   products the user names, best first; the headline is the delta between that
-  order and the order engines actually recommend. Max 10 products, about 4
+  order and the order engines actually recommend. Max 10 products, up to 4
   prompts each per engine, so cap it with `--max-cost`.
 
 Report scores as estimates from sampling; engines vary between runs. Report

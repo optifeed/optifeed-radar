@@ -520,6 +520,17 @@ describe('check command', () => {
   // `--report dore.html` but npm swallowed the flag, leaving `dore.html` as a
   // stray positional. `check` accepted it, ran, and SPENT money while silently
   // ignoring the argument. A stray arg is a mistake; fail loudly, before spend.
+  describe('rejects an unusable cost cap', () => {
+    // NaN disables every CostGuard comparison, so a typo'd cap ran uncapped.
+    it('refuses --max-cost that is not a number', async () => {
+      const rt = testRuntime();
+      await run(rt, ['check', 'acme.example', '--max-cost', 'oops', '--yes']);
+      expect(rt.errors.join('')).toContain('--max-cost');
+      expect(process.exitCode).toBe(1);
+      expect(rt.output.join('')).toBe('');
+    });
+  });
+
   describe('rejects stray arguments', () => {
     it('errors (exit 1) and does not run when given an extra positional', async () => {
       const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });

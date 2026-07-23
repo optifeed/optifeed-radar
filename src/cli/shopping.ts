@@ -34,7 +34,7 @@ import {
   type RunShoppingDeps,
 } from '../core/run/index.js';
 import type { EngineId } from '../core/types.js';
-import { rejectStrayArgs } from './check.js';
+import { rejectStrayArgs, rejectUnusableCostCaps } from './check.js';
 import { createProgressReporter } from './progress.js';
 import type { Runtime, ShoppingFlags } from './runtime.js';
 
@@ -169,6 +169,10 @@ export function registerShopping(program: Command, rt: Runtime): void {
       }
 
       const flags = toFlags(options as Record<string, unknown>);
+
+      // Before anything else that could spend: a cap that cannot be enforced
+      // (see rejectUnusableCostCaps - NaN silently disables the guard).
+      if (rejectUnusableCostCaps(rt, flags)) return;
 
       // One product source, explicitly chosen. A silent precedence rule would
       // quietly ignore half of what the user typed.

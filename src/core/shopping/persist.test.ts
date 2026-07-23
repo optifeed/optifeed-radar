@@ -152,6 +152,56 @@ describe('loadShoppingRun', () => {
     );
   });
 
+  // A loader that vouches only for the top-level containers gives false
+  // confidence: the first nested field a renderer dereferences crashes three
+  // layers away instead of failing here (CLAUDE.md, M8 lesson #3).
+  it('rejects a hand edit inside sampling', async () => {
+    const broken = envelope() as unknown as Record<string, unknown>;
+    broken.sampling = { nProducts: 1, judged: 0 }; // varianceNote et al removed
+    const { fs } = memFs({
+      '/state/shopping/a.json': JSON.stringify(broken),
+    });
+    await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
+      ShoppingRunParseError,
+    );
+  });
+
+  it('rejects a sku missing a field the report reads', async () => {
+    const broken = JSON.parse(JSON.stringify(envelope())) as {
+      skus: Record<string, unknown>[];
+    };
+    delete broken.skus[0]!.categoryPrompts;
+    const { fs } = memFs({
+      '/state/shopping/a.json': JSON.stringify(broken),
+    });
+    await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
+      /categoryPrompts/,
+    );
+  });
+
+  it('rejects a ranking row missing its ranks', async () => {
+    const broken = JSON.parse(JSON.stringify(envelope())) as {
+      rankingDelta: Record<string, unknown>[];
+    };
+    delete broken.rankingDelta[0]!.merchantRank;
+    const { fs } = memFs({
+      '/state/shopping/a.json': JSON.stringify(broken),
+    });
+    await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
+      ShoppingRunParseError,
+    );
+  });
+
+  it('rejects an honesty flag of the wrong type', async () => {
+    const broken = { ...envelope(), costCapped: 'yes' };
+    const { fs } = memFs({
+      '/state/shopping/a.json': JSON.stringify(broken),
+    });
+    await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
+      ShoppingRunParseError,
+    );
+  });
+
   it('rejects a file that is not JSON at all', async () => {
     const { fs } = memFs({ '/state/shopping/a.json': 'not json' });
     await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(

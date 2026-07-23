@@ -72,6 +72,24 @@ const ROADMAP_TERMS = [
   'shopify import',
 ];
 
+/**
+ * Verbs that turn a roadmap term into a claim it exists today. Checked as
+ * "<roadmap term> <verb>", so the waitlist link cannot launder a
+ * present-tense claim ("Catalog discovery is available - join the waitlist").
+ */
+const PRESENT_TENSE_VERBS = [
+  'is available',
+  'are available',
+  'is supported',
+  'are supported',
+  'is here',
+  'are here',
+  'is live',
+  'are live',
+  'works',
+  'ships today',
+];
+
 /** Present-tense claims about work that has not shipped. */
 const ROADMAP_PRESENT_TENSE = [
   'lints your feed',
@@ -122,6 +140,14 @@ export function findMessagingViolations(
     for (const phrase of ROADMAP_PRESENT_TENSE) {
       if (lower.includes(phrase)) {
         violations.push(`roadmap: present-tense claim ("${phrase}")`);
+      }
+    }
+    // A roadmap term stated as a present capability, however it is gated.
+    for (const term of ROADMAP_TERMS) {
+      for (const verb of PRESENT_TENSE_VERBS) {
+        if (lower.includes(`${term} ${verb}`)) {
+          violations.push(`roadmap: present-tense claim ("${term} ${verb}")`);
+        }
       }
     }
     // Naming unshipped work is fine, but only alongside the waitlist link that

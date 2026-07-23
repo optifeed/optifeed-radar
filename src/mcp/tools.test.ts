@@ -8,6 +8,7 @@ import type { FetchLike } from '../core/fetcher/index.js';
 import type { EngineAdapter } from '../core/engines/index.js';
 import { profilePath, type ProfileFs } from '../core/discovery/index.js';
 import { queriesPath, toYaml, type QueryFs } from '../core/queries/index.js';
+import { shoppingDir } from '../core/shopping/index.js';
 import {
   nodeSnapshotFs,
   snapshotFileName,
@@ -547,7 +548,9 @@ describe('shopping_check', () => {
     expect(prose).toContain('Your ranking vs AI:');
     expect(prose).toContain(FOOTER_CTA);
     expect(prose).not.toContain(ESC);
-    expect(prose).toContain('/state/shopping');
+    // The rendered path is whatever node:path produced, so compare against the
+    // same helper - normalizing here would just reintroduce the separator bug.
+    expect(prose).toContain(shoppingDir(STATE));
   });
 
   it('accepts product objects with aliases and a descriptor', async () => {

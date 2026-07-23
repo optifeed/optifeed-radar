@@ -91,11 +91,12 @@ can exceed the cap by at most one unmeasured call per engine; any overshoot is
 always reported. Confirm the cost with the user before running `check` on a
 large prompt pack or with `--grounded`.
 
-A `shopping` run is bigger than a check: about 4 prompts per product on every
-engine with a key, so start with two or three products and `--max-cost`. It
-has not been measured live yet, so quote no figure for it; extrapolating from
-the check numbers above puts a four-engine run near $0.20 per product, which
-is what the MCP tool caps at per product by default.
+A `shopping` run is bigger than a check: up to 4 prompts per product on every
+engine with a key (products that share a category share their category
+questions, which are asked once), so start with two or three products and
+`--max-cost`. No shopping run has been measured across multiple engines yet,
+so do not quote a cost figure for it. What IS fixed: the MCP tool caps at
+$0.20 per product by default.
 
 Catalog discovery (importing products from a store or a feed) and product-feed
 linting are on the roadmap, not shipped - join the waitlist at optifeed.com.

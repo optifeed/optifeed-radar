@@ -265,6 +265,43 @@ describe('shopping command', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  // `parseFloat("oops")` is NaN, and every CostGuard comparison against NaN is
+  // false - so a typo'd cap silently ran UNCAPPED. Hard rule #5 says money is
+  // spent only through an enforced guard.
+  it('refuses to run when the cost cap is not a number', async () => {
+    for (const flag of ['--max-cost', '--max-setup-cost']) {
+      const rt = testRuntime();
+      await run(rt, [
+        'shopping',
+        'acme.example',
+        '--products',
+        'Aria 2',
+        flag,
+        'oops',
+        '--yes',
+      ]);
+      expect(rt.errors.join('')).toContain(flag);
+      expect(process.exitCode).toBe(1);
+      expect(rt.output.join('')).toBe('');
+      process.exitCode = 0;
+    }
+  });
+
+  it('rejects a zero or negative cost cap', async () => {
+    const rt = testRuntime();
+    await run(rt, [
+      'shopping',
+      'acme.example',
+      '--products',
+      'Aria 2',
+      '--max-cost',
+      '0',
+      '--yes',
+    ]);
+    expect(process.exitCode).toBe(1);
+    expect(rt.output.join('')).toBe('');
+  });
+
   it('rejects a stray positional argument before spending', async () => {
     const rt = testRuntime();
     await run(rt, ['shopping', 'acme.example', 'products.yml', '--yes']);

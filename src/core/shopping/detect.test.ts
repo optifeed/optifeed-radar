@@ -133,6 +133,17 @@ describe('analyzeProductAnswer', () => {
     expect(result.ambiguous).toBe(true);
   });
 
+  // Matching runs over name AND aliases, so a single-word ALIAS is exactly as
+  // easy to hit by accident as a single-word name - and skipped the judge.
+  it('flags a match made through a risky single-word alias', () => {
+    const result = analyzeProductAnswer(
+      answer('1. **Aria** - the compact pick\n2. **Breville Bambino Plus**'),
+      { name: 'Aria 2 Pro', aliases: ['Aria'] },
+    );
+    expect(result.mentioned).toBe(true);
+    expect(result.ambiguous).toBe(true);
+  });
+
   it('flags a single-word product name as ambiguous when matched', () => {
     const result = analyzeProductAnswer(
       answer('1. **Bambino** - great value\n2. **Silvia**'),
@@ -266,6 +277,25 @@ describe('extractRecommendations rejects spec lines', () => {
       'Gaggia Classic Pro',
       'Aria 2',
     ]);
+  });
+
+  // The bold span can hold ONLY the label, with the delimiter and the real name
+  // outside it: "**Overall**: Breville Bambino Plus". Unwrapping the bold and
+  // discarding the rest left "Overall" - a word this module treats as an
+  // editorial label everywhere else - sitting on the shelf as a rival product.
+  it('takes the product when only the label is bolded', () => {
+    const text = [
+      '**Overall**: Breville Bambino Plus',
+      '**Budget pick**: Gaggia Classic Pro',
+    ].join('\n');
+    expect(extractRecommendations(text)).toEqual([
+      'Breville Bambino Plus',
+      'Gaggia Classic Pro',
+    ]);
+  });
+
+  it('drops a bolded label with nothing after it', () => {
+    expect(extractRecommendations('**Overall**\n**Runner-up**')).toEqual([]);
   });
 
   it('drops a price range read as a name', () => {

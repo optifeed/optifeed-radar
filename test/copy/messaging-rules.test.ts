@@ -72,6 +72,19 @@ describe('findMessagingViolations', () => {
     expect(v.some((m) => m.includes('roadmap'))).toBe(true);
   });
 
+  // A waitlist link does not make a present-tense claim true: "Catalog
+  // discovery is available - join the waitlist" satisfied the gate while
+  // advertising a capability that does not exist.
+  it('flags a roadmap capability claimed as available, waitlist or not', () => {
+    for (const claim of [
+      'Catalog discovery is available - join the waitlist at optifeed.com',
+      'Feed linting is supported today - join the waitlist at optifeed.com',
+    ]) {
+      const v = findMessagingViolations(claim, { enforceRoadmapGate: true });
+      expect(v.some((m) => m.includes('roadmap'))).toBe(true);
+    }
+  });
+
   it('requires a waitlist when roadmap work is named', () => {
     const v = findMessagingViolations(
       'Catalog discovery and feed linting are coming later',

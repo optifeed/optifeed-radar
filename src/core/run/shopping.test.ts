@@ -1,3 +1,4 @@
+import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CostGuard } from '../costs.js';
 import {
@@ -106,7 +107,9 @@ function memFs(seed: Record<string, string> = {}) {
     },
     async readdir(path: string) {
       if (!dirs.has(path)) notFound();
-      const prefix = `${path}/`;
+      // Keys come from node:path `join`, so the prefix has to use the same
+      // separator the platform produced (Windows CI).
+      const prefix = path.endsWith(sep) ? path : `${path}${sep}`;
       return [...files.keys()]
         .filter((f) => f.startsWith(prefix))
         .map((f) => f.slice(prefix.length));

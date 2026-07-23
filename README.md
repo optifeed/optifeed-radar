@@ -342,7 +342,8 @@ ChatGPT brand visibility, AI-SEO, MCP server for brand visibility.
 
 Catalog discovery (pulling your products from a store or a feed) and feed
 linting against the Agentic Commerce Protocol (ACP) and the Universal Commerce
-Protocol (UCP) are later releases - join the waitlist at optifeed.com.
+Protocol (UCP) will arrive in later releases - join the waitlist at
+optifeed.com.
 
 ## Status
 

@@ -133,7 +133,56 @@ function validate(raw: unknown, path: string): ShoppingEnvelope {
   v.array(obj, 'skus');
   v.array(obj, 'answers');
   v.array(obj, 'notes');
-  v.objectField(obj, 'sampling');
+
+  // Nested fields the renderers dereference directly. Validating only the
+  // top-level containers would let a hand-edited file load "cleanly" and then
+  // crash inside a report - the loader must vouch for every field a consumer
+  // reads, not for the shape it happens to be wrapped in.
+  const sampling = v.object(obj.sampling, 'sampling');
+  for (const key of ['nProducts', 'nPrompts', 'nAnswers', 'nRows', 'judged']) {
+    v.number(sampling, key);
+  }
+  v.number(sampling, 'judgeRateCap');
+  v.string(sampling, 'varianceNote');
+
+  (obj.skus as unknown[]).forEach((raw, i) => {
+    const sku = v.object(raw, `sku ${i}`);
+    v.string(sku, 'product');
+    v.number(sku, 'merchantRank');
+    v.number(sku, 'categoryPrompts');
+    v.number(sku, 'answers');
+    v.number(sku, 'mentions');
+    v.numberOrNull(sku, 'visibility');
+    v.array(sku, 'engines');
+    v.array(sku, 'shelf');
+  });
+
+  (obj.rankingDelta as unknown[]).forEach((raw, i) => {
+    const row = v.object(raw, `rankingDelta ${i}`);
+    v.string(row, 'product');
+    v.number(row, 'merchantRank');
+    v.numberOrNull(row, 'aiRank');
+    v.number(row, 'answers');
+  });
+
+  // Honesty flags: present-but-wrong-typed is worse than absent, since
+  // `isPartialRun` reads them to decide whether the run was complete.
+  for (const flag of ['costCapped', 'degraded']) {
+    if (
+      flag in obj &&
+      obj[flag] !== undefined &&
+      typeof obj[flag] !== 'boolean'
+    ) {
+      throw new ShoppingRunParseError(
+        path,
+        new Error(`${flag} must be a boolean`),
+      );
+    }
+  }
+  for (const list of ['skippedEngines', 'partialEngines']) {
+    if (list in obj && obj[list] !== undefined) v.array(obj, list);
+  }
+
   if ('spend' in obj && obj.spend !== undefined) {
     const spend = v.object(obj.spend, 'spend');
     v.number(spend, 'setupUsd');
