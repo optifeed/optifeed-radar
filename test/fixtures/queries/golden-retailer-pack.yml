@@ -1,0 +1,28 @@
+schema_version: "0.2"
+domain: do-re.example
+queries:
+  - id: q1
+    intent: where-to-buy
+    prompt: Turkiye de piyano nereden alinir?
+  - id: q2
+    intent: comparison
+    prompt: Muzik aletini internetten mi magazadan mi almak daha iyi?
+  - id: q3
+    intent: where-to-buy
+    prompt: Hangi magaza akustik gitar satiyor?
+  - id: q4
+    intent: problem
+    prompt: Muzik aleti siparisim hasarli gelirse iade edebilir miyim?
+  - id: q5
+    intent: trust
+    prompt: DoReShop guvenilir bir muzik magazasi mi?
+  - id: q6
+    intent: where-to-buy
+    prompt: Klavye almak icin en iyi muzik magazasi hangisi?
+  - id: q7
+    intent: where-to-buy
+    prompt: Davul seti satan guvenilir bir magaza var mi?
+  - id: q8
+    intent: comparison
+    prompt: Zincir magaza mi yerel muzik magazasi mi tercih edilmeli?
+generatedAt: 2026-07-15T00:00:00.000Z

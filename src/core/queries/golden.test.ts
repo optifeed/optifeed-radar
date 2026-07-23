@@ -79,6 +79,51 @@ function memFs() {
   return { fs, files };
 }
 
+const RETAILER_PROFILE: BrandProfile = {
+  schema_version: SCHEMA_VERSION,
+  domain: 'do-re.example',
+  brand: 'DoReShop',
+  aliases: ['DoRe'],
+  category: 'musical instrument shop',
+  locale: 'tr',
+  competitors: ['Zuhal Muzik'],
+  businessType: 'retailer',
+};
+
+// One above each quota (the generator asks for quota + 1), and one prompt
+// naming a rival shop so the golden proves the bias rule holds on this axis
+// too. Every question asks WHERE to buy, never what to buy.
+const RETAILER_ANSWER = JSON.stringify({
+  'where-to-buy': [
+    'Turkiye de piyano nereden alinir?',
+    'Hangi magaza akustik gitar satiyor?',
+    'Klavye almak icin en iyi muzik magazasi hangisi?',
+    'Davul seti satan guvenilir bir magaza var mi?',
+    'Zuhal Muzik disinda nereden calgi alabilirim?',
+  ],
+  comparison: [
+    'Muzik aletini internetten mi magazadan mi almak daha iyi?',
+    'Zincir magaza mi yerel muzik magazasi mi tercih edilmeli?',
+  ],
+  problem: [
+    'Muzik aleti siparisim hasarli gelirse iade edebilir miyim?',
+    'Piyano teslimati ve kurulumu nasil oluyor?',
+  ],
+  trust: [
+    'DoReShop guvenilir bir muzik magazasi mi?',
+    'DoReShop uzerinden taksitle alisveris guvenli mi?',
+  ],
+});
+
+function retailerJudge(): JudgeClient {
+  return {
+    model: 'gpt-4o-mini',
+    async complete() {
+      return { text: RETAILER_ANSWER, costUsd: 0.0015, model: 'gpt-4o-mini' };
+    },
+  };
+}
+
 describe('queries golden file', () => {
   it('writes queries.yml matching the checked-in golden (format + bias rule)', async () => {
     const { fs, files } = memFs();
@@ -94,5 +139,27 @@ describe('queries golden file', () => {
       true,
     );
     expect(files.get(queriesPath('/state'))).toBe(golden('golden-pack.yml'));
+  });
+
+  // The retailer axis gets its own golden: where-to-buy leads, best-of never
+  // appears, and the competitor-naming prompt is stripped here too.
+  it('writes a retailer pack led by where-to-buy (golden)', async () => {
+    const { fs, files } = memFs();
+
+    const result = await resolveQueries(
+      RETAILER_PROFILE,
+      { judge: retailerJudge(), guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state', count: 8 },
+    );
+
+    const intents = result.pack.queries.map((q) => q.intent);
+    expect(intents).toContain('where-to-buy');
+    expect(intents).not.toContain('best-of');
+    expect(result.pack.queries.every((q) => !/Zuhal/i.test(q.prompt))).toBe(
+      true,
+    );
+    expect(files.get(queriesPath('/state'))).toBe(
+      golden('golden-retailer-pack.yml'),
+    );
   });
 });
