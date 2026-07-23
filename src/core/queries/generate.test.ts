@@ -601,3 +601,44 @@ describe('generateQueries', () => {
     expect(guard.spentUsd).toBeCloseTo(0.01, 10);
   });
 });
+
+describe('generation prompt on the retailer axis (M5a)', () => {
+  const shop = profile({
+    businessType: 'retailer',
+    category: 'Musical instrument shop',
+  });
+
+  it('tells the judge the brand is a shop and asks for shop-shaped questions', async () => {
+    const judge = recordingJudge('{"where-to-buy":["nereden alinir?"]}');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await generateQueries(
+      shop,
+      { judge, guard },
+      { count: 8, generatedAt: AT_ISO },
+    );
+
+    expect(judge.prompts[0]).toContain(
+      'sells products made by other companies',
+    );
+    expect(judge.prompts[0]).toContain('where to buy');
+    // The intent list must carry the shop guidance, not the maker guidance.
+    expect(judge.prompts[0]).toContain('which shop sells');
+  });
+
+  it('keeps the maker generation prompt free of shop framing', async () => {
+    const judge = recordingJudge('{"best-of":["best beginner piano?"]}');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await generateQueries(
+      profile({ businessType: 'maker' }),
+      { judge, guard },
+      { count: 8, generatedAt: AT_ISO },
+    );
+
+    expect(judge.prompts[0]).not.toContain(
+      'sells products made by other companies',
+    );
+    expect(judge.prompts[0]).toContain('what are the best');
+  });
+});

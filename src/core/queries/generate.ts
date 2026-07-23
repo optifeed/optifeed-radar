@@ -251,17 +251,35 @@ export function buildQueryPack(input: BuildPackInput): QueryPack {
   return { schema_version: SCHEMA_VERSION, domain, queries, generatedAt };
 }
 
-/** One-sentence description of each intent, for the generation prompt. */
-const INTENT_GUIDANCE: Record<QueryIntent, string> = {
-  'best-of': 'shortlist questions ("what are the best ... for ...")',
-  'where-to-buy':
-    'questions about where to buy something ("where can I buy ...", "which shop sells ...")',
-  comparison: 'questions weighing options or approaches when choosing',
-  problem: 'questions describing a problem this product/service solves',
-  trust: 'questions about reputation, reliability, or safety',
-  local: 'questions scoped to a place ("... near me", "... in <city>")',
+/**
+ * One-sentence description of each intent, for the generation prompt, per axis.
+ *
+ * The two axes ask about different things: a maker's buyer asks WHAT to buy, a
+ * shop's buyer asks WHERE. Wording `comparison` and `problem` as shop questions
+ * matters as much as adding `where-to-buy` - a "which is better" question about
+ * products is answered with product brands whatever intent it is filed under.
+ */
+const INTENT_GUIDANCE: Record<QueryAxis, Record<QueryIntent, string>> = {
+  maker: {
+    'best-of': 'shortlist questions ("what are the best ... for ...")',
+    'where-to-buy': 'unused on the maker axis',
+    comparison: 'questions weighing options or approaches when choosing',
+    problem: 'questions describing a problem this product/service solves',
+    trust: 'questions about reputation, reliability, or safety',
+    local: 'questions scoped to a place ("... near me", "... in <city>")',
+  },
+  retailer: {
+    'best-of': 'unused on the retailer axis',
+    'where-to-buy':
+      'questions about where to buy something ("where can I buy ...", "which shop sells ...", "best store for ...")',
+    comparison:
+      'questions weighing WHERE to buy: online shop against local store, one kind of seller against another',
+    problem:
+      'questions about buying problems a shop solves: delivery, returns, warranty, instalments, stock',
+    trust: 'questions about reputation, reliability, or safety',
+    local: 'questions scoped to a place ("... near me", "... in <city>")',
+  },
 };
-
 /**
  * Build the generation prompt. Competitor names are deliberately withheld
  * (they are used only at scoring); the pack builder strips any that slip in.
@@ -274,7 +292,15 @@ function buildGenPrompt(
   counts: Record<QueryIntent, number>,
   year: string,
 ): string {
+  const axis = axisFor(profile);
   const facts = [`Brand: ${profile.brand}`];
+  if (axis === 'retailer') {
+    facts.push(
+      'Business: a shop. It sells products made by other companies, so buyers',
+      'ask where to buy, not what to buy. Never write a question whose natural',
+      'answer is a product brand rather than a place to buy from.',
+    );
+  }
   if (profile.category) facts.push(`Category: ${profile.category}`);
   if (profile.offerings?.length) {
     facts.push(`Offerings: ${profile.offerings.join(', ')}`);
@@ -283,7 +309,7 @@ function buildGenPrompt(
   if (profile.geo) facts.push(`Location: ${profile.geo}`);
 
   const intentLines = intents
-    .map((i) => `- "${i}" (write ${counts[i]}): ${INTENT_GUIDANCE[i]}`)
+    .map((i) => `- "${i}" (write ${counts[i]}): ${INTENT_GUIDANCE[axis][i]}`)
     .join('\n');
 
   return [
