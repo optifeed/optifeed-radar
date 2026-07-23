@@ -27,6 +27,26 @@ from your brand profile instead. That is why the query pack is editable: if the
 generated questions do not match how your buyers really ask, edit them and rerun.
 The score reflects the questions you ran, not the whole universe of buyer intent.
 
+### Two question axes: makers and shops
+
+Buyer questions come in two shapes, and which one you get is decided by what
+your business is (discovery classifies it, and you can correct it by editing
+`businessType` in `profile.json`).
+
+A MAKER, who sells its own products, is measured on product questions ("what
+are the best gluten-free snacks?") against rival makers.
+
+A SHOP, which sells other companies' products, is measured on where-to-buy
+questions ("where can I buy a piano?", "which shop sells acoustic guitars?")
+against rival shops. This is not a cosmetic difference. Product questions are
+answered with manufacturers: across 28 answers for one music retailer, makers
+were named 21, 16, 10 and 8 times while not one rival shop was named even once.
+Scoring a shop on product questions therefore reports a 0 that says nothing
+about the shop, so those questions are not asked for a shop at all.
+
+A score is comparable only within one axis. A shop's number and a maker's
+number answer different questions and should never be compared to each other.
+
 ## Step 1 - mention detection (per answer)
 
 Each engine answer is analyzed for whether your brand appears.
