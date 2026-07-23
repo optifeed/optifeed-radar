@@ -39,8 +39,10 @@ are the best gluten-free snacks?") against rival makers.
 A SHOP, which sells other companies' products, is measured on where-to-buy
 questions ("where can I buy a piano?", "which shop sells acoustic guitars?")
 against rival shops. This is not a cosmetic difference. Product questions are
-answered with manufacturers: across 28 answers for one music retailer, makers
-were named 21, 16, 10 and 8 times while not one rival shop was named even once.
+answered with manufacturers. Measured on one music retailer across two runs of
+four engines: makers were named Yamaha 21 / Roland 16 / Casio 10 / Kawai 8 in a
+32-answer run, and Yamaha 13 / Roland 11 / Casio 8 / Kawai 8 in a later
+28-answer run, while across both runs not one rival shop was named even once.
 Scoring a shop on product questions therefore reports a 0 that says nothing
 about the shop, so those questions are not asked for a shop at all.
 
