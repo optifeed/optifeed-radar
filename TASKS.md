@@ -238,7 +238,8 @@ Owner: setup · PR: (M12a)
 - [x] `<stateDir>/shopping/<ISO>.json` persistence, apart from the check snapshots `diff` reads
 - [x] `shopping_check` MCP tool with a cap that scales at $0.20/product
 - [x] Acceptance: fixture product lists incl. opaque names + aliases; delta golden tests; zero-mention product renders shelf-led; judge cap enforced; `--products`/`--products-file` parity
-- [ ] Live-verify with a real key (M17 smoke run) - the only open item
+- [x] LIVE-VERIFIED 2026-07-23 against breville.com (openai only, 5 runs, $0.08-$0.12 each): delta table leads, absent product renders shelf-led with `aiRank: null`, `--products-file` with aliases + descriptors, HTML report, saved run carries `schema_version` 0.2 and no key material, MCP stdio lists 5 tools. The live runs found 6 real defects unit fixtures could not (see the module report); all fixed test-first against a checked-in fixture of the real answers.
+- [ ] Live multi-engine + `--grounded` shopping run (folds into the M17 smoke run)
 - OUT of scope (unchanged): ANY discovery (Shopify/feed/crawl), sampling, full-catalog runs, lint-feed cross-references
 
 ### [ ] M12b - Shopping discovery adapters (DEFERRED - post-launch)

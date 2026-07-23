@@ -42,7 +42,7 @@ score is only comparable against snapshots taken with the same method.
   the rest. Its default cost cap scales with the list at $0.20 per product,
   rather than the flat $0.50 a check gets: a flat cap would truncate most
   multi-product runs into a partial ranking that still reads like a complete
-  one.
+  one. Verified live over stdio: the server now lists five tools.
 
 ### Changed
 
