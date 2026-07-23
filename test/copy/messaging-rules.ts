@@ -12,6 +12,18 @@ const BANNED: { needle: string; label: string; caseInsensitive?: boolean }[] = [
   { needle: '—', label: 'em-dash (use "-" instead)' },
   { needle: '–', label: 'en-dash (use "-" instead)' },
   { needle: 'OptiFeed', label: 'OptiFeed mis-casing (brand is "Optifeed")' },
+  // Renamed at M16: the product is "Optifeed Radar" and the package is
+  // "optifeed-radar". The old names outlived the rename in published copy.
+  {
+    needle: 'optifeed visibility',
+    label: 'renamed: the product is "Optifeed Radar"',
+    caseInsensitive: true,
+  },
+  {
+    needle: 'optifeed-visibility',
+    label: 'renamed: the package is "optifeed-radar"',
+    caseInsensitive: true,
+  },
   {
     needle: 'paid tools for free',
     label: 'free-vs-paid equivalence framing',

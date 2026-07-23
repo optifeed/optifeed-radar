@@ -150,6 +150,8 @@ At launch the published package will also run via npx (no clone needed):
 }
 ```
 
+### Example prompts
+
 Once it is connected, ask your AI agent in plain language. These map onto the
 five tools and the arguments they accept:
 
@@ -163,7 +165,13 @@ five tools and the arguments they accept:
   with `engines`.
 - "Check whether AI recommends my products: Aria 2, Presto X, Brew Mini, in
   that order, for yourbrand.com." -> `shopping_check`, which answers with the
-  delta between your order and the engines'.
+  delta between your order and the engines'. The order you say them in is the
+  ranking it measures against.
+- "Check the Aria 2, a quiet home espresso machine, and the Presto X, a fast
+  dual-boiler, on yourbrand.com. Cap it at one dollar." -> `shopping_check`
+  with a descriptor per product and `max_cost`. Saying what each product IS is
+  what rescues an opaque model name: without it the questions are guessed from
+  the store category.
 - "What changed since the last visibility run on yourbrand.com?" ->
   `get_snapshot_diff`, free, and it needs two saved runs before it can compare.
 

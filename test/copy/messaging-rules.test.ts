@@ -24,6 +24,20 @@ describe('findMessagingViolations', () => {
     expect(findMessagingViolations('Optifeed Radar', {})).toHaveLength(0);
   });
 
+  // The product was renamed at M16 (package and product both). METHODOLOGY.md
+  // still carried the old name a release later, because it was not linted -
+  // the rule and the surface list both had gaps.
+  it('flags the pre-rename product name', () => {
+    for (const stale of [
+      'the score Optifeed Visibility reports',
+      'install optifeed-visibility from npm',
+    ]) {
+      const v = findMessagingViolations(stale, {});
+      expect(v.some((m) => m.includes('renamed'))).toBe(true);
+    }
+    expect(findMessagingViolations('Optifeed Radar reports', {})).toEqual([]);
+  });
+
   it('flags free-vs-paid equivalence framing', () => {
     const v = findMessagingViolations('Get paid tools for free here', {});
     expect(v.some((m) => m.includes('free-vs-paid'))).toBe(true);
