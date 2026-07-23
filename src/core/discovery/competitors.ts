@@ -7,7 +7,7 @@
  */
 import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
 import { extractBalanced, fold, mentionsTerm } from '../text.js';
-import type { JudgeClient } from '../types.js';
+import type { BusinessType, JudgeClient } from '../types.js';
 
 /** Upper bound on competitors we keep from one call. */
 const MAX_COMPETITORS = 8;
@@ -40,6 +40,8 @@ export interface CompetitorDeps {
 
 export interface CompetitorResult {
   competitors: string[];
+  /** How the judge classified the business (M5a); absent when unknown. */
+  businessType?: BusinessType;
   /** Set when the call was skipped or failed (cap hit or judge error). */
   skipped?: string;
 }
@@ -68,7 +70,14 @@ function buildPrompt(input: CompetitorInput): string {
           '',
         ]
       : []),
-    'Return ONLY a JSON array of competitor brand names, e.g. ["Foo", "Bar"].',
+    'Also classify the business itself, because it decides which rivals are the',
+    'right ones: "retailer" sells products made by other companies (a shop or',
+    'marketplace), "maker" sells products it makes itself, "service" sells',
+    'services. For a retailer list rival shops a buyer would buy from instead,',
+    'NEVER the manufacturers it stocks; for a maker list rival makers.',
+    '',
+    'Return ONLY a JSON object of the form',
+    '{"businessType": "retailer", "competitors": ["Foo", "Bar"]}.',
     'No commentary. Do not include the brand itself, any of the names above,',
     'or a variant spelling or translation of them.',
   ].join('\n');
@@ -142,6 +151,46 @@ export function parseCompetitors(
   return clean(items);
 }
 
+/**
+ * Parse the discovery call's response: `{"businessType", "competitors"}`.
+ *
+ * A model that ignores that shape and returns a bare array must still yield
+ * competitors (lesson #4: parse every real shape, not just the canonical one) -
+ * the rival list is the older and more important half of this call. An
+ * unrecognized `businessType` is DROPPED rather than trusted, so an unexpected
+ * value degrades to the maker axis that shipped before M5a instead of silently
+ * rewriting someone's prompt pack.
+ */
+export function parseDiscovery(
+  text: string,
+  selfTerms: string[] = [],
+): { businessType?: BusinessType; competitors: string[] } {
+  const object = extractBalanced(text.trim(), '{', '}');
+  if (object !== null) {
+    try {
+      const parsed: unknown = JSON.parse(object);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const row = parsed as Record<string, unknown>;
+        const raw = row.businessType;
+        const businessType =
+          raw === 'retailer' || raw === 'maker' || raw === 'service'
+            ? raw
+            : undefined;
+        const list = Array.isArray(row.competitors)
+          ? row.competitors.filter((x): x is string => typeof x === 'string')
+          : [];
+        return {
+          ...(businessType ? { businessType } : {}),
+          competitors: capped(dropSelfReferences(dedupe(list), selfTerms)),
+        };
+      }
+    } catch {
+      // Fall through to the array/list parser.
+    }
+  }
+  return { competitors: parseCompetitors(text, selfTerms) };
+}
+
 function dedupe(items: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -181,7 +230,7 @@ export async function discoverCompetitors(
     // releases that hold (a leaked reservation shrinks the remaining budget).
     guard.settle(projected, res.costUsd, 'setup');
     const selfTerms = [input.brand, ...(input.aliases ?? [])];
-    return { competitors: parseCompetitors(res.text, selfTerms) };
+    return parseDiscovery(res.text, selfTerms);
   } catch (err) {
     guard.settle(projected, 0, 'setup'); // failed call cost nothing; free the hold
     const reason = err instanceof Error ? err.message : String(err);

@@ -17,6 +17,7 @@ export {
   discoverCompetitors,
   dropSelfReferences,
   parseCompetitors,
+  parseDiscovery,
 } from './competitors.js';
 export type {
   CompetitorInput,

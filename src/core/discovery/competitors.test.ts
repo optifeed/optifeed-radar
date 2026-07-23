@@ -104,9 +104,6 @@ describe('discoverCompetitors', () => {
     expect(result.competitors).toEqual(['Zuhal Müzik']);
   });
 
-  // The filter matches whole terms, not shared words: a rival is dropped only
-  // when the brand's own name is in it (or it is in the brand's name), so
-  // "Ace Rental" survives a brand called "Ace Hardware".
   // The 8-name cap is applied to what we KEEP, not to what the judge said:
   // filtering after the slice let self-references eat competitor slots, so a
   // judge that opened with three spellings of the brand returned five rivals
@@ -138,6 +135,9 @@ describe('discoverCompetitors', () => {
     ]);
   });
 
+  // The filter matches whole terms, not shared words: a rival is dropped only
+  // when the brand's own name is in it (or it is in the brand's name), so
+  // "Ace Rental" survives a brand called "Ace Hardware".
   it('keeps a genuine rival that merely shares a word with the brand', () => {
     expect(
       dropSelfReferences(['Ace Rental', 'Hardware Depot'], ['Ace Hardware']),
@@ -209,5 +209,76 @@ describe('discoverCompetitors', () => {
     expect(result.competitors).toEqual([]);
     expect(result.skipped).toContain('502');
     expect(guard.spentUsd).toBe(0);
+  });
+});
+
+describe('business classification (M5a)', () => {
+  it('parses businessType and competitors from one judge call', async () => {
+    const judge = recordingJudge(
+      '{"businessType":"retailer","competitors":["Zuhal Müzik","MyDukkan"]}',
+    );
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'doremusic' },
+      { judge, guard },
+    );
+
+    expect(result.businessType).toBe('retailer');
+    expect(result.competitors).toEqual(['Zuhal Müzik', 'MyDukkan']);
+  });
+
+  // A judge that ignores the new shape must degrade, not break: the competitor
+  // list is the older and more important half of this call (lesson #4).
+  it('still accepts a bare array, with no businessType', async () => {
+    const judge = recordingJudge('["Estes", "Quest"]');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'Acme' },
+      { judge, guard },
+    );
+
+    expect(result.competitors).toEqual(['Estes', 'Quest']);
+    expect(result.businessType).toBeUndefined();
+  });
+
+  it('ignores an unknown businessType rather than trusting it', async () => {
+    const judge = recordingJudge(
+      '{"businessType":"wholesaler","competitors":["Estes"]}',
+    );
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'Acme' },
+      { judge, guard },
+    );
+
+    expect(result.businessType).toBeUndefined();
+    expect(result.competitors).toEqual(['Estes']);
+  });
+
+  it('still drops self-references inside the object shape', async () => {
+    const judge = recordingJudge(
+      '{"businessType":"retailer","competitors":["Do Re Music","Zuhal Müzik"]}',
+    );
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'doremusic', aliases: ['Do Re Müzik'] },
+      { judge, guard },
+    );
+
+    expect(result.competitors).toEqual(['Zuhal Müzik']);
+  });
+
+  it('asks the judge to classify and to match rivals to that classification', async () => {
+    const judge = recordingJudge('{"businessType":"maker","competitors":[]}');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await discoverCompetitors({ brand: 'Acme' }, { judge, guard });
+
+    expect(judge.prompts[0]).toContain('businessType');
+    expect(judge.prompts[0]).toContain('rival shops');
   });
 });
