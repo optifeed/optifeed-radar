@@ -13,7 +13,11 @@ export {
   mergeProfile,
 } from './profile.js';
 export type { BuildProfileInput, FlagProfileInput } from './profile.js';
-export { discoverCompetitors, parseCompetitors } from './competitors.js';
+export {
+  discoverCompetitors,
+  dropSelfReferences,
+  parseCompetitors,
+} from './competitors.js';
 export type {
   CompetitorInput,
   CompetitorDeps,

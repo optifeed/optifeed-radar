@@ -97,6 +97,26 @@ function memFs(seed: Record<string, string> = {}) {
 }
 
 describe('discover', () => {
+  // The extracted aliases must REACH the competitor call, or the brand comes
+  // back as its own rival under a variant spelling (live 2026-07-20) and lands
+  // in its own share-of-voice table.
+  it('passes the extracted aliases to the competitor call and keeps the brand out of its own list', async () => {
+    const { fetcher } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const j = judge('["Acme Rockets Inc", "Estes"]');
+    const { fs } = memFs();
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, judge: j, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(j.prompts[0]).toContain('Also known as: Acme');
+    expect(result.profile.competitors).toEqual(['Estes']);
+  });
+
   it('discovers a full profile from a schema-rich site and persists it', async () => {
     const { fetcher, calls } = fakeFetcher({
       'https://acme.example/': fixture('schema-rich.html'),

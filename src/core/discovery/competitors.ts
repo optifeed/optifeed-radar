@@ -6,7 +6,7 @@
  * so discovery always returns a usable profile.
  */
 import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
-import { extractBalanced } from '../text.js';
+import { extractBalanced, fold, mentionsTerm } from '../text.js';
 import type { JudgeClient } from '../types.js';
 
 /** Upper bound on competitors we keep from one call. */
@@ -14,6 +14,12 @@ const MAX_COMPETITORS = 8;
 
 export interface CompetitorInput {
   brand: string;
+  /**
+   * Other names the brand goes by (the profile's extracted `aliases`). Named in
+   * the prompt AND used to filter the answer: a judge asked to exclude only
+   * `doremusic` still returns "Do Re Müzik Market", which is the brand itself.
+   */
+  aliases?: string[];
   category?: string;
   offerings?: string[];
   /**
@@ -40,7 +46,9 @@ export interface CompetitorResult {
 
 /** Build the judge prompt. Asks for a plain list of rival brand names. */
 function buildPrompt(input: CompetitorInput): string {
+  const aliases = (input.aliases ?? []).map((a) => a.trim()).filter(Boolean);
   const parts = [`Brand: ${input.brand}`];
+  if (aliases.length) parts.push(`Also known as: ${aliases.join(', ')}`);
   if (input.category) parts.push(`Category: ${input.category}`);
   if (input.offerings?.length) {
     parts.push(`Offerings: ${input.offerings.join(', ')}`);
@@ -61,15 +69,55 @@ function buildPrompt(input: CompetitorInput): string {
         ]
       : []),
     'Return ONLY a JSON array of competitor brand names, e.g. ["Foo", "Bar"].',
-    'No commentary. Do not include the brand itself.',
+    'No commentary. Do not include the brand itself, any of the names above,',
+    'or a variant spelling or translation of them.',
   ].join('\n');
+}
+
+/** Fold and strip everything but letters/numbers: "Do Re Music" -> "doremusic". */
+function squeeze(name: string): string {
+  return fold(name).replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Drop names that are the brand under another spelling.
+ *
+ * Live 2026-07-20, every judge returned the brand as its own rival ("Do Re
+ * Müzik Market" for doremusic), which put the brand in its own share-of-voice
+ * table. Matching is the shared Unicode-aware one (so case, accents and
+ * boundaries behave like scoring's detector), applied BOTH ways - the returned
+ * name may wrap a brand term ("Do Re Müzik Market") or be wrapped by one ("Do
+ * Re" for "Do Re Müzik") - plus a squeezed comparison that catches respacing
+ * ("Do Re Music" -> "doremusic"). Whole terms only: "Ace Rental" survives a
+ * brand called "Ace Hardware". A brand whose alias is one generic word will
+ * over-match, which is the same ambiguity M7 flags rather than a new risk.
+ */
+export function dropSelfReferences(names: string[], terms: string[]): string[] {
+  const live = terms.map((t) => t.trim()).filter(Boolean);
+  const squeezed = new Set(live.map(squeeze).filter(Boolean));
+  return names.filter((name) => {
+    const folded = fold(name);
+    if (squeezed.has(squeeze(name))) return false;
+    return !live.some(
+      (term) => mentionsTerm(folded, term) || mentionsTerm(fold(term), name),
+    );
+  });
 }
 
 /**
  * Parse a competitor list from model output. Handles a JSON array or a
  * newline/comma list with bullets or numbering (lesson #4: parse real shapes).
+ *
+ * `selfTerms` (the brand and its aliases) are removed BEFORE the cap is
+ * applied, so a judge that opens with three spellings of the brand still yields
+ * a full list of rivals rather than spending slots on itself.
  */
-export function parseCompetitors(text: string): string[] {
+export function parseCompetitors(
+  text: string,
+  selfTerms: string[] = [],
+): string[] {
+  const clean = (items: string[]): string[] =>
+    capped(dropSelfReferences(dedupe(items), selfTerms));
   const trimmed = text.trim();
 
   // Prefer a JSON array if the model returned one (possibly fenced or followed
@@ -94,7 +142,7 @@ export function parseCompetitors(text: string): string[] {
   return clean(items);
 }
 
-function clean(items: string[]): string[] {
+function dedupe(items: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of items) {
@@ -104,7 +152,11 @@ function clean(items: string[]): string[] {
       out.push(item);
     }
   }
-  return out.slice(0, MAX_COMPETITORS);
+  return out;
+}
+
+function capped(items: string[]): string[] {
+  return items.slice(0, MAX_COMPETITORS);
 }
 
 /** Discover competitor brand names via one guarded judge call. */
@@ -128,7 +180,8 @@ export async function discoverCompetitors(
     // settle, not record: `authorize` reserved `projected`, and only settling
     // releases that hold (a leaked reservation shrinks the remaining budget).
     guard.settle(projected, res.costUsd, 'setup');
-    return { competitors: parseCompetitors(res.text) };
+    const selfTerms = [input.brand, ...(input.aliases ?? [])];
+    return { competitors: parseCompetitors(res.text, selfTerms) };
   } catch (err) {
     guard.settle(projected, 0, 'setup'); // failed call cost nothing; free the hold
     const reason = err instanceof Error ? err.message : String(err);

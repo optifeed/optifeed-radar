@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CostGuard } from '../costs.js';
 import type { JudgeClient } from '../types.js';
-import { discoverCompetitors, parseCompetitors } from './competitors.js';
+import {
+  discoverCompetitors,
+  dropSelfReferences,
+  parseCompetitors,
+} from './competitors.js';
 
 /** A judge that records the prompt it saw and returns a canned answer. */
 function recordingJudge(
@@ -64,6 +68,93 @@ describe('discoverCompetitors', () => {
     await discoverCompetitors({ brand: 'Acme' }, { judge, guard });
 
     expect(judge.prompts[0]).not.toMatch(/Primary market/i);
+  });
+
+  // Live 2026-07-20 (doremusic.com, during the judge measurement): every judge
+  // returned the brand ITSELF under a variant spelling - gpt-5.4 gave "Dore
+  // Müzik" and "Do Re Müzik Market", gemini-flash-latest gave "Do Re Mi Müzik".
+  // The prompt said "Do not include the brand itself" but named only the brand
+  // string, so the model never saw the spellings it had to avoid, and nothing
+  // downstream filtered them - the brand landed in its own share-of-voice table
+  // as a rival, inflating a competitor that IS you (rule #6, fake precision).
+  it('names the brand aliases in the prompt so the judge can avoid them', async () => {
+    const judge = recordingJudge('["Zuhal Müzik"]');
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    await discoverCompetitors(
+      { brand: 'doremusic', aliases: ['Do Re Müzik', 'Dore Music'] },
+      { judge, guard },
+    );
+
+    expect(judge.prompts[0]).toContain('Do Re Müzik');
+    expect(judge.prompts[0]).toContain('Dore Music');
+  });
+
+  it('drops the brand from its own competitor list when the judge returns it', async () => {
+    const judge = recordingJudge(
+      '["Do Re Müzik Market", "Zuhal Müzik", "DOREMUSIC"]',
+    );
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'doremusic', aliases: ['Do Re Müzik'] },
+      { judge, guard },
+    );
+
+    expect(result.competitors).toEqual(['Zuhal Müzik']);
+  });
+
+  // The filter matches whole terms, not shared words: a rival is dropped only
+  // when the brand's own name is in it (or it is in the brand's name), so
+  // "Ace Rental" survives a brand called "Ace Hardware".
+  // The 8-name cap is applied to what we KEEP, not to what the judge said:
+  // filtering after the slice let self-references eat competitor slots, so a
+  // judge that opened with three spellings of the brand returned five rivals
+  // when eight were sitting further down its own list.
+  it('fills the competitor cap with real rivals, not with names that were the brand', async () => {
+    const names = [
+      'Doremusic',
+      'Do Re Music',
+      'doremusic.com',
+      ...Array.from({ length: 8 }, (_, i) => `Rival ${i + 1}`),
+    ];
+    const judge = recordingJudge(JSON.stringify(names));
+    const guard = new CostGuard({ maxSetupCostUsd: 0.05 });
+
+    const result = await discoverCompetitors(
+      { brand: 'doremusic', aliases: ['Do Re Müzik'] },
+      { judge, guard },
+    );
+
+    expect(result.competitors).toEqual([
+      'Rival 1',
+      'Rival 2',
+      'Rival 3',
+      'Rival 4',
+      'Rival 5',
+      'Rival 6',
+      'Rival 7',
+      'Rival 8',
+    ]);
+  });
+
+  it('keeps a genuine rival that merely shares a word with the brand', () => {
+    expect(
+      dropSelfReferences(['Ace Rental', 'Hardware Depot'], ['Ace Hardware']),
+    ).toEqual(['Ace Rental', 'Hardware Depot']);
+  });
+
+  it('drops a self-reference that only differs by spacing, case or accents', () => {
+    expect(
+      dropSelfReferences(
+        ['Do Re Music', 'DOREMUSIC', 'Café Rio Grill', 'Chipotle'],
+        ['doremusic', 'Café Rio'],
+      ),
+    ).toEqual(['Chipotle']);
+  });
+
+  it('returns an empty list (never throws) when every name was the brand', () => {
+    expect(dropSelfReferences(['Acme', 'ACME Inc'], ['Acme'])).toEqual([]);
   });
 
   it('parses a JSON array even when a later bracket appears in prose', () => {

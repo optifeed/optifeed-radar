@@ -175,6 +175,7 @@ export async function discover(
     const res = await discoverCompetitors(
       {
         brand: signals.brand,
+        aliases: signals.aliases,
         category: signals.category,
         offerings: signals.offerings,
         locale: signals.locale,
