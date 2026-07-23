@@ -19,8 +19,12 @@ import {
   varianceNote,
 } from './variance.js';
 
-/** Escape the five HTML-significant characters so untrusted text is inert. */
-function esc(s: string): string {
+/**
+ * Escape the five HTML-significant characters so untrusted text is inert.
+ * Exported so every report renderer escapes the SAME way - a second, slightly
+ * different escaper is how one report ends up injectable.
+ */
+export function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -29,7 +33,8 @@ function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-const STYLE = `
+/** The shared report stylesheet, inlined by every HTML report we write. */
+export const REPORT_STYLE = `
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body {
@@ -178,7 +183,7 @@ export function renderCheckHtml(env: VisibilityEnvelope): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Visibility Report: ${esc(env.profile.brand)}</title>
-<style>${STYLE}</style>
+<style>${REPORT_STYLE}</style>
 </head>
 <body>
 <main>
