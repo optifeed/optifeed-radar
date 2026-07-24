@@ -1,12 +1,11 @@
 # Optifeed Radar
 
+[![npm version](https://img.shields.io/npm/v/optifeed-radar.svg)](https://www.npmjs.com/package/optifeed-radar)
+[![CI](https://github.com/optifeed/optifeed-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/optifeed/optifeed-radar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Node](https://img.shields.io/node/v/optifeed-radar.svg)](https://nodejs.org)
 
-<!-- Build, stars, npm version, and npm downloads badges are added at launch
-(M17), once the public repo slug and the published package exist. Shipping
-placeholder badges now would render broken images. -->
-
-**Open-source AI visibility checker. Public launch in progress.**
+**Open-source AI visibility checker. Now on npm - run it with `npx optifeed-radar`.**
 
 Is your brand recommended when buyers ask AI? Optifeed Radar checks whether
 ChatGPT, Perplexity, Gemini and Claude actually recommend you, and tells you
@@ -18,28 +17,24 @@ see and recommend you, and it can be **run by your own AI agents** (CLI, JSON,
 and an MCP server). People also call this AI visibility, generative engine
 optimization (GEO), answer engine optimization (AEO), or AI-SEO.
 
-## 60-second setup (from a clone)
+## 60-second setup
 
-The npm package is not published yet, so run from a clone for now. Published
-`npx optifeed-radar` lands at launch.
-
-The zero-key `audit` is verified and runs end to end - no API keys, no AI calls:
+No install needed - `npx` fetches and runs it. The zero-key `audit` runs end
+to end with no API keys and no AI calls:
 
 ```bash
-git clone https://github.com/optifeed/optifeed-radar.git
-cd optifeed-radar
-npm install
-npx tsx src/cli/index.ts audit yourbrand.com
+npx optifeed-radar audit yourbrand.com
 ```
 
 It checks AI-crawler access (robots.txt), llms.txt, schema.org structured
 data, meta basics, and your sitemap, then prints a 0-100 AI-readiness score.
 
-The `check` pipeline runs from a clone once you set at least one engine API key:
+The `check` pipeline runs once you set at least one engine API key. Put it in a
+`.env` file in the directory you run from, or export it:
 
 ```bash
-cp .env.example .env        # then put at least one key in it
-npx tsx src/cli/index.ts check yourbrand.com
+echo "OPENAI_API_KEY=sk-..." > .env      # any one engine key gets you started
+npx optifeed-radar check yourbrand.com
 ```
 
 The CLI loads `.env` from the directory you run it in, so there is no shell
@@ -52,12 +47,11 @@ scores recommendation, position, and share of voice into one AI Visibility
 Score. The score reads only the unbranded buyer questions (did the AI surface
 you unprompted); questions that name your brand are reported separately as
 reputation. All four engines are verified live against their production APIs
-(2026-07-20). Treat this as pre-release only because the npm package is not
-published yet.
+(2026-07-20).
 
-The examples call `npx tsx src/cli/index.ts` directly so flags reach the CLI
-unchanged. With the `npm run dev` script, put `--` before the arguments
-(`npm run dev -- check yourbrand.com --report out.html`).
+Working from a clone instead? Run `npx tsx src/cli/index.ts <command>` so flags
+reach the CLI unchanged, or use the `npm run dev` script with `--` before the
+arguments (`npm run dev -- check yourbrand.com --report out.html`).
 
 ## What it does
 
@@ -91,9 +85,7 @@ products; nothing is imported or crawled.
 ## Use it from your AI agents (MCP)
 
 The `optifeed-mcp` server exposes the same capability to AI agents. It runs
-over stdio. Build first (`npm install && npm run build`), then point your
-client at `dist/mcp/index.js`. Replace `/path/to/optifeed-radar` with your
-clone path.
+over stdio, and `npx` fetches it on demand - no clone or build needed.
 
 Claude Desktop (`claude_desktop_config.json`). The fastest way to open it is
 Settings -> Developer -> Edit Config, which creates the file if it does not
@@ -106,8 +98,8 @@ exist yet. On disk it lives at:
 {
   "mcpServers": {
     "optifeed-radar": {
-      "command": "node",
-      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"],
+      "command": "npx",
+      "args": ["-y", "--package=optifeed-radar", "optifeed-mcp"],
       "env": {
         "OPENAI_API_KEY": "sk-..."
       }
@@ -124,8 +116,8 @@ Claude Code (`.mcp.json` in your project):
 {
   "mcpServers": {
     "optifeed-radar": {
-      "command": "node",
-      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"]
+      "command": "npx",
+      "args": ["-y", "--package=optifeed-radar", "optifeed-mcp"]
     }
   }
 }
@@ -138,21 +130,23 @@ shape:
 {
   "mcpServers": {
     "optifeed-radar": {
-      "command": "node",
-      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"]
+      "command": "npx",
+      "args": ["-y", "--package=optifeed-radar", "optifeed-mcp"]
     }
   }
 }
 ```
 
-At launch the published package will also run via npx (no clone needed):
+Working from a clone instead? Build first (`npm install && npm run build`),
+then run the server with `node` pointed at the built entrypoint - replace
+`/path/to/optifeed-radar` with your clone path:
 
 ```json
 {
   "mcpServers": {
     "optifeed-radar": {
-      "command": "npx",
-      "args": ["-y", "--package=optifeed-radar", "optifeed-mcp"]
+      "command": "node",
+      "args": ["/path/to/optifeed-radar/dist/mcp/index.js"]
     }
   }
 }
@@ -245,9 +239,8 @@ How long it takes, measured the same way (2026-07-22):
 | `check --quick --grounded`, four | about 97 seconds   |
 
 The install figure was measured from the packed tarball with an empty npm
-cache, so once the package is published a cold
-`npx optifeed-radar audit yourbrand.com` should finish in about ten seconds
-(re-verified against the registry at publish). A `check` takes as long as the
+cache, so a cold `npx optifeed-radar audit yourbrand.com` from the registry
+should finish in about ten seconds. A `check` takes as long as the
 engines take to answer: it queries
 several of them across a whole prompt pack, and that wait is provider latency
 we do not control. `check` reports live progress while it runs, so you can see
@@ -273,12 +266,12 @@ AI agent can run it unattended).
 ## Example
 
 ```bash
-npx tsx src/cli/index.ts audit example.com      # free readiness score
-npx tsx src/cli/index.ts check example.com --quick --yes
-npx tsx src/cli/index.ts shopping example.com --products "Aria 2, Presto X" --yes
-npx tsx src/cli/index.ts diff example.com        # what changed since last run
-npx tsx src/cli/index.ts sources example.com     # who the AI cited
-npx tsx src/cli/index.ts config                  # which keys are set
+npx optifeed-radar audit example.com      # free readiness score
+npx optifeed-radar check example.com --quick --yes
+npx optifeed-radar shopping example.com --products "Aria 2, Presto X" --yes
+npx optifeed-radar diff example.com        # what changed since last run
+npx optifeed-radar sources example.com     # who the AI cited
+npx optifeed-radar config                  # which keys are set
 ```
 
 `config` reports only whether each key is present, never the key value.
@@ -298,7 +291,7 @@ products:
 ```
 
 ```bash
-npx tsx src/cli/index.ts shopping example.com --products-file products.yml --yes
+npx optifeed-radar shopping example.com --products-file products.yml --yes
 ```
 
 ## FAQ
@@ -360,7 +353,7 @@ optifeed.com.
 
 ## Status
 
-Under active development; the repo opens up at launch so you can follow along. If
+Under active development, and the repo is public so you can follow along. If
 this is useful to you, a star genuinely helps. Scores are estimates and say so.
 Your API keys stay on your machine and are never logged or stored.
 

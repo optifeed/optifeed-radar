@@ -18,8 +18,8 @@ locally, uses the user's own API keys, and stores nothing on a server.
 
 ## Commands (CLI)
 
-Run from a clone with `npx tsx src/cli/index.ts <command>` (published `npx
-optifeed-radar <command>` at launch).
+Run it with `npx optifeed-radar <command>` (no clone needed). From a clone,
+use `npx tsx src/cli/index.ts <command>` instead.
 
 - `audit <domain>` - zero-key AI-readiness check (robots.txt, llms.txt,
   schema.org, meta, sitemap). No AI calls, costs nothing.
@@ -57,9 +57,9 @@ The `optifeed-mcp` server exposes the same capability to AI agents:
 ## Worked example
 
 ```bash
-npx tsx src/cli/index.ts audit example.com
+npx optifeed-radar audit example.com
 export OPENAI_API_KEY=...   # or put keys in a .env file in this directory
-npx tsx src/cli/index.ts check example.com --quick --yes
+npx optifeed-radar check example.com --quick --yes
 ```
 
 The CLI loads `.env` from the directory it runs in; an exported key wins over
