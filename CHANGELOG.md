@@ -9,9 +9,16 @@ All notable changes to Optifeed Radar are recorded here. The format follows
 1. Move the `Unreleased` entries into a new version heading with today's date.
 2. Bump `version` in `package.json` to match.
 3. `npm run check && npm run format:check && npm run build`.
-4. Commit, then tag: `git tag v<version> && git push --tags`.
-5. The Release workflow re-runs the gate, verifies the tag matches
-   `package.json`, reviews the tarball, and publishes to npm with provenance.
+4. Commit, then tag: `git tag v<version> && git push && git push --tags`.
+5. Review what will ship with `npm pack --dry-run`, then publish by hand:
+   `npm publish` (add `--otp=<code>` if the account has 2FA).
+
+Publishing is MANUAL as of 2026-07-24; the workflow that published on tag push
+was removed. That also means releases carry no npm provenance attestation:
+provenance requires a trusted CI publisher with OIDC, which a local `npm
+publish` cannot produce. Restoring it means restoring a release workflow, and
+the `publishing stays manual` guard in `test/packaging.test.ts` is what makes
+that a deliberate act rather than a quiet one.
 
 Anything that changes a serialized format (envelope, snapshot, query pack,
 profile) also bumps `schema_version` and updates the golden fixtures. Scoring
@@ -19,6 +26,49 @@ changes that move the headline number are called out explicitly, because a
 score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-07-24
+
+`shopping` no longer reads the order you list products in as a ranking. If you
+script against a shopping run's JSON, `rankingDelta` is gone and
+`schema_version` is now `0.3`.
+
+### Changed
+
+- **`shopping` orders products by what the engines did, not by what you
+  typed.** Any product the engines answered about but never recommended leads,
+  because that is the finding worth reading; then the rest by visibility; then
+  last, anything the run could not measure at all (no category questions
+  written, or none answered). A product that was never measured is not a bad
+  score and must not sort as one. The order you list products in carries no
+  ranking meaning, and only breaks ties between identical scores. The report
+  states once that products were asked different questions, so a higher score
+  means "wins its own shelf more decisively", never "beats the product below
+  it".
+- **`schema_version` is `0.3`** (was `0.2`), for the removed fields. Cached
+  profiles and query packs rebuild themselves on first run; snapshots saved
+  under `0.2` no longer load, so `diff` cannot reach across the change. No
+  migration is provided.
+- Releases are now published by hand rather than by a workflow on tag push, so
+  this release carries no npm provenance attestation.
+
+### Removed
+
+- **The merchant-ranking delta**, and with it `rankingDelta` from the shopping
+  envelope and `merchantRank` from each product. Listing products "best first"
+  was never validated, could not be opted out of, and nothing in the output
+  told a deliberate ranking apart from a list typed in an arbitrary order, so
+  typing order was being promoted into a published leaderboard: a real run
+  reported a product "down 2 places" off a four-point spread across twelve
+  answers. "Down N places" also described movement for something that never
+  moved, which is what `diff` reports and this never was. A delta of this kind
+  needs a ranking the tool can actually trust, such as a store's own bestseller
+  order, rather than one typed at the command line.
+
+### Fixed
+
+- Loading a saved shopping run now validates `avgPosition`. A file without it
+  rendered "average shelf rank undefined" in the summary.
 
 ## [0.1.0] - 2026-07-23
 
