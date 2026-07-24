@@ -143,7 +143,7 @@ function deps(
 }
 
 describe('runShopping', () => {
-  it('runs both layers and leads with the ranking delta', async () => {
+  it('runs both layers and leads with the product engines ignored', async () => {
     const fs = seededFs();
     const openai = fakeAdapter('openai', 'parametric');
 
@@ -156,19 +156,13 @@ describe('runShopping', () => {
     const env = result.envelope!;
     expect(result.aborted).toBe(false);
     expect(env.schema_version).toBe(SCHEMA_VERSION);
-    expect(env.rankingDelta.map((r) => r.product)).toEqual([
-      'Aria 2',
-      'Presto X',
-    ]);
-    // Aria 2 is recommended in every answer; Presto X never is.
-    expect(env.rankingDelta[0]).toMatchObject({ merchantRank: 1, aiRank: 1 });
-    expect(env.rankingDelta[1]).toMatchObject({
-      merchantRank: 2,
-      aiRank: null,
-    });
+    // Aria 2 is recommended in every answer; Presto X never is. The absent
+    // product leads regardless of the order they were listed in.
+    expect(env.skus.map((s) => s.product)).toEqual(['Presto X', 'Aria 2']);
+    expect(env.skus[0]).toMatchObject({ product: 'Presto X', mentions: 0 });
     // The absent product still gets the shelf that beat it.
-    expect(env.skus[1]?.shelf.length).toBeGreaterThan(0);
-    expect(env.skus[1]?.mentions).toBe(0);
+    expect(env.skus[0]?.shelf.length).toBeGreaterThan(0);
+    expect(env.skus[1]?.mentions).toBeGreaterThan(0);
     expect(env.sampling.nProducts).toBe(2);
   });
 
@@ -300,7 +294,9 @@ describe('runShopping', () => {
 
     const env = result.envelope!;
     expect(env.skippedEngines?.[0]?.engine).toBe('gemini');
-    expect(env.skus[0]?.mentions).toBeGreaterThan(0);
+    // Keyed by name, not position: the envelope sorts by what engines did.
+    const aria = env.skus.find((s) => s.product === 'Aria 2');
+    expect(aria?.mentions).toBeGreaterThan(0);
   });
 
   it('reports what the run spent, including setup', async () => {
@@ -330,7 +326,6 @@ describe('runShopping', () => {
     );
     const env = result.envelope!;
     expect(env.skus[0]?.categoryPrompts).toBe(3);
-    expect(env.rankingDelta[0]?.measured).toBe(true);
   });
 
   // A capped run leaves the questions written but unanswered. Without the
@@ -348,9 +343,9 @@ describe('runShopping', () => {
     const env = result.envelope!;
     expect(env.costCapped).toBe(true);
     for (const sku of env.skus) expect(sku.categoryPrompts).toBeGreaterThan(0);
-    const unanswered = env.rankingDelta.filter((r) => r.answers === 0);
+    const unanswered = env.skus.filter((s) => s.answers === 0);
     expect(unanswered.length).toBeGreaterThan(0);
-    expect(unanswered.every((r) => r.measured)).toBe(true);
+    expect(unanswered.every((s) => s.categoryPrompts > 0)).toBe(true);
   });
 
   it('carries the run notes on the envelope, not only to the caller', async () => {

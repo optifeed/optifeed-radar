@@ -539,13 +539,14 @@ describe('shopping_check', () => {
     expect((res as { isError?: boolean }).isError).toBeFalsy();
     const parsed = JSON.parse(textOf(res));
     expect(parsed.schema_version).toBe(SCHEMA_VERSION);
-    expect(
-      parsed.rankingDelta.map((r: { product: string }) => r.product),
-    ).toEqual(['Aria 2', 'Presto X']);
+    expect(parsed.skus.map((s: { product: string }) => s.product)).toEqual([
+      'Aria 2',
+      'Presto X',
+    ]);
     // The honesty scaffolding lives in the renderers, so the prose block must
     // ride along - a caveat only in JSON is one the host model may drop.
     const prose = proseOf(res);
-    expect(prose).toContain('Your ranking vs AI:');
+    expect(prose).toContain('Products by visibility:');
     expect(prose).toContain(FOOTER_CTA);
     expect(prose).not.toContain(ESC);
     // The rendered path is whatever node:path produced, so compare against the

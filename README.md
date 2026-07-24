@@ -73,14 +73,16 @@ the shop. The tool works this out from your site and stores it as
 `businessType` in `profile.json`; edit it if it guessed wrong.
 
 One level down, `shopping` does the same thing for individual products you
-name (beta). You list your products best first, and that order is treated as
-your own ranking: the headline result is the delta between it and the order
-the engines actually recommend, so you can see that your best seller never
-comes up while your third product carries the shelf. Each product is checked
-twice over - category buying questions that never name it, and questions that
-do - and when a product is absent the report leads with the rival products the
-engines named instead, which is the more useful half of a zero. You name the
-products; nothing is imported or crawled.
+name (beta). Each product gets its own 0-100 visibility score, and the report
+is sorted by what the engines did: anything they never recommended comes
+first, since that is the finding worth reading. The order you list your
+products in carries no meaning. Each product is checked twice over - category
+buying questions that never name it, and questions that do - and when a
+product is absent the report leads with the rival products the engines named
+instead, which is the more useful half of a zero. Because every product is
+asked its own questions, the scores say how decisively each one wins its own
+shelf, not that one product beats another. You name the products; nothing is
+imported or crawled.
 
 ## Use it from your AI agents (MCP)
 
@@ -276,10 +278,11 @@ npx optifeed-radar config                  # which keys are set
 
 `config` reports only whether each key is present, never the key value.
 
-For `shopping`, the order of `--products` is your own ranking, best first (up
-to 10 per run). A file gives each product a descriptor, which is what rescues
-an opaque product name - "Aria 2" tells an engine nothing, "quiet home espresso
-machine" tells it everything:
+For `shopping`, list up to 10 products per run in any order; only the first 10
+are checked, and the report is sorted by score, not by what you typed. A file
+gives each product a descriptor, which is what rescues an opaque product
+name - "Aria 2" tells an engine nothing, "quiet home espresso machine" tells
+it everything:
 
 ```yaml
 products:

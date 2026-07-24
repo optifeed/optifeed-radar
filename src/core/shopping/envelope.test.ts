@@ -32,10 +32,9 @@ function answer(prompt: string): EngineAnswer {
   };
 }
 
-function sku(product: string, merchantRank: number): SkuReport {
+function sku(product: string, overrides: Partial<SkuReport> = {}): SkuReport {
   return {
     product,
-    merchantRank,
     visibility: 40,
     engines: [],
     categoryPrompts: 3,
@@ -45,13 +44,19 @@ function sku(product: string, merchantRank: number): SkuReport {
     shelf: [],
     rows: [],
     reputationRows: [],
+    ...overrides,
   };
+}
+
+/** A product engines answered about but never recommended. */
+function absent(product: string): SkuReport {
+  return sku(product, { visibility: 0, mentions: 0, avgPosition: null });
 }
 
 const BASE = {
   profile: PROFILE,
   products: PRODUCTS,
-  skus: [sku('Aria 2', 1), sku('Presto X', 2)],
+  skus: [sku('Aria 2'), sku('Presto X')],
   answers: [answer('best espresso machine'), answer('is the Aria 2 worth it?')],
   rowsAnalyzed: 4,
   judged: 1,
@@ -59,15 +64,12 @@ const BASE = {
 };
 
 describe('buildShoppingEnvelope', () => {
-  it('carries the schema version, the delta and honest sampling', () => {
+  it('carries the schema version, the products and honest sampling', () => {
     const env = buildShoppingEnvelope(BASE);
 
     expect(env.schema_version).toBe(SCHEMA_VERSION);
     expect(env.domain).toBe('acme.example');
-    expect(env.rankingDelta.map((r) => r.product)).toEqual([
-      'Aria 2',
-      'Presto X',
-    ]);
+    expect(env.skus.map((s) => s.product)).toEqual(['Aria 2', 'Presto X']);
     expect(env.sampling).toMatchObject({
       nProducts: 2,
       nPrompts: 2,
@@ -107,5 +109,70 @@ describe('buildShoppingEnvelope', () => {
     expect(env.degraded).toBe(true);
     expect(env.spend?.totalUsd).toBe(0.21);
     expect(isPartialRun(env)).toBe(true);
+  });
+});
+
+/**
+ * The envelope owns the ONE ordering every surface shows (terminal, JSON, HTML,
+ * MCP), so renderers never re-sort and never disagree. Input order is not a
+ * ranking - it is only the final tie-break.
+ */
+describe('shopping sku ordering', () => {
+  const order = (skus: SkuReport[]): string[] =>
+    buildShoppingEnvelope({ ...BASE, skus }).skus.map((s) => s.product);
+
+  it('sorts scored products by visibility, best first', () => {
+    expect(
+      order([
+        sku('Low', { visibility: 12 }),
+        sku('High', { visibility: 91 }),
+        sku('Mid', { visibility: 55 }),
+      ]),
+    ).toEqual(['High', 'Mid', 'Low']);
+  });
+
+  it('leads with a product engines never recommended, above every score', () => {
+    // The finding, not the best number: an absent product is why the merchant
+    // ran this, so a perfect 100 must not push it down the page.
+    expect(
+      order([sku('Star', { visibility: 100 }), absent('Ignored')]),
+    ).toEqual(['Ignored', 'Star']);
+  });
+
+  it('sinks products that could never be measured, below a zero', () => {
+    // "Never asked" and "asked but unanswered" are input and RUN problems, not
+    // visibility results. Sorting them by their absent score would rank them
+    // as the worst products, which is a different (and false) claim.
+    expect(
+      order([
+        sku('NeverAsked', {
+          categoryPrompts: 0,
+          answers: 0,
+          mentions: 0,
+          visibility: null,
+        }),
+        sku('Unanswered', { answers: 0, mentions: 0, visibility: null }),
+        absent('NotRecommended'),
+        sku('Scored', { visibility: 30 }),
+      ]),
+    ).toEqual(['NotRecommended', 'Scored', 'NeverAsked', 'Unanswered']);
+  });
+
+  it('breaks ties on input position, so a run is reproducible', () => {
+    expect(
+      order([
+        sku('Second', { visibility: 50, mentions: 2 }),
+        sku('First', { visibility: 50, mentions: 2 }),
+      ]),
+    ).toEqual(['Second', 'First']);
+  });
+
+  it('breaks a visibility tie on mentions before position', () => {
+    expect(
+      order([
+        sku('Fewer', { visibility: 50, mentions: 1 }),
+        sku('More', { visibility: 50, mentions: 2 }),
+      ]),
+    ).toEqual(['More', 'Fewer']);
   });
 });

@@ -92,10 +92,9 @@ describe('resolveProducts', () => {
     expect(resolved.notes.join(' ').toLowerCase()).toContain('duplicate');
   });
 
-  it('assigns merchant ranks from the surviving input order', () => {
+  it('keeps the input order, which only decides what the cap drops', () => {
     const resolved = resolveProducts([{ name: 'A' }, { name: 'B' }]);
     expect(resolved.products.map((p) => p.name)).toEqual(['A', 'B']);
-    expect(resolved.merchantRank('B')).toBe(2);
   });
 
   it('rejects an empty list', () => {

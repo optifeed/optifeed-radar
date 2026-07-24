@@ -21,8 +21,9 @@ a brand gets recommended. It runs locally with the user's own API keys.
   (about 97 with `--grounded`); that is the engines answering, not a hang.
 
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for
-  products the user names, best first; the headline is the delta between that
-  order and the order engines recommend. Max 10 products, up to 4 prompts each
+  products the user names, in any order; each product is scored 0-100 and the
+  report is sorted by what the engines did, with any product they never
+  recommended first. Max 10 products, up to 4 prompts each
   per engine, so cap it with `--max-cost`.
 
 Scores are estimates from sampling and vary between runs. Grounded engines are

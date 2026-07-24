@@ -42,8 +42,6 @@ export interface SkuReport {
   product: string;
   aliases?: string[];
   descriptor?: string;
-  /** 1-based position in the merchant's own list (their ranking). */
-  merchantRank: number;
   /**
    * 0-100 product visibility over the category prompts, or `null` when that
    * layer was never asked (no descriptor and no category). Null is not zero: an
@@ -87,8 +85,6 @@ export interface AnalyzedAnswer {
 
 export interface ScoreProductInput {
   product: ProductEntity;
-  /** 1-based merchant ranking (input order). */
-  merchantRank: number;
   /** Category prompts requested for this product (not how many were answered). */
   categoryPrompts: number;
   /** Category-prompt answers, analyzed for this product. */
@@ -165,14 +161,7 @@ export function shelfShareOfVoice(
 
 /** Aggregate one product's analyzed answers into its {@link SkuReport}. */
 export function scoreProduct(input: ScoreProductInput): SkuReport {
-  const {
-    product,
-    merchantRank,
-    categoryPrompts,
-    visibility,
-    reputation,
-    owners,
-  } = input;
+  const { product, categoryPrompts, visibility, reputation, owners } = input;
 
   const answers = visibility.map((v) => v.answer);
   const results = visibility.map((v) => v.result);
@@ -186,7 +175,6 @@ export function scoreProduct(input: ScoreProductInput): SkuReport {
     product: product.name,
     ...(product.aliases?.length ? { aliases: product.aliases } : {}),
     ...(product.descriptor ? { descriptor: product.descriptor } : {}),
-    merchantRank,
     // No category answers means this layer was never measured. `compositeScore`
     // already returns null for an empty engine set - kept explicit here because
     // the difference between "not measured" and "scored 0" is the difference

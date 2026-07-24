@@ -123,9 +123,9 @@ export const TOOL_SPECS: ToolSpec[] = [
     name: 'shopping_check',
     description:
       'Check whether AI engines recommend specific PRODUCTS you name (beta). ' +
-      'Give the products in the order the merchant ranks them, best first: the ' +
-      'headline result is the delta between that order and the order engines ' +
-      'actually recommend, plus the rival products filling the shelf. Use for ' +
+      'Returns each product scored 0-100 on whether engines recommend it, ' +
+      'sorted with the ones they never named first, plus the rival products ' +
+      'filling the shelf instead. Use for ' +
       'SKU-level questions; use check_visibility for the brand as a whole. ' +
       'There is no product discovery, so the list must be supplied. ' +
       'COST: spends real API money and is larger than a brand check. Each ' +
@@ -144,11 +144,11 @@ export const TOOL_SPECS: ToolSpec[] = [
           type: 'array',
           maxItems: MAX_PRODUCTS,
           description:
-            `Up to ${MAX_PRODUCTS} products, best first (that order is the ` +
-            'merchant ranking the result is measured against). Each item is a ' +
-            'name, or an object with name plus optional aliases and a ' +
-            'descriptor ("quiet home espresso machine") that rescues an opaque ' +
-            'product name.',
+            `Up to ${MAX_PRODUCTS} products, in any order (the order carries ` +
+            'no meaning; results are sorted by what the engines did). Each ' +
+            'item is a name, or an object with name plus optional aliases and ' +
+            'a descriptor ("quiet home espresso machine") that rescues an ' +
+            'opaque product name.',
           items: {
             oneOf: [
               { type: 'string' },

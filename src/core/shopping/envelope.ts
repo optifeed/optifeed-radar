@@ -3,8 +3,9 @@
  *
  * Deliberately NOT a `VisibilityEnvelope` with products bolted on. A shopping
  * run has no single 0-100 headline - hard rule #9 keeps exactly one of those,
- * and it belongs to `check`. What leads here is the RANKING DELTA, with
- * per-product visibility numbers inside each product's own section.
+ * and it belongs to `check`. What leads here is the per-product summary, in the
+ * one order this module decides (see `orderSkus`), with the detail inside each
+ * product's own section.
  *
  * The honesty flags are the same four the check envelope carries, so the shared
  * `isPartialRun` / `honestyNotes` in `core/output` apply unchanged.
@@ -20,7 +21,6 @@ import {
   type RunSpend,
 } from '../types.js';
 import { SHOPPING_JUDGE_RATE_CAP } from './judge.js';
-import { computeRankingDelta, type RankingDeltaRow } from './ranking.js';
 import type { SkuReport } from './score.js';
 
 /**
@@ -54,11 +54,9 @@ export interface ShoppingEnvelope {
   domain: string;
   /** The store profile the products were checked against (M4). */
   profile: BrandProfile;
-  /** The products as the merchant listed them, in their ranking order. */
+  /** The products as the merchant listed them, in input order. */
   products: ProductEntity[];
-  /** THE headline: the merchant's ranking against AI's observed ranking. */
-  rankingDelta: RankingDeltaRow[];
-  /** Per-product results, in merchant order. */
+  /** Per-product results, in the order every surface shows (see `orderSkus`). */
   skus: SkuReport[];
   /** Raw engine answers - the evidence renderers show, never re-derived. */
   answers: EngineAnswer[];
@@ -80,6 +78,42 @@ export interface ShoppingEnvelope {
   skippedEngines?: { engine: EngineId; reason: string }[];
   partialEngines?: PartialEngine[];
   degraded?: boolean;
+}
+
+/**
+ * Which group a product belongs to before scores are compared at all.
+ *
+ * A product engines never recommended is the FINDING - it is why the merchant
+ * ran this - so it leads, ahead of any score. A product that could not be
+ * measured (no category questions written, or none answered this run) sinks to
+ * the bottom: those are input and run problems, and sorting them by their
+ * absent score would rank them as the worst products, which is a different and
+ * false claim (rule #6).
+ */
+function orderGroup(sku: SkuReport): number {
+  if (sku.answers === 0) return 2; // never asked, or asked and unanswered
+  if (sku.mentions === 0) return 0; // asked, answered, never recommended
+  return 1; // scored
+}
+
+/**
+ * The ONE ordering every surface shows.
+ *
+ * Computed here so the envelope carries it to the terminal, JSON, HTML and MCP
+ * alike and no renderer re-sorts (or disagrees). This is a SORT, not a ranking
+ * of the merchant's products against each other: each product was asked its own
+ * category questions, so a higher score means "wins its own shelf more
+ * decisively", never "beats the product below it". Renderers say so.
+ */
+export function orderSkus(skus: SkuReport[]): SkuReport[] {
+  // Sort is stable (ES2019), so equal rows keep the order the products were
+  // given in. That is the tie-break, and the only meaning input order carries.
+  return [...skus].sort(
+    (a, b) =>
+      orderGroup(a) - orderGroup(b) ||
+      (b.visibility ?? 0) - (a.visibility ?? 0) ||
+      b.mentions - a.mentions,
+  );
 }
 
 /** Inputs to {@link buildShoppingEnvelope}. */
@@ -123,8 +157,7 @@ export function buildShoppingEnvelope(
     domain: profile.domain,
     profile,
     products,
-    rankingDelta: computeRankingDelta(skus),
-    skus,
+    skus: orderSkus(skus),
     answers,
     notes: notes ?? [],
     sampling: {

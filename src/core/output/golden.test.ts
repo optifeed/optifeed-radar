@@ -75,11 +75,14 @@ describe('envelope schema snapshot', () => {
   // thing it exists to prevent. Changing this line must be a conscious act.
   // 0.1 -> 0.2 on 2026-07-17: `score` became `number | null` (null = the run
   // measured nothing) - see SCHEMA_VERSION's note.
+  // 0.2 -> 0.3 on 2026-07-24: the shopping envelope dropped `rankingDelta` and
+  // `SkuReport` dropped `merchantRank` (input order stopped being read as a
+  // ranking). One version covers every artifact, so `check` bumps with it.
   it('pins the schema version so a break forces a bump', () => {
     const expected = fixture<VisibilityEnvelope>(
       'output',
       'golden-envelope.json',
     );
-    expect(expected.schema_version).toBe('0.2');
+    expect(expected.schema_version).toBe('0.3');
   });
 });

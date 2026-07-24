@@ -18,8 +18,9 @@ When asked about a brand's AI visibility (GEO / AEO):
   (about 97 with `--grounded`); that is the engines answering, not a hang.
 
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for the
-  products the user names, best first; the headline is the delta between that
-  order and the order engines actually recommend. Max 10 products, up to 4
+  products the user names, in any order; each product is scored 0-100 and the
+  report is sorted by what the engines did, with any product they never
+  recommended first. Max 10 products, up to 4
   prompts each per engine, so cap it with `--max-cost`.
 
 Report scores as estimates from sampling that vary between runs. Report
