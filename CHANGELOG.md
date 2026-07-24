@@ -27,6 +27,20 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+### Fixed
+
+- The build now makes `dist/cli/index.js` and `dist/mcp/index.js` executable
+  (`scripts/fix-bin-permissions.mjs`). `tsc` writes 0644 and nothing restored
+  the execute bit. npm papered over it: bin-links chmods a bin target whenever
+  it creates the symlink, so registry installs, `file:` dependencies,
+  `npm link` and `npx <path>` all produced a working binary - at link time
+  only. Rebuilding after that recreated the file at 0644 behind the same
+  symlink and the binary stopped working with `Permission denied`; executing
+  `dist/cli/index.js` directly failed the same way. Installing 0.1.0 or 0.2.0
+  from npm was unaffected, which is why this went unnoticed, but the tarball
+  did ship 0644 - executability rested on the installer rather than on the
+  build. It is now the build's job.
+
 ## [0.2.0] - 2026-07-24
 
 `shopping` no longer reads the order you list products in as a ranking. If you
