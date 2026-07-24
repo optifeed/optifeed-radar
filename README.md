@@ -74,9 +74,11 @@ the shop. The tool works this out from your site and stores it as
 
 One level down, `shopping` does the same thing for individual products you
 name (beta). Each product gets its own 0-100 visibility score, and the report
-is sorted by what the engines did: anything they never recommended comes
-first, since that is the finding worth reading. The order you list your
-products in carries no meaning. Each product is checked twice over - category
+is ordered by what the engines did: any product they answered about but never
+recommended leads, since that is the finding worth reading, then the rest by
+visibility, and last anything the run could not measure at all. The order you
+list your products in carries no ranking meaning; it only breaks ties between
+identical scores. Each product is checked twice over - category
 buying questions that never name it, and questions that do - and when a
 product is absent the report leads with the rival products the engines named
 instead, which is the more useful half of a zero. Because every product is
@@ -279,7 +281,8 @@ npx optifeed-radar config                  # which keys are set
 `config` reports only whether each key is present, never the key value.
 
 For `shopping`, list up to 10 products per run in any order; only the first 10
-are checked, and the report is sorted by score, not by what you typed. A file
+are checked, and the report is ordered by what the engines did, not by what
+you typed. A file
 gives each product a descriptor, which is what rescues an opaque product
 name - "Aria 2" tells an engine nothing, "quiet home espresso machine" tells
 it everything:

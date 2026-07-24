@@ -51,8 +51,8 @@ The `optifeed-mcp` server exposes the same capability to AI agents:
 - `check_visibility` - run a visibility check for a domain.
 - `audit_store` - run the zero-key readiness audit.
 - `generate_buyer_queries` - produce the buyer-prompt pack.
-- `shopping_check` - product-level check for products the user names, in their
-  ranking order.
+- `shopping_check` - product-level check for products the user names, in any
+  order.
 - `get_snapshot_diff` - compare two saved runs.
 
 ## Worked example

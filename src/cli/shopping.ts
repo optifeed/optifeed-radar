@@ -129,7 +129,7 @@ export function registerShopping(program: Command, rt: Runtime): void {
     )
     .option(
       '--products <list>',
-      `comma-separated product names (max ${MAX_PRODUCTS}, in any order)`,
+      `comma-separated product names (max ${MAX_PRODUCTS}, order is not a ranking)`,
     )
     .option(
       '--products-file <file>',
@@ -179,7 +179,7 @@ export function registerShopping(program: Command, rt: Runtime): void {
       if (flags.products && flags.productsFile) {
         rt.err(
           'Pass --products or --products-file, not both.\n' +
-            'The order of that list is your own product ranking, so only one can define it.\n',
+            'Two lists would give the run two different sets of products to check.\n',
         );
         process.exitCode = 1;
         return;

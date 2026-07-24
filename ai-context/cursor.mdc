@@ -22,8 +22,9 @@ a brand gets recommended. It runs locally with the user's own API keys.
 
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for
   products the user names, in any order; each product is scored 0-100 and the
-  report is sorted by what the engines did, with any product they never
-  recommended first. Max 10 products, up to 4 prompts each
+  report is ordered by what the engines did: products they answered about but
+  never recommended lead, then the rest by visibility, then anything the run
+  could not measure. Max 10 products, up to 4 prompts each
   per engine, so cap it with `--max-cost`.
 
 Scores are estimates from sampling and vary between runs. Grounded engines are

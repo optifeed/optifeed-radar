@@ -25,8 +25,9 @@ visibility / GEO / AEO check:
 
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for the
   products the user names, in any order; each product is scored 0-100 and the
-  report is sorted by what the engines did, with any product they never
-  recommended first. Max 10 products, up to 4
+  report is ordered by what the engines did: products they answered about but
+  never recommended lead, then the rest by visibility, then anything the run
+  could not measure. Max 10 products, up to 4
   prompts each per engine, so cap it with `--max-cost`.
 
 Report scores as estimates from sampling; engines vary between runs. Report

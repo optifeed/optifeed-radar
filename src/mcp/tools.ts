@@ -144,8 +144,11 @@ export const TOOL_SPECS: ToolSpec[] = [
           type: 'array',
           maxItems: MAX_PRODUCTS,
           description:
-            `Up to ${MAX_PRODUCTS} products, in any order (the order carries ` +
-            'no meaning; results are sorted by what the engines did). Each ' +
+            `Up to ${MAX_PRODUCTS} products, in any order (the order is not a ` +
+            'ranking; it only breaks ties between identical scores). Results ' +
+            'are ordered by what the engines did: products they answered ' +
+            'about but never recommended lead, then the rest by visibility, ' +
+            'then anything the run could not measure. Each ' +
             'item is a name, or an object with name plus optional aliases and ' +
             'a descriptor ("quiet home espresso machine") that rescues an ' +
             'opaque product name.',
