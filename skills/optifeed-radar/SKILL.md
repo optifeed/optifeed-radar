@@ -27,9 +27,10 @@ use `npx tsx src/cli/index.ts <command>` instead.
   engines, score recommendation, position, and share of voice into one AI
   Visibility Score. Needs at least one API key.
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for
-  the products the user NAMES, best first. That order is treated as their own
-  ranking, and the headline result is the delta against the order engines
-  actually recommend. `--products-file products.yml` takes a name, aliases,
+  the products the user NAMES, in any order. Each product gets its own 0-100
+  visibility score and the report is sorted by what the engines did, with any
+  product they never recommended first.
+  `--products-file products.yml` takes a name, aliases,
   and a descriptor per product; the descriptor ("quiet home espresso machine")
   is what rescues an opaque product name. Max 10 products per run. There is no
   catalog import, so ask the user which products to check.
@@ -50,8 +51,8 @@ The `optifeed-mcp` server exposes the same capability to AI agents:
 - `check_visibility` - run a visibility check for a domain.
 - `audit_store` - run the zero-key readiness audit.
 - `generate_buyer_queries` - produce the buyer-prompt pack.
-- `shopping_check` - product-level check for products the user names, in their
-  ranking order.
+- `shopping_check` - product-level check for products the user names, in any
+  order.
 - `get_snapshot_diff` - compare two saved runs.
 
 ## Worked example

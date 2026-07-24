@@ -23,8 +23,9 @@ Always describe scores as estimates from sampling that vary between runs.
 Report grounded engines (which cite sources) separately from parametric ones.
 Never ask the user to paste API keys into the chat - keys stay on their
 machine. For products, `shopping <domain> --products "A, B, C"` checks the
-products the user names, best first, and reports the delta between that order
-and the order engines recommend.
+products the user names, in any order, and scores each one 0-100 on whether
+engines recommend it. Products they answered about but never recommended lead,
+then the rest by visibility, then anything the run could not measure.
 
 Catalog discovery (importing products from a store or a feed) and product-feed
 linting are on the roadmap, not shipped - join the waitlist at optifeed.com.

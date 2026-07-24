@@ -4,9 +4,9 @@
  * Shopping-lite: the merchant NAMES their products (there is no discovery of
  * any kind) and the run checks each one two ways - category buying prompts
  * (does it get recommended?) and product-named prompts (what do engines say
- * about it?). Its headline is the delta between the merchant's own ranking, as
- * given by the input order, and the ranking the engines actually show; when a
- * product is absent, the shelf that beat it leads instead of a bare zero.
+ * about it?). Products are presented sorted by their own visibility, absent
+ * ones first; when a product is absent, the shelf that beat it leads instead of
+ * a bare zero. Input order carries no meaning - see `orderSkus`.
  */
 export {
   MAX_PRODUCTS,
@@ -60,10 +60,11 @@ export type {
   SkuReport,
 } from './score.js';
 
-export { computeRankingDelta } from './ranking.js';
-export type { RankingDeltaRow } from './ranking.js';
-
-export { SHOPPING_VARIANCE_NOTE, buildShoppingEnvelope } from './envelope.js';
+export {
+  SHOPPING_VARIANCE_NOTE,
+  buildShoppingEnvelope,
+  orderSkus,
+} from './envelope.js';
 export type {
   BuildShoppingEnvelopeInput,
   ShoppingEnvelope,

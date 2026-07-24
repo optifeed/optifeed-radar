@@ -121,10 +121,8 @@ export function parseProductsFile(
 
 /** A capped, de-duped product list plus the notes explaining what changed. */
 export interface ResolvedProducts {
-  /** The products to run, in merchant-ranking order. */
+  /** The products to run, in the order they were given. */
   products: ProductEntity[];
-  /** 1-based merchant rank of a product name, or 0 if it is not in the list. */
-  merchantRank(name: string): number;
   /** Human-readable notes about entries that were dropped (never silent). */
   notes: string[];
 }
@@ -132,8 +130,11 @@ export interface ResolvedProducts {
 /**
  * Normalize a parsed list into the run's products: de-dupe, cap, keep order.
  *
- * Dropping is always REPORTED. A merchant who pasted 13 products and silently
- * got 10 would read the ranking delta as covering their whole shelf (rule #6).
+ * Input order is NOT a ranking (it was read as one until 2026-07-24); it only
+ * decides which entries fall off the end of the cap, and breaks ties in the
+ * report. Dropping is always REPORTED: a merchant who pasted 13 products and
+ * silently got 10 would read the report as covering their whole shelf
+ * (rule #6).
  */
 export function resolveProducts(input: ProductEntity[]): ResolvedProducts {
   const notes: string[] = [];
@@ -152,7 +153,7 @@ export function resolveProducts(input: ProductEntity[]): ResolvedProducts {
   }
   if (duplicates > 0) {
     notes.push(
-      `Dropped ${duplicates} duplicate product ${duplicates === 1 ? 'name' : 'names'}; the first (higher-ranked) entry was kept.`,
+      `Dropped ${duplicates} duplicate product ${duplicates === 1 ? 'name' : 'names'}; the first entry of each was kept.`,
     );
   }
 
@@ -164,16 +165,9 @@ export function resolveProducts(input: ProductEntity[]): ResolvedProducts {
   const dropped = unique.length - products.length;
   if (dropped > 0) {
     notes.push(
-      `Only the first ${MAX_PRODUCTS} products were checked; ${dropped} further ${dropped === 1 ? 'product was' : 'products were'} not run.`,
+      `Only the first ${MAX_PRODUCTS} products you listed were checked; ${dropped} further ${dropped === 1 ? 'product was' : 'products were'} not run.`,
     );
   }
 
-  const ranks = new Map<string, number>(
-    products.map((p, i) => [p.name.toLowerCase(), i + 1]),
-  );
-  return {
-    products,
-    merchantRank: (name: string): number => ranks.get(name.toLowerCase()) ?? 0,
-    notes,
-  };
+  return { products, notes };
 }

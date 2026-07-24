@@ -297,7 +297,6 @@ export async function runShopping(
     const bucket = perProduct[i] ?? { visibility: [], reputation: [] };
     return scoreProduct({
       product,
-      merchantRank: i + 1,
       categoryPrompts: requested[i] ?? 0,
       visibility: bucket.visibility,
       reputation: bucket.reputation,

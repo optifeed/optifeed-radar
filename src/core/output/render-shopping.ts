@@ -1,18 +1,17 @@
 /**
  * Rendering for a shopping run (M12a): terminal, JSON, and the HTML report.
  *
- * The ORDER here is a product decision, not a layout preference. The ranking
- * delta leads every surface, because the merchant's own ranking is what makes
- * the result legible ("your #1 is AI's #4"). Inside a product's section, an
- * ABSENT product leads with the shelf that beat it: "0 mentions" is the least
- * useful sentence we could write, while "engines recommended Breville Bambino
- * x6, Gaggia Classic x4" is the reason they ran this.
+ * The ORDER here is a product decision, not a layout preference. The summary
+ * leads every surface, in the order the ENVELOPE decided (`orderSkus`) - the
+ * renderers never sort, so no two surfaces can disagree. Inside a product's
+ * section, an ABSENT product leads with the shelf that beat it: "0 mentions"
+ * is the least useful sentence we could write, while "engines recommended
+ * Breville Bambino x6, Gaggia Classic x4" is the reason they ran this.
  *
  * Consumes the envelope only, never re-deriving from raw answers.
  */
 import pc from 'picocolors';
 import type {
-  RankingDeltaRow,
   ShelfShareRow,
   ShoppingEnvelope,
   SkuReport,
@@ -39,19 +38,36 @@ function pad(s: string, width: number): string {
   return s.length >= width ? s : s + ' '.repeat(width - s.length);
 }
 
-/** How far the engines moved a product from where the merchant put it. */
-export function deltaLabel(row: RankingDeltaRow): string {
-  if (row.aiRank === null) {
-    // Three distinct facts, and only the first is the merchant's to fix.
-    if (!row.measured) return 'no category questions asked';
-    if (row.answers === 0) return 'category questions went unanswered';
-    return 'not recommended in any answer';
+/**
+ * The one-line result for a product in the summary.
+ *
+ * Four outcomes, kept distinct on purpose: never asked and asked-but-unanswered
+ * are an input problem and a RUN problem, and collapsing either into "not
+ * recommended" accuses a product of losing a contest it never entered
+ * (rule #6).
+ */
+export function summaryStatus(sku: SkuReport): string {
+  if (sku.categoryPrompts === 0) return 'no category questions asked';
+  if (sku.answers === 0) return 'category questions went unanswered';
+  if (sku.mentions === 0) {
+    return `not recommended in any of ${plural(sku.answers, 'answer')}`;
   }
-  const delta = row.delta ?? 0;
-  if (delta === 0) return `AI #${row.aiRank}  (same as yours)`;
-  const places = plural(Math.abs(delta), 'place');
-  return `AI #${row.aiRank}  (${delta > 0 ? 'down' : 'up'} ${places})`;
+  const rank =
+    sku.avgPosition === null ? '' : `, average shelf rank ${sku.avgPosition}`;
+  return `named in ${sku.mentions} of ${plural(sku.answers, 'answer')}${rank}`;
 }
+
+/** The score cell, or a dash when there is no score to show (never a 0). */
+export function summaryScore(sku: SkuReport): string {
+  return sku.answers === 0 ? '-' : `${sku.visibility ?? 0}/100`;
+}
+
+/**
+ * Said once, under the summary: the products were asked DIFFERENT questions.
+ * Without it the list reads as a head-to-head ranking, which it is not.
+ */
+export const SHOPPING_ORDER_NOTE =
+  "Sorted by each product's own visibility. Products were asked different questions, so this compares how decisively each one wins its own shelf.";
 
 /** The shelf as one honest line: who the engines named, and how often. */
 export function shelfLine(shelf: ShelfShareRow[]): string {
@@ -64,15 +80,23 @@ export function shelfLine(shelf: ShelfShareRow[]): string {
   return rest > 0 ? `${parts.join(', ')}, and ${rest} more` : parts.join(', ');
 }
 
-/** The headline block: the merchant's ranking against the engines'. */
-function deltaBlock(env: ShoppingEnvelope, c: Palette): string[] {
-  const lines = [c.bold('Your ranking vs AI:')];
-  for (const row of env.rankingDelta) {
+/**
+ * The headline block: every product, in the ONE order the envelope decided
+ * (absent first, then by visibility). Renderers never re-sort.
+ */
+function summaryBlock(env: ShoppingEnvelope, c: Palette): string[] {
+  const lines = [c.bold('Products by visibility:')];
+  for (const sku of env.skus) {
     lines.push(
-      `  ${pad(`#${row.merchantRank}`, 4)}${pad(row.product, 24)}${deltaLabel(row)}`,
+      `  ${pad(sku.product, 24)}${summaryScore(sku).padStart(7)}  ${summaryStatus(sku)}`,
     );
   }
   lines.push('');
+  // A single product is not sorted against anything, so the note would confuse.
+  if (env.skus.length > 1) {
+    lines.push(c.dim(SHOPPING_ORDER_NOTE));
+    lines.push('');
+  }
   return lines;
 }
 
@@ -80,8 +104,7 @@ function deltaBlock(env: ShoppingEnvelope, c: Palette): string[] {
 function productBlock(sku: SkuReport, c: Palette): string[] {
   const lines: string[] = [];
   const absent = sku.answers > 0 && sku.mentions === 0;
-  const heading = `${sku.product} (your #${sku.merchantRank})`;
-  lines.push(c.bold(absent ? `${heading} - not recommended` : heading));
+  lines.push(c.bold(absent ? `${sku.product} - not recommended` : sku.product));
 
   if (sku.categoryPrompts === 0) {
     // Never measured is not the same as never recommended, and must not render
@@ -150,13 +173,13 @@ export function renderShoppingText(
   const lines: string[] = [];
 
   lines.push(c.bold(`Shopping visibility: ${env.profile.brand}`));
-  lines.push(`for ${env.domain}, products in the order you listed them`);
+  lines.push(`${plural(env.skus.length, 'product')} checked for ${env.domain}`);
   lines.push('');
   lines.push(env.sampling.varianceNote);
   lines.push(shoppingSamplingLine(env));
   lines.push('');
 
-  lines.push(...deltaBlock(env, c));
+  lines.push(...summaryBlock(env, c));
   for (const sku of env.skus) lines.push(...productBlock(sku, c));
 
   // Honesty flags first (they say how complete the run is), then what the run
@@ -185,17 +208,15 @@ export function renderShoppingJson(env: ShoppingEnvelope): string {
   return JSON.stringify(env, null, 2);
 }
 
-function deltaTableHtml(rows: RankingDeltaRow[]): string {
-  const body = rows
+function summaryTableHtml(skus: SkuReport[]): string {
+  const body = skus
     .map(
-      (row) =>
-        `<tr><td>#${row.merchantRank}</td><td>${esc(row.product)}</td><td>${
-          row.aiRank === null ? '-' : `#${row.aiRank}`
-        }</td><td>${esc(deltaLabel(row))}</td></tr>`,
+      (sku) =>
+        `<tr><td>${esc(sku.product)}</td><td>${esc(summaryScore(sku))}</td><td>${esc(summaryStatus(sku))}</td></tr>`,
     )
     .join('');
   return `<table>
-    <thead><tr><th>Your rank</th><th>Product</th><th>AI rank</th><th>Change</th></tr></thead>
+    <thead><tr><th>Product</th><th>Visibility</th><th>Result</th></tr></thead>
     <tbody>${body}</tbody>
   </table>`;
 }
@@ -213,7 +234,7 @@ function shelfHtml(shelf: ShelfShareRow[]): string {
 
 function productHtml(sku: SkuReport): string {
   const absent = sku.answers > 0 && sku.mentions === 0;
-  const heading = `${esc(sku.product)} <span class="muted">(your #${sku.merchantRank})</span>`;
+  const heading = esc(sku.product);
 
   let lead: string;
   if (sku.categoryPrompts === 0) {
@@ -282,7 +303,9 @@ export function renderShoppingHtml(env: ShoppingEnvelope): string {
     <p class="muted">${esc(shoppingSamplingLine(env))}</p>
   </header>
 
-  <section><h2>Your ranking vs AI</h2>${deltaTableHtml(env.rankingDelta)}</section>
+  <section><h2>Products by visibility</h2>${summaryTableHtml(env.skus)}
+    ${env.skus.length > 1 ? `<p class="muted">${esc(SHOPPING_ORDER_NOTE)}</p>` : ''}
+  </section>
   ${env.skus.map(productHtml).join('')}
   ${notesHtml}
   ${cost ? `<section><p class="muted">${esc(cost)}</p></section>` : ''}

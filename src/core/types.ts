@@ -19,8 +19,15 @@
  * Bumped deliberately while unpublished, when it is still free: after launch,
  * every reader in the wild would have to handle both. Cached 0.1 profiles and
  * query packs are re-discovered rather than trusted (SchemaVersionError).
+ *
+ * 0.3 (2026-07-24): the shopping envelope dropped `rankingDelta` and
+ * `SkuReport` dropped `merchantRank`. Input order stopped being read as the
+ * merchant's ranking, so nothing derived from it survives. Taken while the
+ * package had no users, so no migration was written; profiles and query packs
+ * rebuild themselves, older snapshots stop loading. ONE version covers every
+ * artifact, so `check` snapshots bump with the shopping change.
  */
-export const SCHEMA_VERSION = '0.2';
+export const SCHEMA_VERSION = '0.3';
 
 /** The engines v1 supports (all BYO-key). */
 export type EngineId = 'openai' | 'anthropic' | 'gemini' | 'perplexity';

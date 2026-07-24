@@ -157,7 +157,7 @@ describe('shopping command', () => {
     ]);
 
     const out = rt.output.join('');
-    expect(out).toContain('Your ranking vs AI:');
+    expect(out).toContain('Products by visibility:');
     expect(out).toContain('Aria 2');
     expect(out).toContain('Presto X');
     expect(process.exitCode).toBeFalsy();
@@ -176,10 +176,10 @@ describe('shopping command', () => {
 
     const parsed = JSON.parse(rt.output.join('')) as {
       schema_version: string;
-      rankingDelta: unknown[];
+      skus: unknown[];
     };
     expect(parsed.schema_version).toBe(SCHEMA_VERSION);
-    expect(parsed.rankingDelta).toHaveLength(1);
+    expect(parsed.skus).toHaveLength(1);
   });
 
   it('reads a products file', async () => {

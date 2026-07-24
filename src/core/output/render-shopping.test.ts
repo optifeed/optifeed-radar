@@ -37,9 +37,7 @@ function answer(prompt: string): EngineAnswer {
   };
 }
 
-function sku(
-  over: Partial<SkuReport> & { product: string; merchantRank: number },
-): SkuReport {
+function sku(over: Partial<SkuReport> & { product: string }): SkuReport {
   return {
     visibility: 40,
     categoryPrompts: 3,
@@ -75,7 +73,6 @@ function sku(
 /** The absent product: zero mentions, but a full shelf around it. */
 const ABSENT = sku({
   product: 'Presto X',
-  merchantRank: 1,
   visibility: 0,
   mentions: 0,
   avgPosition: null,
@@ -104,7 +101,6 @@ const ABSENT = sku({
 
 const PRESENT = sku({
   product: 'Aria 2',
-  merchantRank: 2,
   reputation: { prompts: 1, answers: 2, positive: 1, neutral: 1, negative: 0 },
 });
 
@@ -126,22 +122,32 @@ function envelope(
 describe('renderShoppingText', () => {
   const text = renderShoppingText(envelope(), { color: false });
 
-  it('leads with the ranking delta, before any product section', () => {
-    const delta = text.indexOf('Your ranking');
-    const firstProduct = text.indexOf('Presto X (your #1)');
-    expect(delta).toBeGreaterThanOrEqual(0);
-    expect(firstProduct).toBeGreaterThan(delta);
+  it('leads with the summary, before any product section', () => {
+    const summary = text.indexOf('Products by visibility');
+    const firstProduct = text.indexOf('Presto X - not recommended');
+    expect(summary).toBeGreaterThanOrEqual(0);
+    expect(firstProduct).toBeGreaterThan(summary);
   });
 
-  it('shows where the engines put each product', () => {
-    expect(text).toContain('Aria 2');
-    // The merchant's #1 is never recommended; their #2 carries the shelf.
-    expect(text).toMatch(/Presto X[^\n]*not recommended/);
-    expect(text).toMatch(/Aria 2[^\n]*AI #1/);
+  it('gives each product its score and what happened to it', () => {
+    expect(text).toMatch(/Presto X\s+0\/100\s+not recommended in any of 3/);
+    expect(text).toMatch(/Aria 2\s+40\/100\s+named in 1 of 2/);
+  });
+
+  // Input order is not a ranking, so the output must never imply one moved.
+  it('never talks about places, ranks or the order the user typed', () => {
+    expect(text).not.toContain('Your ranking');
+    expect(text).not.toMatch(/\b(up|down) \d+ place/);
+    expect(text).not.toMatch(/\(your #\d\)/);
+    expect(text).not.toContain('order you listed');
+  });
+
+  it('says once that the products were asked different questions', () => {
+    expect(text).toContain('asked different questions');
   });
 
   it('leads an absent product with the shelf that beat it', () => {
-    const section = text.slice(text.indexOf('Presto X (your #1)'));
+    const section = text.slice(text.indexOf('Presto X - not recommended'));
     const shelf = section.indexOf('Breville Bambino Plus');
     const score = section.indexOf('Visibility:');
     expect(shelf).toBeGreaterThanOrEqual(0);
@@ -200,7 +206,6 @@ describe('renderShoppingText', () => {
         skus: [
           sku({
             product: 'Opaque',
-            merchantRank: 1,
             visibility: null,
             categoryPrompts: 0,
             answers: 0,
@@ -227,7 +232,6 @@ describe('renderShoppingText', () => {
         skus: [
           sku({
             product: 'Aria 2',
-            merchantRank: 1,
             visibility: null,
             categoryPrompts: 3,
             answers: 0,
@@ -244,9 +248,27 @@ describe('renderShoppingText', () => {
     expect(capped).not.toContain('descriptor');
     expect(capped).not.toContain('No category questions were asked');
     expect(capped).toContain('went unanswered');
-    // The headline table must not claim the questions were never written.
+    // The summary must not claim the questions were never written, and must
+    // not print a score for a product that was never measured (rule #6).
     expect(capped).not.toContain('no category questions asked');
     expect(capped).not.toContain('Visibility: 0/100');
+    expect(capped).not.toContain('0/100');
+  });
+
+  // The whole point of the change: the report is ordered by what the engines
+  // did, never by the order the products arrived in.
+  it('reorders the summary, putting an absent product above a scored one', () => {
+    const reordered = renderShoppingText(
+      envelope({
+        skus: [PRESENT, ABSENT],
+        products: [{ name: 'Aria 2' }, { name: 'Presto X' }],
+      }),
+      { color: false },
+    );
+    const summary = reordered.slice(
+      reordered.indexOf('Products by visibility'),
+    );
+    expect(summary.indexOf('Presto X')).toBeLessThan(summary.indexOf('Aria 2'));
   });
 });
 
@@ -256,14 +278,14 @@ describe('renderShoppingJson', () => {
     expect(json).not.toContain('[');
     const parsed = JSON.parse(json) as ShoppingEnvelope;
     expect(parsed.schema_version).toBe(SCHEMA_VERSION);
-    expect(parsed.rankingDelta).toHaveLength(2);
+    expect(parsed.skus).toHaveLength(2);
   });
 });
 
 describe('renderShoppingHtml', () => {
   const html = renderShoppingHtml(envelope());
 
-  it('is one self-contained file with the delta table and the footer', () => {
+  it('is one self-contained file with the summary table and the footer', () => {
     expect(html.startsWith('<!doctype html>')).toBe(true);
     expect(html).toContain('<style>');
     expect(html).not.toContain('<script');
@@ -275,7 +297,7 @@ describe('renderShoppingHtml', () => {
   it('escapes untrusted product and shelf text', () => {
     const injected = renderShoppingHtml(
       envelope({
-        skus: [sku({ product: '<img src=x onerror=1>', merchantRank: 1 })],
+        skus: [sku({ product: '<img src=x onerror=1>' })],
         products: [{ name: '<img src=x onerror=1>' }],
       }),
     );

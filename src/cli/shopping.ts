@@ -129,11 +129,11 @@ export function registerShopping(program: Command, rt: Runtime): void {
     )
     .option(
       '--products <list>',
-      `comma-separated product names, best first (max ${MAX_PRODUCTS})`,
+      `comma-separated product names (max ${MAX_PRODUCTS}, order is not a ranking)`,
     )
     .option(
       '--products-file <file>',
-      'YAML file of products (name, aliases, descriptor), best first',
+      'YAML file of products (name, aliases, descriptor)',
     )
     .option('-y, --yes', 'skip the cost confirmation (for AI agents / CI)')
     .option('--json', 'output the raw JSON envelope (no ANSI)')
@@ -179,7 +179,7 @@ export function registerShopping(program: Command, rt: Runtime): void {
       if (flags.products && flags.productsFile) {
         rt.err(
           'Pass --products or --products-file, not both.\n' +
-            'The order of that list is your own product ranking, so only one can define it.\n',
+            'Two lists would give the run two different sets of products to check.\n',
         );
         process.exitCode = 1;
         return;
@@ -187,7 +187,7 @@ export function registerShopping(program: Command, rt: Runtime): void {
       if (!flags.products && !flags.productsFile) {
         rt.err(
           'shopping needs the products to check: pass --products "Aria 2, Presto X" ' +
-            '(best first), or --products-file products.yml.\n' +
+            'or --products-file products.yml.\n' +
             'There is no product discovery yet, so the list is yours to name.\n',
         );
         process.exitCode = 1;

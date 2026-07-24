@@ -24,8 +24,10 @@ visibility / GEO / AEO check:
   (about 97 with `--grounded`); that is the engines answering, not a hang.
 
 - `shopping <domain> --products "A, B, C"` - product-level check (beta) for the
-  products the user names, best first; the headline is the delta between that
-  order and the order engines actually recommend. Max 10 products, up to 4
+  products the user names, in any order; each product is scored 0-100 and the
+  report is ordered by what the engines did: products they answered about but
+  never recommended lead, then the rest by visibility, then anything the run
+  could not measure. Max 10 products, up to 4
   prompts each per engine, so cap it with `--max-cost`.
 
 Report scores as estimates from sampling; engines vary between runs. Report

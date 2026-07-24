@@ -46,7 +46,6 @@ describe('scoreProduct', () => {
   it('scores the visibility layer per engine and overall', () => {
     const report = scoreProduct({
       product: ARIA,
-      merchantRank: 1,
       categoryPrompts: 2,
       visibility: rows(
         [
@@ -60,7 +59,6 @@ describe('scoreProduct', () => {
     });
 
     expect(report.product).toBe('Aria 2');
-    expect(report.merchantRank).toBe(1);
     expect(report.answers).toBe(2);
     expect(report.mentions).toBe(1);
     expect(report.engines.map((e) => e.engine)).toEqual([
@@ -76,7 +74,6 @@ describe('scoreProduct', () => {
   it('gives an absent product a populated shelf, never a bare zero', () => {
     const report = scoreProduct({
       product: { name: 'Presto X' },
-      merchantRank: 2,
       categoryPrompts: 2,
       visibility: rows(
         [
@@ -104,7 +101,6 @@ describe('scoreProduct', () => {
   it('reports the shelf under the merchant name and marks what is theirs', () => {
     const report = scoreProduct({
       product: ARIA,
-      merchantRank: 1,
       categoryPrompts: 1,
       visibility: rows([{ text: WITH_ARIA }], ARIA),
       reputation: [],
@@ -128,7 +124,6 @@ describe('scoreProduct', () => {
     );
     const report = scoreProduct({
       product: ARIA,
-      merchantRank: 1,
       categoryPrompts: 1,
       visibility: rows([{ text: WITH_ARIA }], ARIA),
       reputation: named,
@@ -149,7 +144,6 @@ describe('scoreProduct', () => {
   it('reports no visibility score when the category layer was never asked', () => {
     const report = scoreProduct({
       product: { name: 'Presto X' },
-      merchantRank: 2,
       categoryPrompts: 0,
       visibility: [],
       reputation: rows(

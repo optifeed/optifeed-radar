@@ -438,8 +438,8 @@ export function analyzeProductAnswer(
   const base = analyzeAnswer(answer, asProfile);
 
   // Rank is read off the SHELF (the order the answer presented), not off first
-  // appearance in the text: "your #1 is AI's #4" is a claim about the list the
-  // shopper sees. A mention with no shelf entry is unranked, not rank 1 - M7
+  // appearance in the text: the shelf is the list the shopper actually sees.
+  // A mention with no shelf entry is unranked, not rank 1 - M7
   // credits unranked mentions at a mid-list default rather than as the top pick.
   const shelfIndex = shelf.findIndex((entry) =>
     shelfEntryIsProduct(entry, terms),

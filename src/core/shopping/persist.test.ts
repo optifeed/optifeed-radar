@@ -62,7 +62,6 @@ function envelope(generatedAt = '2026-07-23T09:00:00.000Z'): ShoppingEnvelope {
     skus: [
       {
         product: 'Aria 2',
-        merchantRank: 1,
         visibility: 40,
         engines: [],
         categoryPrompts: 3,
@@ -98,7 +97,7 @@ describe('saveShoppingRun', () => {
     const { fs } = memFs();
     const path = await saveShoppingRun(envelope(), '/state', fs);
     const loaded = await loadShoppingRun(path, fs);
-    expect(loaded.rankingDelta[0]?.product).toBe('Aria 2');
+    expect(loaded.skus[0]?.product).toBe('Aria 2');
     expect(loaded.schema_version).toBe(SCHEMA_VERSION);
   });
 
@@ -133,12 +132,12 @@ describe('loadShoppingRun', () => {
 
   it('rejects a hand edit that removed a field consumers read', async () => {
     const broken = { ...envelope() } as Record<string, unknown>;
-    delete broken.rankingDelta;
+    delete broken.skus;
     const { fs } = memFs({
       '/state/shopping/a.json': JSON.stringify(broken),
     });
     await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
-      /rankingDelta/,
+      /skus/,
     );
   });
 
@@ -179,11 +178,26 @@ describe('loadShoppingRun', () => {
     );
   });
 
-  it('rejects a ranking row missing its ranks', async () => {
+  // Unvalidated, `avgPosition: undefined` fails the `=== null` guard in
+  // `summaryStatus` and the headline row reads "average shelf rank undefined".
+  it('rejects a sku missing the shelf rank the summary row reads', async () => {
     const broken = JSON.parse(JSON.stringify(envelope())) as {
-      rankingDelta: Record<string, unknown>[];
+      skus: Record<string, unknown>[];
     };
-    delete broken.rankingDelta[0]!.merchantRank;
+    delete broken.skus[0]!.avgPosition;
+    const { fs } = memFs({
+      '/state/shopping/a.json': JSON.stringify(broken),
+    });
+    await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
+      /avgPosition/,
+    );
+  });
+
+  it('rejects a sku missing the mention count the summary reads', async () => {
+    const broken = JSON.parse(JSON.stringify(envelope())) as {
+      skus: Record<string, unknown>[];
+    };
+    delete broken.skus[0]!.mentions;
     const { fs } = memFs({
       '/state/shopping/a.json': JSON.stringify(broken),
     });

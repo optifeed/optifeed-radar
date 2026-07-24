@@ -129,7 +129,6 @@ function validate(raw: unknown, path: string): ShoppingEnvelope {
   v.string(obj, 'generatedAt');
   v.objectField(obj, 'profile');
   v.array(obj, 'products');
-  v.array(obj, 'rankingDelta');
   v.array(obj, 'skus');
   v.array(obj, 'answers');
   v.array(obj, 'notes');
@@ -148,21 +147,15 @@ function validate(raw: unknown, path: string): ShoppingEnvelope {
   (obj.skus as unknown[]).forEach((raw, i) => {
     const sku = v.object(raw, `sku ${i}`);
     v.string(sku, 'product');
-    v.number(sku, 'merchantRank');
     v.number(sku, 'categoryPrompts');
     v.number(sku, 'answers');
     v.number(sku, 'mentions');
     v.numberOrNull(sku, 'visibility');
+    // Nullable and read by the summary row: unvalidated, `undefined` slips past
+    // its `=== null` guard and renders "average shelf rank undefined".
+    v.numberOrNull(sku, 'avgPosition');
     v.array(sku, 'engines');
     v.array(sku, 'shelf');
-  });
-
-  (obj.rankingDelta as unknown[]).forEach((raw, i) => {
-    const row = v.object(raw, `rankingDelta ${i}`);
-    v.string(row, 'product');
-    v.number(row, 'merchantRank');
-    v.numberOrNull(row, 'aiRank');
-    v.number(row, 'answers');
   });
 
   // Honesty flags: present-but-wrong-typed is worse than absent, since

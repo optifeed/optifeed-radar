@@ -197,7 +197,7 @@ describe('MCP tool schemas', () => {
               "type": "number",
             },
             "products": {
-              "description": "Up to 10 products, best first (that order is the merchant ranking the result is measured against). Each item is a name, or an object with name plus optional aliases and a descriptor ("quiet home espresso machine") that rescues an opaque product name.",
+              "description": "Up to 10 products, in any order (the order is not a ranking; it only breaks ties between identical scores). Results are ordered by what the engines did: products they answered about but never recommended lead, then the rest by visibility, then anything the run could not measure. Each item is a name, or an object with name plus optional aliases and a descriptor ("quiet home espresso machine") that rescues an opaque product name.",
               "items": {
                 "oneOf": [
                   {

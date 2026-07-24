@@ -3,10 +3,10 @@
  *
  * These are guards against the failure modes that only show up AFTER a
  * publish - a stale `dist/`, a bin that points at nothing, a README linking to
- * a file the tarball omits, or a release workflow that quietly lost
- * provenance. All pure file reads, no network, no subprocess.
+ * a file the tarball omits, or automation publishing without anyone deciding
+ * to. All pure file reads, no network, no subprocess.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const root = new URL('../', import.meta.url);
@@ -76,23 +76,41 @@ describe('build', () => {
   });
 });
 
-describe('release workflow', () => {
-  const workflow = () => read('.github/workflows/release.yml');
+/**
+ * Publishing is MANUAL (the auto-publish workflow was removed 2026-07-24).
+ *
+ * These assert the inverse of what they used to: nothing in the repo can push
+ * a release on its own. The point is not that automation is wrong - it is that
+ * re-adding it has to be a conscious act that trips a test, rather than a
+ * workflow file quietly appearing and publishing on the next tag.
+ */
+describe('publishing stays manual', () => {
+  // No workflows directory at all is the MOST manual state there is, so it must
+  // read as zero workflows. Letting `readdirSync` throw here fails collection
+  // for the whole file, which silently takes every other packaging guard in it
+  // down with it - a red that says nothing about what actually broke.
+  const workflows = exists('.github/workflows/')
+    ? readdirSync(new URL('.github/workflows/', root))
+    : [];
 
-  it('exists', () => {
-    expect(exists('.github/workflows/release.yml')).toBe(true);
+  it('ships no release workflow', () => {
+    expect(exists('.github/workflows/release.yml')).toBe(false);
   });
 
-  it('publishes with provenance and the id-token permission it requires', () => {
-    const yml = workflow();
-    expect(yml).toContain('--provenance');
-    expect(yml).toContain('id-token: write');
+  it('has no workflow that publishes to npm', () => {
+    for (const file of workflows) {
+      const yml = read(`.github/workflows/${file}`);
+      expect(yml, `${file} publishes to npm`).not.toMatch(/npm\s+publish/);
+    }
   });
 
-  it('runs the full gate before publishing', () => {
-    const yml = workflow();
-    for (const step of ['npm ci', 'npm run check', 'npm run build']) {
-      expect(yml).toContain(step);
+  it('has no package script that publishes', () => {
+    // A `release` script running `npm publish` is the same hazard wearing a
+    // different hat: one `npm run` away from an unintended publish.
+    for (const [name, script] of Object.entries(pkg.scripts)) {
+      expect(script, `the "${name}" script publishes`).not.toMatch(
+        /npm\s+publish/,
+      );
     }
   });
 });

@@ -43,7 +43,7 @@ export interface ShoppingFlags {
   yes?: boolean;
   json?: boolean;
   report?: string;
-  /** Comma-separated product names, in the merchant's ranking order. */
+  /** Comma-separated product names, in any order (not a ranking). */
   products?: string;
   /** Path to a products file (name, aliases, descriptor). */
   productsFile?: string;
