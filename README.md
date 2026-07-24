@@ -17,6 +17,10 @@ see and recommend you, and it can be **run by your own AI agents** (CLI, JSON,
 and an MCP server). People also call this AI visibility, generative engine
 optimization (GEO), answer engine optimization (AEO), or AI-SEO.
 
+<p align="center">
+  <img src="docs/assets/optifeed-radar-overview.png" alt="Optifeed Radar AI visibility dashboard and report" width="900">
+</p>
+
 ## 60-second setup
 
 No install needed - `npx` fetches and runs it. The zero-key `audit` runs end
@@ -52,6 +56,19 @@ reputation. All four engines are verified live against their production APIs
 Working from a clone instead? Run `npx tsx src/cli/index.ts <command>` so flags
 reach the CLI unchanged, or use the `npm run dev` script with `--` before the
 arguments (`npm run dev -- check yourbrand.com --report out.html`).
+
+### See it in action
+
+Run a full visibility check from the terminal, from brand discovery and buyer
+prompt generation through live engine queries and scoring.
+
+<p align="center">
+  <a href="docs/assets/optifeed-radar-cli.mp4">
+    <img src="docs/assets/optifeed-radar-cli-preview.png" alt="Watch the Optifeed Radar CLI demo" width="760">
+  </a>
+</p>
+
+<p align="center"><a href="docs/assets/optifeed-radar-cli.mp4"><strong>Watch the 15-second CLI demo</strong></a></p>
 
 ## What it does
 
@@ -90,6 +107,10 @@ imported or crawled.
 
 The `optifeed-mcp` server exposes the same capability to AI agents. It runs
 over stdio, and `npx` fetches it on demand - no clone or build needed.
+
+<p align="center">
+  <img src="docs/assets/optifeed-radar-claude-desktop.png" alt="Optifeed Radar running through Claude Desktop via MCP" width="760">
+</p>
 
 Claude Desktop (`claude_desktop_config.json`). The fastest way to open it is
 Settings -> Developer -> Edit Config, which creates the file if it does not
