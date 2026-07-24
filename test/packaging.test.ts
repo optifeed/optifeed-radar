@@ -85,7 +85,13 @@ describe('build', () => {
  * workflow file quietly appearing and publishing on the next tag.
  */
 describe('publishing stays manual', () => {
-  const workflows = readdirSync(new URL('.github/workflows/', root));
+  // No workflows directory at all is the MOST manual state there is, so it must
+  // read as zero workflows. Letting `readdirSync` throw here fails collection
+  // for the whole file, which silently takes every other packaging guard in it
+  // down with it - a red that says nothing about what actually broke.
+  const workflows = exists('.github/workflows/')
+    ? readdirSync(new URL('.github/workflows/', root))
+    : [];
 
   it('ships no release workflow', () => {
     expect(exists('.github/workflows/release.yml')).toBe(false);
