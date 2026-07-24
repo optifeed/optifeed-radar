@@ -151,6 +151,9 @@ function validate(raw: unknown, path: string): ShoppingEnvelope {
     v.number(sku, 'answers');
     v.number(sku, 'mentions');
     v.numberOrNull(sku, 'visibility');
+    // Nullable and read by the summary row: unvalidated, `undefined` slips past
+    // its `=== null` guard and renders "average shelf rank undefined".
+    v.numberOrNull(sku, 'avgPosition');
     v.array(sku, 'engines');
     v.array(sku, 'shelf');
   });

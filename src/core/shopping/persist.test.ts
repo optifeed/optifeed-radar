@@ -178,6 +178,21 @@ describe('loadShoppingRun', () => {
     );
   });
 
+  // Unvalidated, `avgPosition: undefined` fails the `=== null` guard in
+  // `summaryStatus` and the headline row reads "average shelf rank undefined".
+  it('rejects a sku missing the shelf rank the summary row reads', async () => {
+    const broken = JSON.parse(JSON.stringify(envelope())) as {
+      skus: Record<string, unknown>[];
+    };
+    delete broken.skus[0]!.avgPosition;
+    const { fs } = memFs({
+      '/state/shopping/a.json': JSON.stringify(broken),
+    });
+    await expect(loadShoppingRun('/state/shopping/a.json', fs)).rejects.toThrow(
+      /avgPosition/,
+    );
+  });
+
   it('rejects a sku missing the mention count the summary reads', async () => {
     const broken = JSON.parse(JSON.stringify(envelope())) as {
       skus: Record<string, unknown>[];
