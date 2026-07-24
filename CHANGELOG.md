@@ -27,6 +27,8 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-24
+
 ### Fixed
 
 - The build now makes `dist/cli/index.js` and `dist/mcp/index.js` executable
