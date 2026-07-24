@@ -10,7 +10,7 @@
 Is your brand recommended when buyers ask AI? Optifeed Radar checks whether
 ChatGPT, Perplexity, Gemini and Claude actually recommend you, and tells you
 where you stand against competitors. It runs locally, uses your own API keys,
-and stores nothing on a server.
+and has no Optifeed-hosted backend.
 
 It is built for two kinds of AI agents at once: it measures how **AI agents**
 see and recommend you, and it can be **run by your own AI agents** (CLI, JSON,
@@ -18,7 +18,7 @@ and an MCP server). People also call this AI visibility, generative engine
 optimization (GEO), answer engine optimization (AEO), or AI-SEO.
 
 <p align="center">
-  <img src="docs/assets/optifeed-radar-overview.png" alt="Optifeed Radar AI visibility dashboard and report" width="900">
+  <img src="https://raw.githubusercontent.com/optifeed/optifeed-radar/main/docs/assets/optifeed-radar-overview.png" alt="Optifeed Radar AI visibility dashboard and report" width="900">
 </p>
 
 ## 60-second setup
@@ -63,12 +63,12 @@ Run a full visibility check from the terminal, from brand discovery and buyer
 prompt generation through live engine queries and scoring.
 
 <p align="center">
-  <a href="docs/assets/optifeed-radar-cli.mp4">
-    <img src="docs/assets/optifeed-radar-cli-preview.png" alt="Watch the Optifeed Radar CLI demo" width="760">
+  <a href="https://github.com/optifeed/optifeed-radar/blob/main/docs/assets/optifeed-radar-cli.mp4">
+    <img src="https://raw.githubusercontent.com/optifeed/optifeed-radar/main/docs/assets/optifeed-radar-cli-preview.png" alt="Watch the Optifeed Radar CLI demo" width="760">
   </a>
 </p>
 
-<p align="center"><a href="docs/assets/optifeed-radar-cli.mp4"><strong>Watch the 15-second CLI demo</strong></a></p>
+<p align="center"><a href="https://github.com/optifeed/optifeed-radar/blob/main/docs/assets/optifeed-radar-cli.mp4"><strong>Watch the 15-second CLI demo</strong></a></p>
 
 ## What it does
 
@@ -79,7 +79,8 @@ web sources) are reported separately from parametric ones (which answer from
 model weights alone), because they behave differently. An engine counts as
 grounded only for the answers where it actually searched: asking for grounded
 mode is a request a model can decline, so the report says when an engine
-searched on only some of its answers. METHODOLOGY.md has the formula.
+searched on only some of its answers. [METHODOLOGY.md](METHODOLOGY.md) has the
+formula.
 
 The questions match what you sell. If you make your own products, buyers are
 asked what to buy and you are measured against rival makers. If you are a shop
@@ -109,7 +110,7 @@ The `optifeed-mcp` server exposes the same capability to AI agents. It runs
 over stdio, and `npx` fetches it on demand - no clone or build needed.
 
 <p align="center">
-  <img src="docs/assets/optifeed-radar-claude-desktop.png" alt="Optifeed Radar running through Claude Desktop via MCP" width="760">
+  <img src="https://raw.githubusercontent.com/optifeed/optifeed-radar/main/docs/assets/optifeed-radar-claude-desktop.png" alt="Optifeed Radar running through Claude Desktop via MCP" width="760">
 </p>
 
 Claude Desktop (`claude_desktop_config.json`). The fastest way to open it is
@@ -191,9 +192,8 @@ five tools and the arguments they accept:
 - "Check yourbrand.com on OpenAI and Perplexity only." -> `check_visibility`
   with `engines`.
 - "Check whether AI recommends my products: Aria 2, Presto X, Brew Mini, in
-  that order, for yourbrand.com." -> `shopping_check`, which answers with the
-  delta between your order and the engines'. The order you say them in is the
-  ranking it measures against.
+  that order, for yourbrand.com." -> `shopping_check`. Input order is not a
+  ranking; it only breaks ties between products with identical scores.
 - "Check the Aria 2, a quiet home espresso machine, and the Presto X, a fast
   dual-boiler, on yourbrand.com. Cap it at one dollar." -> `shopping_check`
   with a descriptor per product and `max_cost`. Saying what each product IS is
@@ -338,8 +338,10 @@ a quick single-engine run, $0.41 to $0.46 across all four, and $0.85 to $1.09
 with `--grounded`. Every run reports what it spent, and `--max-cost` caps it. You
 bring your own keys; there is no Optifeed-hosted billing.
 
-**Is my data stored anywhere?** No. It runs locally, saves snapshots on your
-machine, and never sends your API keys off-device or logs them.
+**Where is my data stored?** Optifeed Radar runs locally, saves snapshots on
+your machine, and has no Optifeed-hosted backend. Each key is sent only to its
+corresponding AI provider as required to make API calls and is never logged;
+prompts and responses are handled under that provider's data policies.
 
 **Which engines does it support?** OpenAI (ChatGPT), Anthropic (Claude), Google
 (Gemini), and Perplexity. Set any one key to start; set more for broader
@@ -347,7 +349,8 @@ coverage.
 
 **How is the score computed?** From sampling real engine answers to unbranded
 buyer questions, scoring recommendation, position, and share of voice. Scores
-are estimates and vary between runs. See METHODOLOGY.md for the full method.
+are estimates and vary between runs. See [METHODOLOGY.md](METHODOLOGY.md) for
+the full method.
 
 ## For directory maintainers
 
@@ -376,16 +379,17 @@ ChatGPT brand visibility, AI-SEO, MCP server for brand visibility.
 Catalog discovery (pulling your products from a store or a feed) and feed
 linting against the Agentic Commerce Protocol (ACP) and the Universal Commerce
 Protocol (UCP) will arrive in later releases - join the waitlist at
-optifeed.com.
+[optifeed.com](https://www.optifeed.com/).
 
 ## Status
 
 Under active development, and the repo is public so you can follow along. If
 this is useful to you, a star genuinely helps. Scores are estimates and say so.
-Your API keys stay on your machine and are never logged or stored.
+Your API keys are used only to call their corresponding providers and are never
+logged or stored by Optifeed Radar.
 
 ## License
 
 MIT
 
-More at optifeed.com
+More at optifeed.com: <https://www.optifeed.com/>
