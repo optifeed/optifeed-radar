@@ -9,8 +9,13 @@ All notable changes to Optifeed Radar are recorded here. The format follows
 1. Move the `Unreleased` entries into a new version heading with today's date.
 2. Bump `version` in `package.json` to match.
 3. `npm run check && npm run format:check && npm run build`.
-4. Commit, then tag: `git tag v<version> && git push && git push --tags`.
-5. Review what will ship with `npm pack --dry-run`, then publish by hand:
+4. `node scripts/verify-release-tag.mjs v<version>`. It fails if the tag you are
+   about to create disagrees with `package.json`, which is the mistake that is
+   cheap to make and expensive to undo: npm refuses to republish a version, so a
+   tag pointing at the wrong version can only be fixed by burning a version
+   number.
+5. Commit, then tag: `git tag v<version> && git push && git push --tags`.
+6. Review what will ship with `npm pack --dry-run`, then publish by hand:
    `npm publish` (add `--otp=<code>` if the account has 2FA).
 
 Publishing is MANUAL as of 2026-07-24; the workflow that published on tag push
