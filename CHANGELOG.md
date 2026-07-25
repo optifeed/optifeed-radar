@@ -27,6 +27,32 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-25
+
+Documentation and registry metadata only. No code changed, so `schema_version`
+stays at `0.3` and snapshots taken with 0.2.0 or 0.2.1 remain comparable.
+
+### Added
+
+- `mcpName` in `package.json`
+  (`io.github.optifeed/optifeed-radar`), which is how the MCP Registry
+  verifies that the npm package and the server entry share an owner.
+- `glama.json` (repo only, not shipped in the tarball) declaring the schema and
+  maintainers for Glama maintainer verification.
+- Product visuals in the README: an overview image, a linked CLI demo video
+  with a still preview, and a shot of the MCP server running in Claude Desktop.
+
+### Changed
+
+- README claims now match what the code does. "Stores nothing on a server"
+  became "has no Optifeed-hosted backend", and the data and API-key answers now
+  say what is actually true: keys go to their corresponding AI provider because
+  that is what making the call requires, are never logged or stored by Optifeed
+  Radar, and prompts and responses are then handled under that provider's data
+  policies. The MCP `shopping_check` example no longer describes input order as
+  a ranking - 0.2.0 removed that, and the copy had not caught up. It only
+  breaks ties between identical scores.
+
 ## [0.2.1] - 2026-07-24
 
 ### Fixed
