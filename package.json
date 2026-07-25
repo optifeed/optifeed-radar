@@ -1,5 +1,6 @@
 {
   "name": "optifeed-radar",
+  "mcpName": "io.github.optifeed/optifeed-radar",
   "version": "0.2.1",
   "description": "Open-source AI brand + product visibility checker (GEO/AEO). Are your brand and products recommended by ChatGPT, Perplexity, Gemini and Claude? CLI + MCP server, BYO keys, runs locally.",
   "keywords": [
