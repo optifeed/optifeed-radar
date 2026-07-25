@@ -4,6 +4,7 @@
 [![CI](https://github.com/optifeed/optifeed-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/optifeed/optifeed-radar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/node/v/optifeed-radar.svg)](https://nodejs.org)
+[![Glama MCP server](https://glama.ai/mcp/servers/optifeed/optifeed-radar/badge)](https://glama.ai/mcp/servers/optifeed/optifeed-radar)
 
 **Open-source AI visibility checker. Now on npm - run it with `npx optifeed-radar`.**
 
