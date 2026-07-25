@@ -1,1 +1,49 @@
-{"$schema":"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json","name":"io.github.optifeed/optifeed-radar","description":"AI visibility checker: does AI recommend your brand? GEO/AEO, runs locally, BYO keys. CLI + MCP.","version":"0.2.2","repository":{"url":"https://github.com/optifeed/optifeed-radar","source":"github"},"packages":[{"registryType":"npm","identifier":"optifeed-radar","version":"0.2.2","runtimeHint":"npx","runtimeArguments":[{"type":"named","name":"--package","value":"optifeed-radar"},{"type":"positional","value":"optifeed-mcp"}],"transport":{"type":"stdio"},"environmentVariables":[{"name":"OPENAI_API_KEY","description":"OpenAI API key for the ChatGPT engine","isRequired":false,"isSecret":true},{"name":"ANTHROPIC_API_KEY","description":"Anthropic API key for the Claude engine","isRequired":false,"isSecret":true},{"name":"GOOGLE_API_KEY","description":"Google API key for the Gemini engine","isRequired":false,"isSecret":true},{"name":"PERPLEXITY_API_KEY","description":"Perplexity API key for the Perplexity engine","isRequired":false,"isSecret":true}]}]}
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.optifeed/optifeed-radar",
+  "description": "AI visibility checker: does AI recommend your brand? GEO/AEO, runs locally, BYO keys. CLI + MCP.",
+  "version": "0.2.2",
+  "repository": {
+    "url": "https://github.com/optifeed/optifeed-radar",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "optifeed-radar",
+      "version": "0.2.2",
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        { "type": "named", "name": "--package", "value": "optifeed-radar" },
+        { "type": "positional", "value": "optifeed-mcp" }
+      ],
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "OpenAI API key for the ChatGPT engine",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "description": "Anthropic API key for the Claude engine",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "GOOGLE_API_KEY",
+          "description": "Google API key for the Gemini engine",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "PERPLEXITY_API_KEY",
+          "description": "Perplexity API key for the Perplexity engine",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
