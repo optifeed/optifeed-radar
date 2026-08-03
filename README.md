@@ -84,7 +84,7 @@ The Claude plugin bundles the same skill and starts Radar's MCP server from the
 published npm package. In Claude Code, run:
 
 ```text
-/plugin marketplace add optifeed/optifeed-radar
+/plugin marketplace add https://github.com/optifeed/optifeed-radar.git
 /plugin install optifeed-radar@optifeed
 ```
 
