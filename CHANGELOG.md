@@ -32,6 +32,32 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-03
+
+Agent Skill distribution and documentation only. Radar's CLI, MCP tools,
+scoring, and serialized formats are unchanged, so `schema_version` stays at
+`0.3` and existing snapshots remain comparable.
+
+### Added
+
+- An installable Agent Skill workflow for Codex, Claude Code, Cursor, and other
+  compatible AI agents. It drives Radar through the existing local CLI or MCP
+  server; it does not introduce or claim a hosted API.
+- Agent Skill UI metadata with an invocation-ready default prompt.
+- Regression coverage for skill metadata, README discovery, npm packaging,
+  and the approval and cost-cap guidance around paid engine calls.
+
+### Changed
+
+- The Agent Skill now starts with the zero-key audit, distinguishes the
+  readiness score from the AI Visibility Score, maps requests to CLI and MCP
+  operations, and carries Radar's sampling and cost caveats into agent runs.
+- The README documents installation from the public GitHub repository through
+  the open Skills CLI.
+- The npm package now includes `skills/optifeed-radar`, so the published
+  tarball carries the same skill surface as the repository.
+- MCP Registry metadata now points to npm package version `0.2.3`.
+
 ## [0.2.2] - 2026-07-25
 
 Documentation and registry metadata only. No code changed, so `schema_version`

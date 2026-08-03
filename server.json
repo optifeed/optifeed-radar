@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.optifeed/optifeed-radar",
   "description": "AI visibility checker: does AI recommend your brand? GEO/AEO, runs locally, BYO keys. CLI + MCP.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "repository": {
     "url": "https://github.com/optifeed/optifeed-radar",
     "source": "github"
@@ -11,7 +11,7 @@
     {
       "registryType": "npm",
       "identifier": "optifeed-radar",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "runtimeHint": "npx",
       "runtimeArguments": [
         { "type": "named", "name": "--package", "value": "optifeed-radar" },
