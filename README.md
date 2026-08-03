@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/node/v/optifeed-radar.svg)](https://nodejs.org)
 [![Glama MCP server](https://glama.ai/mcp/servers/optifeed/optifeed-radar/badge)](https://glama.ai/mcp/servers/optifeed/optifeed-radar)
+[![skills.sh](https://skills.sh/b/optifeed/optifeed-radar)](https://skills.sh/optifeed/optifeed-radar/optifeed-radar)
 
 **Open-source AI visibility checker. Now on npm - run it with `npx optifeed-radar`.**
 
@@ -76,6 +77,25 @@ The MCP server supplies executable tools. The Agent Skill supplies the working
 method around them: start with the zero-key audit, confirm scope and cost before
 paid engine calls, use a cap, and report sampling limits with the result. The
 skill can also drive the CLI when MCP is not configured.
+
+### Install the Claude Code plugin
+
+The Claude plugin bundles the same skill and starts Radar's MCP server from the
+published npm package. In Claude Code, run:
+
+```text
+/plugin marketplace add optifeed/optifeed-radar
+/plugin install optifeed-radar@optifeed
+```
+
+Restart Claude Code or run `/reload-plugins`, then invoke
+`/optifeed-radar:optifeed-radar` or ask Claude to audit a domain in plain
+language. Node 20 or newer is required. The free audit needs no provider keys;
+paid visibility checks use provider keys from Claude Code's environment.
+
+The standalone skill and Claude plugin do not create a public ChatGPT app.
+ChatGPT support will be marketed separately after Radar is packaged and tested
+against OpenAI's plugin and MCP distribution route.
 
 ### See it in action
 

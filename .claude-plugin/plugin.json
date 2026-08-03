@@ -1,19 +1,21 @@
 {
   "name": "optifeed-radar",
   "displayName": "Optifeed Radar",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "description": "Ask real AI engines real buyer questions and score whether a brand gets recommended. CLI plus an MCP server, running locally with your own API keys.",
   "author": {
     "name": "Optifeed",
     "url": "https://optifeed.com"
   },
   "homepage": "https://optifeed.com",
+  "repository": "https://github.com/optifeed/optifeed-radar",
   "license": "MIT",
+  "keywords": ["ai-visibility", "geo", "aeo", "mcp"],
   "skills": "./skills/",
   "mcpServers": {
     "optifeed-radar": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp/index.js"]
+      "command": "npx",
+      "args": ["-y", "--package=optifeed-radar@0.2.3", "optifeed-mcp"]
     }
   }
 }

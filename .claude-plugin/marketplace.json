@@ -1,0 +1,17 @@
+{
+  "name": "optifeed",
+  "owner": {
+    "name": "Optifeed",
+    "url": "https://optifeed.com"
+  },
+  "description": "AI visibility and commerce tools from Optifeed.",
+  "plugins": [
+    {
+      "name": "optifeed-radar",
+      "source": "./",
+      "description": "Audit AI-readiness and measure whether ChatGPT, Perplexity, Gemini, and Claude recommend a brand or named products.",
+      "category": "marketing",
+      "tags": ["ai-visibility", "geo", "aeo", "mcp"]
+    }
+  ]
+}
