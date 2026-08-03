@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Optifeed Radar'
+  short_description: 'Measure brand and product AI visibility'
+  default_prompt: 'Use $optifeed-radar to audit a brand and explain its biggest AI visibility gaps.'
