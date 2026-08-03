@@ -58,6 +58,25 @@ Working from a clone instead? Run `npx tsx src/cli/index.ts <command>` so flags
 reach the CLI unchanged, or use the `npm run dev` script with `--` before the
 arguments (`npm run dev -- check yourbrand.com --report out.html`).
 
+## Install the Agent Skill
+
+Radar also ships as an open Agent Skill for Codex, Claude Code, Cursor, and
+other compatible AI agents. Install it directly from this repository:
+
+```bash
+npx skills add optifeed/optifeed-radar --skill optifeed-radar
+```
+
+Add `-g` to make it available across your projects. Then ask, for example:
+
+> Use $optifeed-radar to run the free AI-readiness audit on yourbrand.com,
+> explain the three highest-impact findings, and do not start a paid check.
+
+The MCP server supplies executable tools. The Agent Skill supplies the working
+method around them: start with the zero-key audit, confirm scope and cost before
+paid engine calls, use a cap, and report sampling limits with the result. The
+skill can also drive the CLI when MCP is not configured.
+
 ### See it in action
 
 Run a full visibility check from the terminal, from brand discovery and buyer
