@@ -9,7 +9,7 @@
     {
       "name": "optifeed-radar",
       "source": "./",
-      "description": "Audit AI-readiness and measure whether ChatGPT, Perplexity, Gemini, and Claude recommend a brand or named products.",
+      "description": "Audit AI-readiness and measure whether the models behind ChatGPT, Perplexity, Gemini, and Claude recommend a brand or named products.",
       "category": "marketing",
       "tags": ["ai-visibility", "geo", "aeo", "mcp"]
     }

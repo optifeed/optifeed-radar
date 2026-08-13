@@ -9,10 +9,10 @@
 
 **Open-source AI visibility checker. Now on npm - run it with `npx optifeed-radar`.**
 
-Is your brand recommended when buyers ask AI? Optifeed Radar checks whether
-ChatGPT, Perplexity, Gemini and Claude actually recommend you, and tells you
-where you stand against competitors. It runs locally, uses your own API keys,
-and has no Optifeed-hosted backend.
+Is your brand recommended when buyers ask AI? Optifeed Radar checks whether the
+models behind ChatGPT, Perplexity, Gemini and Claude actually recommend you, and
+tells you where you stand against competitors. It runs locally, uses your own
+API keys, and has no Optifeed-hosted backend.
 
 It is built for two kinds of AI agents at once: it measures how **AI agents**
 see and recommend you, and it can be **run by your own AI agents** (CLI, JSON,
@@ -328,6 +328,13 @@ Useful `check` flags: `--json` (raw envelope), `--report report.html`
 (exit non-zero below a threshold, for CI), `--yes` (skip the cost prompt so an
 AI agent can run it unattended).
 
+A `check` that could not measure anything exits non-zero and prints why. Buyer
+prompts come from one call to the judge model, so if that call fails - no API
+credit, a rate limit, an unusable response - there is nothing to ask the
+engines, and the run stops before spending on them rather than reporting an
+empty result as a finished one. Declining the cost prompt yourself is a choice,
+not a failure, and still exits zero.
+
 ## Example
 
 ```bash
@@ -386,6 +393,14 @@ prompts and responses are handled under that provider's data policies.
 **Which engines does it support?** OpenAI (ChatGPT), Anthropic (Claude), Google
 (Gemini), and Perplexity. Set any one key to start; set more for broader
 coverage.
+
+**Which model does each engine ask?** `gpt-5.6-sol`, `claude-sonnet-5`,
+`gemini-flash-latest` and `sonar`, through each provider's API rather than the
+consumer chat product. Every answer records the model that produced it, so a
+saved run always says what it measured. The OpenAI model is a pinned snapshot:
+a floating `-latest` alias can be repointed without notice, which would let a
+`diff` show movement that came from the engine changing rather than from your
+visibility changing.
 
 **How is the score computed?** From sampling real engine answers to unbranded
 buyer questions, scoring recommendation, position, and share of voice. Scores

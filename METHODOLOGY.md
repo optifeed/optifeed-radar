@@ -240,3 +240,13 @@ versions (or one predates versioning) as methodology-driven, not a real change.
 - In `shopping`, a missing product number always says WHICH of the three causes
   above produced it, so a capped run is never reported as a product the
   merchant failed to describe.
+- Each engine is one specific model asked through its provider's API, not the
+  consumer chat product. The OpenAI column asks `gpt-5.6-sol`, a pinned
+  snapshot; the others ask `claude-sonnet-5`, `gemini-flash-latest` and `sonar`.
+  Every answer records the model that produced it, so a snapshot always says
+  what it measured. Two of those ids are floating aliases (`-latest`), which
+  their providers repoint without notice, so a `diff` across a repoint can show
+  movement that came from the engine changing rather than from your visibility
+  changing. `gpt-5.6-sol` is pinned precisely to remove that ambiguity, at the
+  cost of being an API-oriented model rather than the one ChatGPT serves
+  consumers.
