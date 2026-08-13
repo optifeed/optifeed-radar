@@ -14,13 +14,13 @@
 
 All measured live on 2026-08-13 against the real provider APIs. Quote these numbers in comments; they are the reason the constants have the values they do.
 
-| Observation | Evidence |
-| --- | --- |
-| The reported bug: `check bcombinator.com` produced 0 prompts | `generateQueries` returned `skipped: "judge error: HTTP 429 ... credit_balance_exhausted"`. The CLI printed `✓ Generated 0 buyer prompts` and never showed the note. |
-| Reasoning tokens draw from the same budget as the answer | `claude-sonnet-5`, M5 generation prompt, `max_tokens: 1440` → `stop_reason: max_tokens`, `thinking_tokens: 1440`, content blocks `[thinking]`, text length **0**. At `max_tokens: 8000` the same prompt returned `thinking 2172 + text 2397` and valid JSON. |
-| The same starvation hits competitor discovery | `claude-sonnet-5`, competitor prompt, `max_tokens: 300` → `stop_reason: max_tokens`, `thinking_tokens: 300`, text length **0**. At `max_tokens: 4300` → `thinking_tokens: 0`, clean JSON with 7 Spanish accelerators. |
-| Thinking is adaptive, not constant | The same model at `max_tokens: 60` on the short scoring prompt answered `YES` with no thinking block at all. The reserve is a ceiling a call may use, not a cost it always pays. |
-| Gemini rejects the current workaround | `gemini-flash-latest`, identical bodies: with `generationConfig.thinkingConfig.thinkingBudget: 0` → `400 INVALID_ARGUMENT`; without it → `200` and a normal answer. The alias now resolves to a Gemini 3.x model. |
+| Observation                                                  | Evidence                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The reported bug: `check bcombinator.com` produced 0 prompts | `generateQueries` returned `skipped: "judge error: HTTP 429 ... credit_balance_exhausted"`. The CLI printed `✓ Generated 0 buyer prompts` and never showed the note.                                                                                         |
+| Reasoning tokens draw from the same budget as the answer     | `claude-sonnet-5`, M5 generation prompt, `max_tokens: 1440` → `stop_reason: max_tokens`, `thinking_tokens: 1440`, content blocks `[thinking]`, text length **0**. At `max_tokens: 8000` the same prompt returned `thinking 2172 + text 2397` and valid JSON. |
+| The same starvation hits competitor discovery                | `claude-sonnet-5`, competitor prompt, `max_tokens: 300` → `stop_reason: max_tokens`, `thinking_tokens: 300`, text length **0**. At `max_tokens: 4300` → `thinking_tokens: 0`, clean JSON with 7 Spanish accelerators.                                        |
+| Thinking is adaptive, not constant                           | The same model at `max_tokens: 60` on the short scoring prompt answered `YES` with no thinking block at all. The reserve is a ceiling a call may use, not a cost it always pays.                                                                             |
+| Gemini rejects the current workaround                        | `gemini-flash-latest`, identical bodies: with `generationConfig.thinkingConfig.thinkingBudget: 0` → `400 INVALID_ARGUMENT`; without it → `200` and a normal answer. The alias now resolves to a Gemini 3.x model.                                            |
 
 Two facts that shape the design:
 
@@ -31,30 +31,30 @@ Two facts that shape the design:
 
 ## File Structure
 
-| File | Change | Responsibility after the change |
-| --- | --- | --- |
-| `src/core/costs.ts` | Modify | Adds `REASONING_RESERVE_TOKENS` + `judgeMaxTokens()`, the single place judge output caps are sized |
-| `src/core/costs.test.ts` | Modify | Guards the reserve against being shrunk below measured thinking spend |
-| `src/core/queries/generate.ts` | Modify (`:406`, `:419-433`) | Sizes its cap via the helper; reports an empty/unusable judge response as `skipped` |
-| `src/core/queries/generate.test.ts` | Modify | Failure-mode tests for empty and unusable judge text |
-| `src/core/discovery/competitors.ts` | Modify (`:235`, `:243-249`) | Same two changes for competitor discovery |
-| `src/core/discovery/competitors.test.ts` | Modify | Same two failure-mode tests |
-| `src/core/scoring/judge.ts` | Modify (`:101`) | Cap via the helper |
-| `src/core/shopping/judge.ts` | Modify (`:152`) | Cap via the helper |
-| `src/core/shopping/queries.ts` | Modify (`:244-248`) | Cap via the helper |
-| `src/core/engines/gemini.ts` | Modify (`:110-124`) | Stops sending `thinkingBudget: 0`; caps output only |
-| `src/core/engines/adapters.test.ts` | Modify (`:349-370`) | The inverted assertion: no `thinkingConfig` is ever sent |
-| `src/core/run/check.ts` | Modify (`ProgressEvent`, `RunCheckResult`, `:200-234`) | Aborts before the confirm gate when there are no prompts; tags every abort with a reason |
-| `src/core/run/discover-queries.ts` | Modify (`:97-100`) | Carries the query-gen skip reason on the progress event |
-| `src/core/run/check.test.ts` | Modify | Covers the zero-prompt abort and its reason |
-| `src/cli/progress.ts` | Modify (`:70-74`) | Renders zero prompts as a failure line, not a checkmark |
-| `src/cli/progress.test.ts` | Modify | Covers the failure line |
-| `src/cli/check.ts` | Modify (`:295-312`) | Prints notes on the abort path; exits non-zero when the abort was not the user's choice |
-| `src/cli/cli.test.ts` | Modify | Covers both abort exit codes |
+| File                                     | Change                                                 | Responsibility after the change                                                                    |
+| ---------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `src/core/costs.ts`                      | Modify                                                 | Adds `REASONING_RESERVE_TOKENS` + `judgeMaxTokens()`, the single place judge output caps are sized |
+| `src/core/costs.test.ts`                 | Modify                                                 | Guards the reserve against being shrunk below measured thinking spend                              |
+| `src/core/queries/generate.ts`           | Modify (`:406`, `:419-433`)                            | Sizes its cap via the helper; reports an empty/unusable judge response as `skipped`                |
+| `src/core/queries/generate.test.ts`      | Modify                                                 | Failure-mode tests for empty and unusable judge text                                               |
+| `src/core/discovery/competitors.ts`      | Modify (`:235`, `:243-249`)                            | Same two changes for competitor discovery                                                          |
+| `src/core/discovery/competitors.test.ts` | Modify                                                 | Same two failure-mode tests                                                                        |
+| `src/core/scoring/judge.ts`              | Modify (`:101`)                                        | Cap via the helper                                                                                 |
+| `src/core/shopping/judge.ts`             | Modify (`:152`)                                        | Cap via the helper                                                                                 |
+| `src/core/shopping/queries.ts`           | Modify (`:244-248`)                                    | Cap via the helper                                                                                 |
+| `src/core/engines/gemini.ts`             | Modify (`:110-124`)                                    | Stops sending `thinkingBudget: 0`; caps output only                                                |
+| `src/core/engines/adapters.test.ts`      | Modify (`:349-370`)                                    | The inverted assertion: no `thinkingConfig` is ever sent                                           |
+| `src/core/run/check.ts`                  | Modify (`ProgressEvent`, `RunCheckResult`, `:200-234`) | Aborts before the confirm gate when there are no prompts; tags every abort with a reason           |
+| `src/core/run/discover-queries.ts`       | Modify (`:97-100`)                                     | Carries the query-gen skip reason on the progress event                                            |
+| `src/core/run/check.test.ts`             | Modify                                                 | Covers the zero-prompt abort and its reason                                                        |
+| `src/cli/progress.ts`                    | Modify (`:70-74`)                                      | Renders zero prompts as a failure line, not a checkmark                                            |
+| `src/cli/progress.test.ts`               | Modify                                                 | Covers the failure line                                                                            |
+| `src/cli/check.ts`                       | Modify (`:295-312`)                                    | Prints notes on the abort path; exits non-zero when the abort was not the user's choice            |
+| `src/cli/cli.test.ts`                    | Modify                                                 | Covers both abort exit codes                                                                       |
 
 Out of scope, deliberately, with reasons:
 
-- **`gpt-5.3-chat-latest` returning 404 "has been deprecated"** (the OpenAI *ask* default). Real and separately verified, but it is a model-refresh decision with a pricing row to re-verify, not a honesty bug. It deserves its own change.
+- **`gpt-5.3-chat-latest` returning 404 "has been deprecated"** (the OpenAI _ask_ default). Real and separately verified, but it is a model-refresh decision with a pricing row to re-verify, not a honesty bug. It deserves its own change.
 - **Empty-verdict handling in `scoring/judge.ts` and `shopping/judge.ts`.** Both already leave the row as pass 1 decided and continue. With Task 4's reserve the starvation cause is gone; changing verdict semantics too would widen the blast radius of a bugfix.
 
 ---
@@ -62,6 +62,7 @@ Out of scope, deliberately, with reasons:
 ### Task 1: The shared judge token budget
 
 **Files:**
+
 - Modify: `src/core/costs.ts`
 - Test: `src/core/costs.test.ts`
 
@@ -147,6 +148,7 @@ git commit -m "Add a shared judge token budget with reasoning headroom"
 ### Task 2: Query generation reports an empty or unusable judge response
 
 **Files:**
+
 - Modify: `src/core/queries/generate.ts:400-441`
 - Test: `src/core/queries/generate.test.ts`
 
@@ -157,49 +159,49 @@ Note on cost: the projection at `generate.ts:407-409` prices the full cap, so it
 Add to `src/core/queries/generate.test.ts`, inside the existing `describe('generateQueries', ...)`. That block already defines a `profile(overrides?)` factory and a `goodAnswer` JSON string, and the file's `recordingJudge` already captures `maxTokens`, so no helper changes are needed. Extend the import from `../costs.js` with `REASONING_RESERVE_TOKENS`.
 
 ```ts
-  // The exact production failure of 2026-08-13: claude-sonnet-5 spent the whole
-  // 1440-token budget on thinking and returned HTTP 200 with an empty text
-  // block. An empty pack with no reason reads as "this brand has no buyer
-  // questions" - the run then offered to query 4 engines with 0 prompts.
-  it('reports an empty judge response instead of a silently empty pack', async () => {
-    const judge = recordingJudge('');
-    const guard = new CostGuard();
+// The exact production failure of 2026-08-13: claude-sonnet-5 spent the whole
+// 1440-token budget on thinking and returned HTTP 200 with an empty text
+// block. An empty pack with no reason reads as "this brand has no buyer
+// questions" - the run then offered to query 4 engines with 0 prompts.
+it('reports an empty judge response instead of a silently empty pack', async () => {
+  const judge = recordingJudge('');
+  const guard = new CostGuard();
 
-    const result = await generateQueries(
-      profile(),
-      { judge, guard },
-      { generatedAt: AT_ISO },
-    );
+  const result = await generateQueries(
+    profile(),
+    { judge, guard },
+    { generatedAt: AT_ISO },
+  );
 
-    expect(result.pack.queries).toHaveLength(0);
-    expect(result.skipped).toMatch(/empty response/i);
-  });
+  expect(result.pack.queries).toHaveLength(0);
+  expect(result.skipped).toMatch(/empty response/i);
+});
 
-  // A response that arrives but parses to nothing (truncated mid-JSON, or a
-  // refusal) is the same failure wearing a different hat, and it also used to
-  // return a clean empty pack.
-  it('reports a response that yielded no usable prompts', async () => {
-    const judge = recordingJudge('I am sorry, I cannot help with that.');
-    const guard = new CostGuard();
+// A response that arrives but parses to nothing (truncated mid-JSON, or a
+// refusal) is the same failure wearing a different hat, and it also used to
+// return a clean empty pack.
+it('reports a response that yielded no usable prompts', async () => {
+  const judge = recordingJudge('I am sorry, I cannot help with that.');
+  const guard = new CostGuard();
 
-    const result = await generateQueries(
-      profile(),
-      { judge, guard },
-      { generatedAt: AT_ISO },
-    );
+  const result = await generateQueries(
+    profile(),
+    { judge, guard },
+    { generatedAt: AT_ISO },
+  );
 
-    expect(result.pack.queries).toHaveLength(0);
-    expect(result.skipped).toMatch(/no usable buyer prompts/i);
-  });
+  expect(result.pack.queries).toHaveLength(0);
+  expect(result.skipped).toMatch(/no usable buyer prompts/i);
+});
 
-  it('reserves reasoning headroom in the judge token budget', async () => {
-    const judge = recordingJudge(goodAnswer);
-    const guard = new CostGuard();
+it('reserves reasoning headroom in the judge token budget', async () => {
+  const judge = recordingJudge(goodAnswer);
+  const guard = new CostGuard();
 
-    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+  await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
 
-    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
-  });
+  expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -223,52 +225,52 @@ import {
 Replace lines 400-406 (the comment block above `maxTokens` and the assignment itself) with:
 
 ```ts
-  const prompt = buildGenPrompt(profile, intents, counts, year);
-  // Scale the ANSWER budget with how many questions we ask (weighting + the +1
-  // buffer + paired variants all inflate it), plus headroom for JSON structure
-  // and verbose (non-English) phrasing. A fixed budget truncated a large pack
-  // mid-JSON, which parses to an EMPTY pack; ~60 tokens/question keeps room.
-  // judgeMaxTokens then adds the reasoning reserve on top: a thinking judge
-  // draws private reasoning from this same cap and returned zero answer tokens
-  // without it (see REASONING_RESERVE_TOKENS).
-  const requested = intents.reduce((sum, i) => sum + counts[i], 0);
-  const maxTokens = judgeMaxTokens(Math.max(900, requested * 60));
+const prompt = buildGenPrompt(profile, intents, counts, year);
+// Scale the ANSWER budget with how many questions we ask (weighting + the +1
+// buffer + paired variants all inflate it), plus headroom for JSON structure
+// and verbose (non-English) phrasing. A fixed budget truncated a large pack
+// mid-JSON, which parses to an EMPTY pack; ~60 tokens/question keeps room.
+// judgeMaxTokens then adds the reasoning reserve on top: a thinking judge
+// draws private reasoning from this same cap and returned zero answer tokens
+// without it (see REASONING_RESERVE_TOKENS).
+const requested = intents.reduce((sum, i) => sum + counts[i], 0);
+const maxTokens = judgeMaxTokens(Math.max(900, requested * 60));
 ```
 
 Then replace the `try` block body at lines 419-433 with:
 
 ```ts
-    const res = await judge.complete(prompt, { maxTokens });
-    // settle, not record: `authorize` reserved `projected` (see CostGuard).
-    guard.settle(projected, res.costUsd, 'setup');
-    settled = true;
-    // A 200 with no text is a FAILED call, not a brand with no buyer questions.
-    // Reported separately from the parse failure below because the fixes differ:
-    // an empty body points at the token budget or the model, an unusable one at
-    // the response shape.
-    if (res.text.trim() === '') {
-      return {
-        pack: emptyPack,
-        skipped: 'the judge returned an empty response',
-      };
-    }
-    const byIntent = parseIntentQueries(res.text, intents);
-    const pack = buildQueryPack({
-      domain: profile.domain,
-      byIntent,
-      intents,
-      competitors: profile.competitors,
-      target,
-      axis: axisFor(profile),
-      generatedAt: opts.generatedAt,
-    });
-    if (pack.queries.length === 0) {
-      return {
-        pack,
-        skipped: 'the judge response contained no usable buyer prompts',
-      };
-    }
-    return { pack };
+const res = await judge.complete(prompt, { maxTokens });
+// settle, not record: `authorize` reserved `projected` (see CostGuard).
+guard.settle(projected, res.costUsd, 'setup');
+settled = true;
+// A 200 with no text is a FAILED call, not a brand with no buyer questions.
+// Reported separately from the parse failure below because the fixes differ:
+// an empty body points at the token budget or the model, an unusable one at
+// the response shape.
+if (res.text.trim() === '') {
+  return {
+    pack: emptyPack,
+    skipped: 'the judge returned an empty response',
+  };
+}
+const byIntent = parseIntentQueries(res.text, intents);
+const pack = buildQueryPack({
+  domain: profile.domain,
+  byIntent,
+  intents,
+  competitors: profile.competitors,
+  target,
+  axis: axisFor(profile),
+  generatedAt: opts.generatedAt,
+});
+if (pack.queries.length === 0) {
+  return {
+    pack,
+    skipped: 'the judge response contained no usable buyer prompts',
+  };
+}
+return { pack };
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -288,6 +290,7 @@ git commit -m "Report an empty or unusable query-generation response"
 ### Task 3: Competitor discovery reports an empty judge response
 
 **Files:**
+
 - Modify: `src/core/discovery/competitors.ts:235`, `:243-249`
 - Test: `src/core/discovery/competitors.test.ts`
 
@@ -320,34 +323,34 @@ function recordingJudge(
 Then add to `describe('discoverCompetitors', ...)`, importing `REASONING_RESERVE_TOKENS` from `../costs.js`:
 
 ```ts
-  // Verified live 2026-08-13: claude-sonnet-5 spent all 300 tokens of this
-  // call's budget on thinking and returned an empty text block. An empty list
-  // with no reason is a claim - "this brand has no rivals" - that the run never
-  // actually measured (rule #6).
-  it('reports an empty judge response instead of an empty competitor list', async () => {
-    const judge = recordingJudge('');
-    const guard = new CostGuard();
+// Verified live 2026-08-13: claude-sonnet-5 spent all 300 tokens of this
+// call's budget on thinking and returned an empty text block. An empty list
+// with no reason is a claim - "this brand has no rivals" - that the run never
+// actually measured (rule #6).
+it('reports an empty judge response instead of an empty competitor list', async () => {
+  const judge = recordingJudge('');
+  const guard = new CostGuard();
 
-    const result = await discoverCompetitors(
-      { brand: 'Acme Rockets', category: 'Model rockets' },
-      { judge, guard },
-    );
+  const result = await discoverCompetitors(
+    { brand: 'Acme Rockets', category: 'Model rockets' },
+    { judge, guard },
+  );
 
-    expect(result.competitors).toEqual([]);
-    expect(result.skipped).toMatch(/empty response/i);
-  });
+  expect(result.competitors).toEqual([]);
+  expect(result.skipped).toMatch(/empty response/i);
+});
 
-  it('reserves reasoning headroom in the judge token budget', async () => {
-    const judge = recordingJudge('["Estes"]');
-    const guard = new CostGuard();
+it('reserves reasoning headroom in the judge token budget', async () => {
+  const judge = recordingJudge('["Estes"]');
+  const guard = new CostGuard();
 
-    await discoverCompetitors(
-      { brand: 'Acme Rockets', category: 'Model rockets' },
-      { judge, guard },
-    );
+  await discoverCompetitors(
+    { brand: 'Acme Rockets', category: 'Model rockets' },
+    { judge, guard },
+  );
 
-    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
-  });
+  expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -360,10 +363,10 @@ Expected: FAIL. The first reports `result.skipped` is `undefined`; the second re
 Add `judgeMaxTokens` to the existing `../costs.js` import in `src/core/discovery/competitors.ts`, then replace line 235:
 
 ```ts
-  // The answer is a short JSON object; judgeMaxTokens adds the reasoning
-  // reserve, without which a thinking judge spent this entire budget on private
-  // reasoning and returned nothing (verified live 2026-08-13).
-  const maxTokens = judgeMaxTokens(300);
+// The answer is a short JSON object; judgeMaxTokens adds the reasoning
+// reserve, without which a thinking judge spent this entire budget on private
+// reasoning and returned nothing (verified live 2026-08-13).
+const maxTokens = judgeMaxTokens(300);
 ```
 
 And replace the `try` body at lines 243-249:
@@ -403,6 +406,7 @@ git commit -m "Report an empty competitor-discovery response"
 ### Task 4: Route the remaining judge call sites through the helper
 
 **Files:**
+
 - Modify: `src/core/scoring/judge.ts:101`
 - Modify: `src/core/shopping/judge.ts:152`
 - Modify: `src/core/shopping/queries.ts:244-248`
@@ -416,7 +420,9 @@ Add to `src/core/scoring/judge.test.ts`. The existing `countingJudge` does not c
 
 ```ts
 /** A judge that records the token budget it was given. */
-function budgetJudge(text: string): JudgeClient & { maxTokens: (number | undefined)[] } {
+function budgetJudge(
+  text: string,
+): JudgeClient & { maxTokens: (number | undefined)[] } {
   const maxTokens: (number | undefined)[] = [];
   return {
     maxTokens,
@@ -432,23 +438,23 @@ function budgetJudge(text: string): JudgeClient & { maxTokens: (number | undefin
 Then, inside the existing `describe('refineAmbiguous', ...)`. The file already defines the `profile` fixture, `answer(text)` and `ambiguousMention(over?)`. `judgeRateCap: 1` is required: the default `JUDGE_RATE_CAP` is `0.3`, so a single result gives `maxJudge === 0` and the judge is never called. Import `REASONING_RESERVE_TOKENS` from `../costs.js`.
 
 ```ts
-  // 60 tokens is an ANSWER budget. On a reasoning judge it is also the whole
-  // thinking budget, and thinking goes first - the verdict comes back empty and
-  // the row silently keeps its pass-1 value (verified live 2026-08-13).
-  it('reserves reasoning headroom in the judge token budget', async () => {
-    const judge = budgetJudge('YES');
-    const guard = new CostGuard();
+// 60 tokens is an ANSWER budget. On a reasoning judge it is also the whole
+// thinking budget, and thinking goes first - the verdict comes back empty and
+// the row silently keeps its pass-1 value (verified live 2026-08-13).
+it('reserves reasoning headroom in the judge token budget', async () => {
+  const judge = budgetJudge('YES');
+  const guard = new CostGuard();
 
-    await refineAmbiguous(
-      [ambiguousMention()],
-      [answer('You could try Acme.')],
-      profile,
-      { judge, guard },
-      { judgeRateCap: 1 },
-    );
+  await refineAmbiguous(
+    [ambiguousMention()],
+    [answer('You could try Acme.')],
+    profile,
+    { judge, guard },
+    { judgeRateCap: 1 },
+  );
 
-    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
-  });
+  expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -461,26 +467,26 @@ Expected: FAIL, reporting `judge.maxTokens[0]` is `60`.
 `src/core/scoring/judge.ts` - add `judgeMaxTokens` to the `../costs.js` import, then replace line 101:
 
 ```ts
-  // A verdict is a word; judgeMaxTokens adds the reasoning reserve so a thinking
-  // judge is not out of budget before it writes that word.
-  const maxTokens = judgeMaxTokens(60);
+// A verdict is a word; judgeMaxTokens adds the reasoning reserve so a thinking
+// judge is not out of budget before it writes that word.
+const maxTokens = judgeMaxTokens(60);
 ```
 
 `src/core/shopping/judge.ts` - same import change, then replace line 152:
 
 ```ts
-  const maxTokens = judgeMaxTokens(200);
+const maxTokens = judgeMaxTokens(200);
 ```
 
 `src/core/shopping/queries.ts` - same import change, then replace lines 244-248:
 
 ```ts
-    const maxTokens = judgeMaxTokens(
-      Math.max(
-        600,
-        products.length * (visibilityCount + REPUTATION_PROMPTS_PER_PRODUCT) * 45,
-      ),
-    );
+const maxTokens = judgeMaxTokens(
+  Math.max(
+    600,
+    products.length * (visibilityCount + REPUTATION_PROMPTS_PER_PRODUCT) * 45,
+  ),
+);
 ```
 
 - [ ] **Step 4: Run the full suite**
@@ -500,6 +506,7 @@ git commit -m "Size the scoring and shopping judge budgets with reasoning headro
 ### Task 5: Stop sending Gemini an unsupported thinking budget
 
 **Files:**
+
 - Modify: `src/core/engines/gemini.ts:102-126`
 - Test: `src/core/engines/adapters.test.ts:349-370`
 
@@ -510,31 +517,31 @@ This must come after Task 4. `thinkingBudget: 0` exists because the 60-token sco
 Replace the whole `it('disables Gemini thinking when the caller caps tokens', ...)` block at `src/core/engines/adapters.test.ts:349-370`, comment included:
 
 ```ts
-  // `thinkingConfig.thinkingBudget: 0` was added on 2026-07-20, when a 60-token
-  // scoring cap left Gemini's answer as one stray character. It has since become
-  // a hard failure: gemini-flash-latest now resolves to a Gemini 3.x model that
-  // rejects the field outright. Verified live 2026-08-13 with two otherwise
-  // identical bodies - with the field, HTTP 400 INVALID_ARGUMENT; without it,
-  // HTTP 200 and a normal answer. Every judge cap now carries
-  // REASONING_RESERVE_TOKENS of headroom, so thinking has room and does not need
-  // disabling.
-  it('caps Gemini output without sending a thinking budget', async () => {
-    const { fn, calls } = fakePost(geminiReal);
-    const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
+// `thinkingConfig.thinkingBudget: 0` was added on 2026-07-20, when a 60-token
+// scoring cap left Gemini's answer as one stray character. It has since become
+// a hard failure: gemini-flash-latest now resolves to a Gemini 3.x model that
+// rejects the field outright. Verified live 2026-08-13 with two otherwise
+// identical bodies - with the field, HTTP 400 INVALID_ARGUMENT; without it,
+// HTTP 200 and a normal answer. Every judge cap now carries
+// REASONING_RESERVE_TOKENS of headroom, so thinking has room and does not need
+// disabling.
+it('caps Gemini output without sending a thinking budget', async () => {
+  const { fn, calls } = fakePost(geminiReal);
+  const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
 
-    await adapter.ask('judge this', { maxTokens: 4060 });
-    const capped = JSON.parse(calls[0]!.body) as {
-      generationConfig?: { maxOutputTokens?: number; thinkingConfig?: unknown };
-    };
-    expect(capped.generationConfig?.maxOutputTokens).toBe(4060);
-    expect(capped.generationConfig?.thinkingConfig).toBeUndefined();
+  await adapter.ask('judge this', { maxTokens: 4060 });
+  const capped = JSON.parse(calls[0]!.body) as {
+    generationConfig?: { maxOutputTokens?: number; thinkingConfig?: unknown };
+  };
+  expect(capped.generationConfig?.maxOutputTokens).toBe(4060);
+  expect(capped.generationConfig?.thinkingConfig).toBeUndefined();
 
-    await adapter.ask('answer this');
-    const uncapped = JSON.parse(calls[1]!.body) as {
-      generationConfig?: unknown;
-    };
-    expect(uncapped.generationConfig).toBeUndefined();
-  });
+  await adapter.ask('answer this');
+  const uncapped = JSON.parse(calls[1]!.body) as {
+    generationConfig?: unknown;
+  };
+  expect(uncapped.generationConfig).toBeUndefined();
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -599,6 +606,7 @@ git commit -m "Stop sending Gemini a thinking budget its models reject"
 ### Task 6: A run with no prompts aborts before the cost gate
 
 **Files:**
+
 - Modify: `src/core/run/check.ts` (`ProgressEvent`, `RunCheckResult`, the confirm gate at `:200-234`)
 - Modify: `src/core/run/discover-queries.ts:97-100`
 - Test: `src/core/run/check.test.ts`
@@ -607,7 +615,7 @@ git commit -m "Stop sending Gemini a thinking budget its models reject"
 
 Add to `src/core/run/check.test.ts`, in the same `describe` as the existing abort tests. The file already has `STATE`, `CACHED_PROFILE`, `memFs`, `baseDeps`, `fakeFetch` and `profilePath`.
 
-Note the fs: `seededFs()` seeds a cached *query pack*, which would short-circuit generation. These tests seed only the profile, so `resolveQueries` reaches the judge.
+Note the fs: `seededFs()` seeds a cached _query pack_, which would short-circuit generation. These tests seed only the profile, so `resolveQueries` reaches the judge.
 
 Add one helper next to `fakeJudge`:
 
@@ -626,67 +634,67 @@ function throwingJudge(message: string): JudgeClient {
 Then the tests:
 
 ```ts
-  // The 2026-08-13 report: a judge failure left 0 prompts, and the run went on
-  // to offer "query 4 engines with 0 prompts (estimated cost: an unknown
-  // amount)". A run with nothing to ask cannot measure anything, so it must stop
-  // before the gate and say why.
-  it('aborts before the confirmation gate when no prompts were generated', async () => {
-    const fs = memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
-    let confirmCalls = 0;
+// The 2026-08-13 report: a judge failure left 0 prompts, and the run went on
+// to offer "query 4 engines with 0 prompts (estimated cost: an unknown
+// amount)". A run with nothing to ask cannot measure anything, so it must stop
+// before the gate and say why.
+it('aborts before the confirmation gate when no prompts were generated', async () => {
+  const fs = memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
+  let confirmCalls = 0;
 
-    const result = await runCheck(
-      'acme.example',
-      {
-        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
-        judge: throwingJudge('HTTP 429: no credits remaining'),
-        confirm: async () => {
-          confirmCalls += 1;
-          return true;
-        },
+  const result = await runCheck(
+    'acme.example',
+    {
+      ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+      judge: throwingJudge('HTTP 429: no credits remaining'),
+      confirm: async () => {
+        confirmCalls += 1;
+        return true;
       },
-      { stateDir: STATE },
-    );
+    },
+    { stateDir: STATE },
+  );
 
-    expect(confirmCalls).toBe(0);
-    expect(result.aborted).toBe(true);
-    expect(result.abortReason).toBe('no-prompts');
-    expect(result.envelope).toBeUndefined();
-    expect(result.notes.join(' ')).toMatch(/no buyer prompts/i);
-  });
+  expect(confirmCalls).toBe(0);
+  expect(result.aborted).toBe(true);
+  expect(result.abortReason).toBe('no-prompts');
+  expect(result.envelope).toBeUndefined();
+  expect(result.notes.join(' ')).toMatch(/no buyer prompts/i);
+});
 
-  // The reason the judge failed must survive to the caller: it is the only thing
-  // that tells a user whether to add credits, switch judge, or file a bug.
-  it('keeps the query-generation failure reason in the notes', async () => {
-    const fs = memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
+// The reason the judge failed must survive to the caller: it is the only thing
+// that tells a user whether to add credits, switch judge, or file a bug.
+it('keeps the query-generation failure reason in the notes', async () => {
+  const fs = memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
 
-    const result = await runCheck(
-      'acme.example',
-      {
-        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
-        judge: throwingJudge('HTTP 429: no credits remaining'),
-      },
-      { stateDir: STATE, yes: true },
-    );
+  const result = await runCheck(
+    'acme.example',
+    {
+      ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+      judge: throwingJudge('HTTP 429: no credits remaining'),
+    },
+    { stateDir: STATE, yes: true },
+  );
 
-    expect(result.notes.join(' ')).toMatch(/429/);
-  });
+  expect(result.notes.join(' ')).toMatch(/429/);
+});
 
-  // A user who declines is not a failure, and must not be reported as one.
-  it('tags a declined run separately from a failed one', async () => {
-    const fs = seededFs();
+// A user who declines is not a failure, and must not be reported as one.
+it('tags a declined run separately from a failed one', async () => {
+  const fs = seededFs();
 
-    const result = await runCheck(
-      'acme.example',
-      {
-        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
-        confirm: async () => false,
-      },
-      { stateDir: STATE },
-    );
+  const result = await runCheck(
+    'acme.example',
+    {
+      ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+      confirm: async () => false,
+    },
+    { stateDir: STATE },
+  );
 
-    expect(result.aborted).toBe(true);
-    expect(result.abortReason).toBe('declined');
-  });
+  expect(result.aborted).toBe(true);
+  expect(result.abortReason).toBe('declined');
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -728,53 +736,53 @@ Add `abortReason` to `RunCheckResult`, below `aborted`:
 In `src/core/run/discover-queries.ts`, replace lines 97-100:
 
 ```ts
-  report({
-    kind: 'queries-done',
-    prompts: queries.pack.queries.map((q) => q.prompt),
-    ...(queries.note ? { note: queries.note } : {}),
-  });
+report({
+  kind: 'queries-done',
+  prompts: queries.pack.queries.map((q) => q.prompt),
+  ...(queries.note ? { note: queries.note } : {}),
+});
 ```
 
 In `src/core/run/check.ts`, insert the guard immediately after `brandedPrompts` is computed (currently line 205) and before the confirm-gate comment:
 
 ```ts
-  // Nothing to ask means nothing to measure. Stopping HERE, before the gate,
-  // matters twice over: the gate would otherwise quote "0 prompts" against an
-  // unpriceable estimate, and every engine call after it would be spend with no
-  // possible result. The note carries the reason generation failed (rule #6).
-  if (prompts.length === 0) {
-    notes.push(
-      'No buyer prompts were generated, so no engines were queried. Nothing was measured.',
-    );
-    return {
-      aborted: true,
-      abortReason: 'no-prompts',
-      notes,
-      spend: guard.spendBreakdown,
-    };
-  }
+// Nothing to ask means nothing to measure. Stopping HERE, before the gate,
+// matters twice over: the gate would otherwise quote "0 prompts" against an
+// unpriceable estimate, and every engine call after it would be spend with no
+// possible result. The note carries the reason generation failed (rule #6).
+if (prompts.length === 0) {
+  notes.push(
+    'No buyer prompts were generated, so no engines were queried. Nothing was measured.',
+  );
+  return {
+    aborted: true,
+    abortReason: 'no-prompts',
+    notes,
+    spend: guard.spendBreakdown,
+  };
+}
 ```
 
 Then tag the two existing abort paths. At the missing-confirm-handler return:
 
 ```ts
-      return {
-        aborted: true,
-        abortReason: 'unconfirmed',
-        notes,
-        spend: guard.spendBreakdown,
-      };
+return {
+  aborted: true,
+  abortReason: 'unconfirmed',
+  notes,
+  spend: guard.spendBreakdown,
+};
 ```
 
 And at the declined return:
 
 ```ts
-      return {
-        aborted: true,
-        abortReason: 'declined',
-        notes,
-        spend: guard.spendBreakdown,
-      };
+return {
+  aborted: true,
+  abortReason: 'declined',
+  notes,
+  spend: guard.spendBreakdown,
+};
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -794,6 +802,7 @@ git commit -m "Abort a check with no buyer prompts before the cost gate"
 ### Task 7: The CLI shows the failure instead of a checkmark
 
 **Files:**
+
 - Modify: `src/cli/progress.ts:70-74`
 - Modify: `src/cli/check.ts:295-312`
 - Test: `src/cli/progress.test.ts`, `src/cli/cli.test.ts`
@@ -803,30 +812,30 @@ git commit -m "Abort a check with no buyer prompts before the cost gate"
 Add to `src/cli/progress.test.ts`:
 
 ```ts
-  // `✓ Generated 0 buyer prompts` is a success mark on a total failure. It is
-  // what the 2026-08-13 report saw, and it is why the real error (an
-  // out-of-credit judge) never reached the user.
-  it('marks zero prompts as a failure, not a checkmark', () => {
-    const out = drive([
-      { kind: 'discovery-start' },
-      { kind: 'discovery-done', brand: 'Acme' },
-      { kind: 'queries-start' },
-      {
-        kind: 'queries-done',
-        prompts: [],
-        note: 'judge error: HTTP 429: no credits remaining',
-      },
-    ]);
+// `✓ Generated 0 buyer prompts` is a success mark on a total failure. It is
+// what the 2026-08-13 report saw, and it is why the real error (an
+// out-of-credit judge) never reached the user.
+it('marks zero prompts as a failure, not a checkmark', () => {
+  const out = drive([
+    { kind: 'discovery-start' },
+    { kind: 'discovery-done', brand: 'Acme' },
+    { kind: 'queries-start' },
+    {
+      kind: 'queries-done',
+      prompts: [],
+      note: 'judge error: HTTP 429: no credits remaining',
+    },
+  ]);
 
-    expect(out).not.toContain('✓ Generated');
-    expect(out).toContain('No buyer prompts were generated');
-    expect(out).toContain('HTTP 429');
-  });
+  expect(out).not.toContain('✓ Generated');
+  expect(out).toContain('No buyer prompts were generated');
+  expect(out).toContain('HTTP 429');
+});
 
-  it('still marks a normal pack with a checkmark', () => {
-    const out = drive(FULL_RUN);
-    expect(out).toContain('✓ Generated 2 buyer prompts');
-  });
+it('still marks a normal pack with a checkmark', () => {
+  const out = drive(FULL_RUN);
+  expect(out).toContain('✓ Generated 2 buyer prompts');
+});
 ```
 
 Add to `src/cli/cli.test.ts`, alongside the existing abort coverage. These drive the real command through the file's `testRuntime` + `run` helpers rather than stubbing a result.
@@ -834,37 +843,37 @@ Add to `src/cli/cli.test.ts`, alongside the existing abort coverage. These drive
 `--regenerate` is what makes this work end to end: `testRuntime` seeds a cached `PACK`, and `--regenerate` bypasses it so generation actually runs. The module-level `judge` fixture returns `'{}'`, which parses to zero prompts for every intent - exactly the "response contained no usable buyer prompts" path from Task 2. The suite's existing `afterEach` resets `process.exitCode` to `0`, so the declined case asserts `0`, not `undefined`.
 
 ```ts
-  // An aborted run already carried its reason in result.notes; the CLI printed
-  // notes only on the success path, so the one user who most needed them - the
-  // one whose run produced nothing - was the only one who never saw them.
-  it('prints why a check aborted with no prompts, and exits non-zero', async () => {
-    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+// An aborted run already carried its reason in result.notes; the CLI printed
+// notes only on the success path, so the one user who most needed them - the
+// one whose run produced nothing - was the only one who never saw them.
+it('prints why a check aborted with no prompts, and exits non-zero', async () => {
+  const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
 
-    await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
+  await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
 
-    const all = rt.output.join('') + rt.errors.join('');
-    expect(all).toContain('Aborted');
-    expect(all).toContain('No buyer prompts were generated');
-    expect(all).toContain('no usable buyer prompts');
-    // Nothing was measured. CI and AI agents read the exit code.
-    expect(process.exitCode).toBe(1);
+  const all = rt.output.join('') + rt.errors.join('');
+  expect(all).toContain('Aborted');
+  expect(all).toContain('No buyer prompts were generated');
+  expect(all).toContain('no usable buyer prompts');
+  // Nothing was measured. CI and AI agents read the exit code.
+  expect(process.exitCode).toBe(1);
+});
+
+// Declining the spend is the gate working as designed. Exiting non-zero for it
+// would tell CI that a deliberate choice was a failure.
+it('exits zero when the user declines the spend', async () => {
+  const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+  const base = rt.checkDeps!;
+  rt.checkDeps = (...args: Parameters<typeof base>) => ({
+    ...base(...args),
+    confirm: async () => false,
   });
 
-  // Declining the spend is the gate working as designed. Exiting non-zero for it
-  // would tell CI that a deliberate choice was a failure.
-  it('exits zero when the user declines the spend', async () => {
-    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
-    const base = rt.checkDeps!;
-    rt.checkDeps = (...args: Parameters<typeof base>) => ({
-      ...base(...args),
-      confirm: async () => false,
-    });
+  await run(rt, ['check', 'acme.example']);
 
-    await run(rt, ['check', 'acme.example']);
-
-    expect(rt.output.join('') + rt.errors.join('')).toContain('Aborted');
-    expect(process.exitCode).toBe(0);
-  });
+  expect(rt.output.join('') + rt.errors.join('')).toContain('Aborted');
+  expect(process.exitCode).toBe(0);
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -898,34 +907,34 @@ Replace the `queries-done` case in `src/cli/progress.ts` (lines 70-74):
 In `src/cli/check.ts`, replace the abort block (lines 295-312):
 
 ```ts
-      if (result.aborted) {
-        // Under --json, stdout is the envelope channel and nothing else may
-        // touch it: an agent that gets prose here cannot tell an abort from a
-        // crash. Every other branch already routes prose to stderr; this one
-        // did not, and the spend line made it a second offender.
-        const say = (s: string): void => {
-          if (flags.json) rt.err(s);
-          else rt.out(s);
-        };
-        say('Aborted - no engines were queried.\n');
-        // The notes carry WHY - an out-of-credit judge, a setup cost cap, a
-        // failed generation. They used to print only on the success path, so an
-        // aborted run was silent about its own cause.
-        for (const note of result.notes) say(`${note}\n`);
-        // Discovery and query generation bill BEFORE the confirmation gate, so
-        // an aborted run is not necessarily a free one. Reported only when it
-        // actually cost something, so a genuinely free abort stays quiet.
-        const spent = result.spend;
-        if (spent && spent.totalUsd > 0) {
-          say(`${spendLine(spent)}\n`);
-        }
-        // Declining is the user's choice and exits 0. An abort the user did not
-        // choose measured nothing, and CI and AI agents read the exit code.
-        if (result.abortReason && result.abortReason !== 'declined') {
-          process.exitCode = 1;
-        }
-        return;
-      }
+if (result.aborted) {
+  // Under --json, stdout is the envelope channel and nothing else may
+  // touch it: an agent that gets prose here cannot tell an abort from a
+  // crash. Every other branch already routes prose to stderr; this one
+  // did not, and the spend line made it a second offender.
+  const say = (s: string): void => {
+    if (flags.json) rt.err(s);
+    else rt.out(s);
+  };
+  say('Aborted - no engines were queried.\n');
+  // The notes carry WHY - an out-of-credit judge, a setup cost cap, a
+  // failed generation. They used to print only on the success path, so an
+  // aborted run was silent about its own cause.
+  for (const note of result.notes) say(`${note}\n`);
+  // Discovery and query generation bill BEFORE the confirmation gate, so
+  // an aborted run is not necessarily a free one. Reported only when it
+  // actually cost something, so a genuinely free abort stays quiet.
+  const spent = result.spend;
+  if (spent && spent.totalUsd > 0) {
+    say(`${spendLine(spent)}\n`);
+  }
+  // Declining is the user's choice and exits 0. An abort the user did not
+  // choose measured nothing, and CI and AI agents read the exit code.
+  if (result.abortReason && result.abortReason !== 'declined') {
+    process.exitCode = 1;
+  }
+  return;
+}
 ```
 
 - [ ] **Step 5: Run the tests to verify they pass**
