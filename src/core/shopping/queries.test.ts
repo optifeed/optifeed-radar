@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CostGuard,
+  REASONING_RESERVE_TOKENS,
   approxTokens,
   estimateCallUsd,
   judgeMaxTokens,
@@ -32,13 +33,20 @@ const PRODUCTS: ProductEntity[] = [
   { name: 'Presto X' },
 ];
 
-function judgeReturning(text: string): JudgeClient & { calls: string[] } {
+function judgeReturning(text: string): JudgeClient & {
+  calls: string[];
+  /** The token budget each call was given, for the headroom assertion. */
+  maxTokens: (number | undefined)[];
+} {
   const calls: string[] = [];
+  const maxTokens: (number | undefined)[] = [];
   return {
     model: 'gpt-5.4-mini',
     calls,
-    async complete(prompt) {
+    maxTokens,
+    async complete(prompt, opts) {
       calls.push(prompt);
+      maxTokens.push(opts?.maxTokens);
       return { text, costUsd: 0.0004, model: 'gpt-5.4-mini-2026-01-01' };
     },
   };
@@ -268,6 +276,99 @@ describe('generateProductQueries', () => {
     expect(judge.calls).toHaveLength(1);
     expect(result.notes.join(' ')).not.toContain('cost cap');
     expect(guard.costCapped).toBe(false);
+  });
+
+  // The other half of the token-budget invariant, and the half the authorize
+  // test cannot see (pricing is identical either way): the budget SENT to the
+  // provider must be sized through `judgeMaxTokens`. Without the reserve, a
+  // thinking judge spends the whole cap on private reasoning and returns
+  // nothing - which is exactly the "templates for everyone" failure below.
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const judge = judgeReturning(GOOD_RESPONSE);
+
+    await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard: new CostGuard() },
+      opts,
+    );
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+  });
+
+  // A 200 with no text is a FAILED call, not "this store has no questions".
+  // Every product then falls through to templates, and a silent fallback is
+  // the exact hazard the token budget above guards against - so the run must
+  // SAY the questions are generic (rule #6), the same way the cap-refused and
+  // judge-threw paths already do.
+  it('falls back to templates and says so when the judge returns an empty response', async () => {
+    const judge = judgeReturning('');
+    const guard = new CostGuard();
+
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard },
+      opts,
+    );
+
+    expect(judge.calls).toHaveLength(1);
+    expect(result.notes.join(' ')).toContain('empty response');
+    expect(result.notes.join(' ')).toContain('template');
+    // Templates still cover both layers for both products.
+    expect(result.prompts).toHaveLength(
+      PRODUCTS.length *
+        (VISIBILITY_PROMPTS_PER_PRODUCT + REPUTATION_PROMPTS_PER_PRODUCT),
+    );
+    expect(result.prompts.map((p) => p.prompt)).toContain(
+      'best quiet home espresso machine',
+    );
+    // The call happened, so its cost is booked and its hold freed.
+    expect(guard.spendBreakdown.setupUsd).toBeCloseTo(0.0004, 10);
+  });
+
+  it('falls back to templates and says so when the response has no usable questions', async () => {
+    const judge = judgeReturning('Sorry, I cannot help with that request.');
+
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard: new CostGuard() },
+      opts,
+    );
+
+    expect(result.notes.join(' ')).toContain('no usable');
+    expect(result.notes.join(' ')).toContain('template');
+    expect(result.prompts.length).toBeGreaterThan(0);
+  });
+
+  it('falls back to templates and says so when the response is valid JSON with no questions', async () => {
+    const judge = judgeReturning(
+      JSON.stringify({ '0': { visibility: [], reputation: [] } }),
+    );
+
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard: new CostGuard() },
+      opts,
+    );
+
+    expect(result.notes.join(' ')).toContain('no usable');
+  });
+
+  it('says nothing about templates when the judge answered usably', async () => {
+    const judge = judgeReturning(GOOD_RESPONSE);
+
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard: new CostGuard() },
+      opts,
+    );
+
+    expect(result.notes.join(' ')).not.toContain('empty response');
+    expect(result.notes.join(' ')).not.toContain('no usable');
   });
 
   it('falls back to templates and says so when the setup cap refuses the call', async () => {

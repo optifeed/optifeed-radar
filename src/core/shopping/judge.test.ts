@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CostGuard,
+  REASONING_RESERVE_TOKENS,
   approxTokens,
   estimateCallUsd,
   judgeMaxTokens,
@@ -30,13 +31,18 @@ function judgeReturning(
   costUsd = 0.0002,
 ): JudgeClient & {
   calls: string[];
+  /** The token budget each call was given, for the headroom assertion. */
+  maxTokens: (number | undefined)[];
 } {
   const calls: string[] = [];
+  const maxTokens: (number | undefined)[] = [];
   return {
     model: 'gpt-5.4-mini',
     calls,
-    async complete(prompt) {
+    maxTokens,
+    async complete(prompt, opts) {
       calls.push(prompt);
+      maxTokens.push(opts?.maxTokens);
       return { text, costUsd, model: 'gpt-5.4-mini-2026-01-01' };
     },
   };
@@ -178,6 +184,24 @@ describe('refineProductMentions', () => {
     expect(guard.spendBreakdown.totalUsd).toBe(0);
     expect(guard.costCapped).toBe(false);
     expect(out.results[0]?.ambiguous).toBe(true);
+  });
+
+  // The other half of the same invariant, and the half the authorize test
+  // cannot see: the budget SENT to the provider must be sized through
+  // `judgeMaxTokens`, because a bare 200-token cap is spent entirely on private
+  // reasoning by a thinking judge, which then returns an empty verdict. Pricing
+  // is identical either way, so only this assertion fails if the call site
+  // reverts to a bare number.
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const { results, answers } = ambiguousPair();
+    const judge = judgeReturning('{"mentioned": true, "position": 2}');
+
+    await refineProductMentions(results, answers, {
+      judge,
+      guard: new CostGuard(),
+    });
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
   });
 
   // Regression coverage for the answer-vs-cap pricing bug fixed alongside this

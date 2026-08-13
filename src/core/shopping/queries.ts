@@ -268,7 +268,28 @@ export async function generateProductQueries(
         // settle, not record: `authorize` reserved `projected`.
         guard.settle(projected, res.costUsd, 'setup');
         settled = true;
-        generated = parseProductQueries(res.text, products.length);
+        // A 200 with no text, or a response that parses to no questions at all,
+        // is a FAILED call - not a store whose products have no buyer
+        // questions. Both end in templates for every product, which is the
+        // silent fallback the budget above exists to prevent, so both SAY so
+        // (rule #6). Reported apart, as query generation reports them, because
+        // the fixes differ: an empty body points at the token budget or the
+        // model, an unusable one at the response shape.
+        if (res.text.trim() === '') {
+          notes.push(
+            'Could not write product questions (the judge returned an empty response); generic template questions were used instead.',
+          );
+        } else {
+          generated = parseProductQueries(res.text, products.length);
+          const usable = [...generated.values()].some(
+            (row) => row.visibility.length > 0 || row.reputation.length > 0,
+          );
+          if (!usable) {
+            notes.push(
+              'Could not write product questions (the judge response contained no usable questions); generic template questions were used instead.',
+            );
+          }
+        }
       } catch (err) {
         // A failed call cost nothing; release the hold so one setup error does
         // not shrink the budget for the whole run.
