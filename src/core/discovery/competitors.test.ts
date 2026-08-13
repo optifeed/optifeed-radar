@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import { CostGuard, REASONING_RESERVE_TOKENS } from '../costs.js';
 import type { JudgeClient } from '../types.js';
 import {
   discoverCompetitors,
@@ -7,18 +7,21 @@ import {
   parseCompetitors,
 } from './competitors.js';
 
-/** A judge that records the prompt it saw and returns a canned answer. */
+/** A judge that records the prompt (and token budget) it saw and returns a canned answer. */
 function recordingJudge(
   text: string,
   costUsd = 0.001,
   model = 'gpt-4o-mini',
-): JudgeClient & { prompts: string[] } {
+): JudgeClient & { prompts: string[]; maxTokens: (number | undefined)[] } {
   const prompts: string[] = [];
+  const maxTokens: (number | undefined)[] = [];
   return {
     prompts,
+    maxTokens,
     model,
-    async complete(prompt) {
+    async complete(prompt, opts) {
       prompts.push(prompt);
+      maxTokens.push(opts?.maxTokens);
       return { text, costUsd, model };
     },
   };
@@ -209,6 +212,35 @@ describe('discoverCompetitors', () => {
     expect(result.competitors).toEqual([]);
     expect(result.skipped).toContain('502');
     expect(guard.spentUsd).toBe(0);
+  });
+
+  // Verified live 2026-08-13: claude-sonnet-5 spent all 300 tokens of this
+  // call's budget on thinking and returned an empty text block. An empty list
+  // with no reason is a claim - "this brand has no rivals" - that the run never
+  // actually measured (rule #6).
+  it('reports an empty judge response instead of an empty competitor list', async () => {
+    const judge = recordingJudge('');
+    const guard = new CostGuard();
+
+    const result = await discoverCompetitors(
+      { brand: 'Acme Rockets', category: 'Model rockets' },
+      { judge, guard },
+    );
+
+    expect(result.competitors).toEqual([]);
+    expect(result.skipped).toMatch(/empty response/i);
+  });
+
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const judge = recordingJudge('["Estes"]');
+    const guard = new CostGuard();
+
+    await discoverCompetitors(
+      { brand: 'Acme Rockets', category: 'Model rockets' },
+      { judge, guard },
+    );
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
   });
 });
 
