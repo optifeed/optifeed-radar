@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import { CostGuard, REASONING_RESERVE_TOKENS } from '../costs.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -358,6 +358,50 @@ describe('generateQueries', () => {
     comparison: ['How do rocket kit brands compare?'],
     problem: ['Why does my rocket engine misfire?'],
     trust: ['Is Acme Rockets a reputable brand?'],
+  });
+
+  // The exact production failure of 2026-08-13: claude-sonnet-5 spent the whole
+  // 1440-token budget on thinking and returned HTTP 200 with an empty text
+  // block. An empty pack with no reason reads as "this brand has no buyer
+  // questions" - the run then offered to query 4 engines with 0 prompts.
+  it('reports an empty judge response instead of a silently empty pack', async () => {
+    const judge = recordingJudge('');
+    const guard = new CostGuard();
+
+    const result = await generateQueries(
+      profile(),
+      { judge, guard },
+      { generatedAt: AT_ISO },
+    );
+
+    expect(result.pack.queries).toHaveLength(0);
+    expect(result.skipped).toMatch(/empty response/i);
+  });
+
+  // A response that arrives but parses to nothing (truncated mid-JSON, or a
+  // refusal) is the same failure wearing a different hat, and it also used to
+  // return a clean empty pack.
+  it('reports a response that yielded no usable prompts', async () => {
+    const judge = recordingJudge('I am sorry, I cannot help with that.');
+    const guard = new CostGuard();
+
+    const result = await generateQueries(
+      profile(),
+      { judge, guard },
+      { generatedAt: AT_ISO },
+    );
+
+    expect(result.pack.queries).toHaveLength(0);
+    expect(result.skipped).toMatch(/no usable buyer prompts/i);
+  });
+
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const judge = recordingJudge(goodAnswer);
+    const guard = new CostGuard();
+
+    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
   });
 
   it('generates a pack from one guarded judge call, competitor input withheld', async () => {

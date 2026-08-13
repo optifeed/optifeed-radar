@@ -5,7 +5,12 @@
  * are separated from the single I/O function `generateQueries`, so the whole
  * module unit-tests against a mocked judge with no network.
  */
-import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import { extractBalanced, fold, mentionsTerm } from '../text.js';
 import {
   SCHEMA_VERSION,
@@ -398,12 +403,15 @@ export async function generateQueries(
   // the model reaches for is the current one, not its training-cutoff default.
   const year = opts.generatedAt.slice(0, 4);
   const prompt = buildGenPrompt(profile, intents, counts, year);
-  // Scale the output budget with how many questions we ask (weighting + the +1
+  // Scale the ANSWER budget with how many questions we ask (weighting + the +1
   // buffer + paired variants all inflate it), plus headroom for JSON structure
   // and verbose (non-English) phrasing. A fixed budget truncated a large pack
   // mid-JSON, which parses to an EMPTY pack; ~60 tokens/question keeps room.
+  // judgeMaxTokens then adds the reasoning reserve on top: a thinking judge
+  // draws private reasoning from this same cap and returned zero answer tokens
+  // without it (see REASONING_RESERVE_TOKENS).
   const requested = intents.reduce((sum, i) => sum + counts[i], 0);
-  const maxTokens = Math.max(900, requested * 60);
+  const maxTokens = judgeMaxTokens(Math.max(900, requested * 60));
   const projected =
     deps.projectedCostUsd ??
     estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
@@ -420,6 +428,16 @@ export async function generateQueries(
     // settle, not record: `authorize` reserved `projected` (see CostGuard).
     guard.settle(projected, res.costUsd, 'setup');
     settled = true;
+    // A 200 with no text is a FAILED call, not a brand with no buyer questions.
+    // Reported separately from the parse failure below because the fixes differ:
+    // an empty body points at the token budget or the model, an unusable one at
+    // the response shape.
+    if (res.text.trim() === '') {
+      return {
+        pack: emptyPack,
+        skipped: 'the judge returned an empty response',
+      };
+    }
     const byIntent = parseIntentQueries(res.text, intents);
     const pack = buildQueryPack({
       domain: profile.domain,
@@ -430,6 +448,12 @@ export async function generateQueries(
       axis: axisFor(profile),
       generatedAt: opts.generatedAt,
     });
+    if (pack.queries.length === 0) {
+      return {
+        pack,
+        skipped: 'the judge response contained no usable buyer prompts',
+      };
+    }
     return { pack };
   } catch (err) {
     // A failed judge call cost nothing; free the hold so a single setup error
