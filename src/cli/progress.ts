@@ -68,6 +68,16 @@ export function createProgressReporter(deps: ProgressDeps): ProgressReporter {
       case 'queries-start':
         return start('Generating buyer prompts...');
       case 'queries-done': {
+        // Zero prompts is never a success. The checkmark here reported a failed
+        // judge call as a completed phase, and the run then walked on to the
+        // cost gate quoting 0 prompts. `!` is the marker every other honesty
+        // note uses (core/output's note block), so this reads the same way.
+        if (event.prompts.length === 0) {
+          commit(
+            `! No buyer prompts were generated${event.note ? `: ${event.note}` : ''}`,
+          );
+          return;
+        }
         commit(`✓ Generated ${plural(event.prompts.length, 'buyer prompt')}`);
         event.prompts.forEach((p, i) => deps.write(`  ${i + 1}. ${p}\n`));
         return;

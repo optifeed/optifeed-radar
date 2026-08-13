@@ -326,12 +326,48 @@ describe('check command', () => {
     await run(rt, ['check', 'acme.example', '--json']);
 
     const out = rt.output.join('');
+    // Nothing at all, not merely "none of these phrases": the abort now also
+    // prints its notes, and an agent parsing stdout must get either an envelope
+    // or silence - never a line of prose it has to guess at.
+    expect(out).toBe('');
     expect(out).not.toContain('Aborted');
     expect(out).not.toContain('Run cost');
     // The abort and its cost must still be reported - on stderr.
     const err = rt.errors.join('');
     expect(err).toContain('Aborted');
     expect(err).toContain('$0.0200');
+  });
+
+  // An aborted run already carried its reason in result.notes; the CLI printed
+  // notes only on the success path, so the one user who most needed them - the
+  // one whose run produced nothing - was the only one who never saw them.
+  it('prints why a check aborted with no prompts, and exits non-zero', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+
+    await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain('Aborted');
+    expect(all).toContain('No buyer prompts were generated');
+    expect(all).toContain('no usable buyer prompts');
+    // Nothing was measured. CI and AI agents read the exit code.
+    expect(process.exitCode).toBe(1);
+  });
+
+  // Declining the spend is the gate working as designed. Exiting non-zero for it
+  // would tell CI that a deliberate choice was a failure.
+  it('exits zero when the user declines the spend', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    const base = rt.checkDeps!;
+    rt.checkDeps = (...args: Parameters<typeof base>) => ({
+      ...base(...args),
+      confirm: async () => false,
+    });
+
+    await run(rt, ['check', 'acme.example']);
+
+    expect(rt.output.join('') + rt.errors.join('')).toContain('Aborted');
+    expect(process.exitCode).toBe(0);
   });
 
   it('emits a clean JSON envelope under --json (no ANSI)', async () => {
