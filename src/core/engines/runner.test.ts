@@ -18,6 +18,12 @@ function fakeAdapter(
     failOn?: (prompt: string) => boolean;
     /** Override so the adapter can use a model that IS in MODEL_PRICING. */
     model?: string;
+    /**
+     * The model the PROVIDER echoes for a given prompt, which is not always the
+     * configured one: a floating alias resolves per request, so two calls in one
+     * run can be served by different models (observed live 2026-08-13).
+     */
+    echoModelFor?: (prompt: string) => string;
     supportsGrounded?: boolean;
     /** Hold the call open so concurrent asks really overlap in flight. */
     delayMs?: number;
@@ -40,7 +46,7 @@ function fakeAdapter(
         kind: 'parametric',
         prompt,
         text: `${id}:${prompt}`,
-        model,
+        model: opts.echoModelFor?.(prompt) ?? model,
         costUsd: opts.costUsd ?? 0.01,
         ts: 't',
       };
@@ -383,6 +389,51 @@ describe('askAll', () => {
   it('reports no partial engines when every call succeeds', async () => {
     const result = await askAll(['p1', 'p2'], [fakeAdapter('openai')]);
     expect(result.partialEngines).toEqual([]);
+  });
+
+  // Found on a real snapshot 2026-08-13: one run's 8 Gemini answers came from
+  // gemini-3.6-flash (7) and gemini-3.7-flash (1), because a floating alias
+  // resolved differently across concurrent requests mid-rollout. Every answer
+  // arrived, so no other honesty flag fired, and the engine's score was an
+  // average over two models with nothing saying so (rule #6). The data was
+  // already on every answer; nothing looked at it.
+  it('reports an engine whose answers came from more than one model', async () => {
+    const result = await askAll(
+      ['p1', 'p2', 'p3', 'p4'],
+      [
+        fakeAdapter('gemini', {
+          model: 'gemini-3.7-flash',
+          echoModelFor: (p) =>
+            p === 'p4' ? 'gemini-3.7-flash' : 'gemini-3.6-flash',
+        }),
+      ],
+    );
+
+    expect(result.answers).toHaveLength(4);
+    // Not partial: it answered everything. This is a separate signal.
+    expect(result.partialEngines).toEqual([]);
+    expect(result.mixedModelEngines).toEqual([
+      {
+        engine: 'gemini',
+        models: [
+          { model: 'gemini-3.6-flash', answers: 3 },
+          { model: 'gemini-3.7-flash', answers: 1 },
+        ],
+      },
+    ]);
+  });
+
+  // The false-positive guard. Every snapshot on disk but one is homogeneous, so
+  // a signal that fires on those would be noise that trains users to ignore it.
+  it('reports no mixed-model engines when each engine used one model', async () => {
+    const result = await askAll(
+      ['p1', 'p2'],
+      [
+        fakeAdapter('gemini', { model: 'gemini-3.7-flash' }),
+        fakeAdapter('openai', { model: 'gpt-5.6-sol' }),
+      ],
+    );
+    expect(result.mixedModelEngines).toEqual([]);
   });
 
   // Adapters fan out concurrently while `costCapped` is a single global flag,

@@ -259,6 +259,48 @@ describe('buildEnvelope', () => {
     ]);
   });
 
+  // Observed live 2026-08-13: one `check` run's 8 Gemini answers came back from
+  // gemini-3.6-flash (7) and gemini-3.7-flash (1), because the floating alias
+  // resolved differently across concurrent requests mid-rollout. The tool
+  // recorded both ids on the answers and said nothing, so one engine's score
+  // blended two models silently (rule #6).
+  it('propagates mixedModelEngines and omits it when every engine used one model', () => {
+    const clean = buildEnvelope({
+      profile: PROFILE,
+      score: score(),
+      answers: answers(),
+      generatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(clean.mixedModelEngines).toBeUndefined();
+
+    const mixed = buildEnvelope({
+      profile: PROFILE,
+      score: score(),
+      answers: answers(),
+      honesty: {
+        mixedModelEngines: [
+          {
+            engine: 'gemini',
+            models: [
+              { model: 'gemini-3.6-flash', answers: 7 },
+              { model: 'gemini-3.7-flash', answers: 1 },
+            ],
+          },
+        ],
+      },
+      generatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(mixed.mixedModelEngines).toEqual([
+      {
+        engine: 'gemini',
+        models: [
+          { model: 'gemini-3.6-flash', answers: 7 },
+          { model: 'gemini-3.7-flash', answers: 1 },
+        ],
+      },
+    ]);
+  });
+
   it('defaults findings to an empty array when no audit ran', () => {
     const env = buildEnvelope({
       profile: PROFILE,
@@ -291,6 +333,24 @@ describe('isPartialRun', () => {
         score: 61,
         partialEngines: [
           { engine: 'gemini', attempted: 8, answered: 1, reason: '429' },
+        ],
+      }),
+    ).toBe(true);
+    // The fifth signal. Every answer is present, so the run is not partial in
+    // the "missing answers" sense - but the score is an average over two
+    // different models, which is not the single-subject measurement `diff`
+    // assumes it is comparing.
+    expect(
+      isPartialRun({
+        score: 61,
+        mixedModelEngines: [
+          {
+            engine: 'gemini',
+            models: [
+              { model: 'gemini-3.6-flash', answers: 7 },
+              { model: 'gemini-3.7-flash', answers: 1 },
+            ],
+          },
         ],
       }),
     ).toBe(true);

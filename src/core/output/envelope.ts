@@ -20,6 +20,7 @@ import {
   type EngineId,
   type Finding,
   type MentionResult,
+  type MixedModelEngine,
   type PartialEngine,
   type Reputation,
   type RunHonesty,
@@ -98,6 +99,8 @@ export interface VisibilityEnvelope {
   skippedEngines?: { engine: EngineId; reason: string }[];
   /** Engines that answered only some prompts, with their real sample counts. */
   partialEngines?: PartialEngine[];
+  /** Engines whose answers came from several models, with per-model counts. */
+  mixedModelEngines?: MixedModelEngine[];
   degraded?: boolean;
 }
 
@@ -115,6 +118,7 @@ export interface PartialRunLike {
   degraded?: boolean;
   skippedEngines?: { engine: EngineId; reason: string }[];
   partialEngines?: PartialEngine[];
+  mixedModelEngines?: MixedModelEngine[];
   /**
    * The headline score, for artifacts that have one. `null` means the run
    * measured nothing; absent means this artifact has no single score (a
@@ -125,10 +129,10 @@ export interface PartialRunLike {
 
 /**
  * Whether a run's score is a partial sample rather than a full-confidence
- * measurement: cost-capped, degraded, missing whole engines, or an engine that
- * answered only some prompts. The single
- * source of truth for {@link failUnder} and {@link diffEnvelopes} so they never
- * present a partial run as complete (hard rule #6).
+ * measurement: cost-capped, degraded, missing whole engines, an engine that
+ * answered only some prompts, or an engine that answered from several models.
+ * The single source of truth for {@link failUnder} and {@link diffEnvelopes} so
+ * they never present a partial run as complete (hard rule #6).
  */
 export function isPartialRun(run: PartialRunLike): boolean {
   return (
@@ -139,6 +143,16 @@ export function isPartialRun(run: PartialRunLike): boolean {
     // than its neighbours. Without this the run reads as complete (found live
     // 2026-07-20: 1 of 8 answers, every other flag unset).
     (run.partialEngines?.length ?? 0) > 0 ||
+    // An engine that answered from SEVERAL models is counted here too, and the
+    // reading of "partial" is deliberate. No answer is missing, so this is not
+    // a thin sample - it is a sample of two different subjects reported as one
+    // number, which is the same failure the flag exists to prevent: a score
+    // presented as a full-confidence measurement of one thing when it is not.
+    // `diff` reads this flag to warn that a delta may come from the engine
+    // changing rather than from the brand, which is precisely the risk here,
+    // and `honestyNotes` renders nothing at all for a run this predicate calls
+    // clean - so leaving it out would collect the evidence and hide it.
+    (run.mixedModelEngines?.length ?? 0) > 0 ||
     // A run that measured nothing is the MOST partial run there is. Counting it
     // here (rather than at each call site) is why `failUnder` and `diff` cannot
     // present an unassessed run as a complete one - the M8 lesson: one shared
@@ -168,6 +182,9 @@ export function honestyFields(env: PartialRunLike): Partial<RunHonesty> {
   if (env.partialEngines && env.partialEngines.length > 0) {
     out.partialEngines = env.partialEngines;
   }
+  if (env.mixedModelEngines && env.mixedModelEngines.length > 0) {
+    out.mixedModelEngines = env.mixedModelEngines;
+  }
   return out;
 }
 
@@ -186,6 +203,9 @@ export function partialCauses(run: PartialRunLike): string[] {
   if ((run.skippedEngines?.length ?? 0) > 0) causes.push('engines skipped');
   if ((run.partialEngines?.length ?? 0) > 0) {
     causes.push('an engine answered only some prompts');
+  }
+  if ((run.mixedModelEngines?.length ?? 0) > 0) {
+    causes.push('an engine answered from more than one model');
   }
   return causes;
 }
@@ -257,6 +277,9 @@ export function buildEnvelope(input: BuildEnvelopeInput): VisibilityEnvelope {
   }
   if (honesty?.partialEngines && honesty.partialEngines.length > 0) {
     envelope.partialEngines = honesty.partialEngines;
+  }
+  if (honesty?.mixedModelEngines && honesty.mixedModelEngines.length > 0) {
+    envelope.mixedModelEngines = honesty.mixedModelEngines;
   }
 
   return envelope;

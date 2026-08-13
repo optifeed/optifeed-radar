@@ -292,11 +292,35 @@ export interface RunSpend {
   totalUsd: number;
 }
 
+/**
+ * An engine whose answers in ONE run came from more than one underlying model.
+ *
+ * Distinct from a partial engine: nothing failed and no answer is missing. The
+ * engine's score is simply an average over two different subjects, which is not
+ * what a per-engine score claims to be and not what `diff` assumes it compares.
+ *
+ * Observed live 2026-08-13: `gemini-flash-latest` resolved to `gemini-3.6-flash`
+ * for 7 of 8 answers and `gemini-3.7-flash` for the 8th, across concurrent
+ * requests inside a single run, while Google was mid-rollout. Every answer
+ * already recorded its {@link EngineAnswer.model}; nothing read it.
+ *
+ * The counts ride along (not just the ids) so a reader can tell a one-answer
+ * straggler from an even split - "mixed" without numbers hides HOW mixed, the
+ * same reason {@link PartialEngine} carries its sample counts.
+ */
+export interface MixedModelEngine {
+  engine: EngineId;
+  /** Each distinct model that answered, most answers first. Always 2 or more. */
+  models: { model: string; answers: number }[];
+}
+
 /** The honesty flags a run carries so partial/capped runs are never hidden. */
 export interface RunHonesty {
   costCapped?: boolean;
   skippedEngines?: { engine: EngineId; reason: string }[];
   /** Engines that answered only some prompts (total failure -> skippedEngines). */
   partialEngines?: PartialEngine[];
+  /** Engines whose answers came from several models (see {@link MixedModelEngine}). */
+  mixedModelEngines?: MixedModelEngine[];
   degraded?: boolean;
 }

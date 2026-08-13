@@ -306,14 +306,17 @@ export async function runShopping(
   report({ kind: 'scoring-done' });
 
   // Assemble honesty from ALL independent signals - a cap, a skipped engine, an
-  // engine that answered only some prompts, or a degraded profile each make the
-  // run partial, and dropping any one relaunders it as complete (rule #6).
+  // engine that answered only some prompts, an engine that answered from
+  // several models, or a degraded profile each make the run partial, and
+  // dropping any one relaunders it as complete (rule #6).
   const honesty: RunHonesty = {
     costCapped: guard.costCapped ? true : undefined,
     skippedEngines:
       asked.skippedEngines.length > 0 ? asked.skippedEngines : undefined,
     partialEngines:
       asked.partialEngines.length > 0 ? asked.partialEngines : undefined,
+    mixedModelEngines:
+      asked.mixedModelEngines.length > 0 ? asked.mixedModelEngines : undefined,
     degraded: profile.degraded ? true : undefined,
   };
 

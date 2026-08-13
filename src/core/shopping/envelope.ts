@@ -7,7 +7,7 @@
  * one order this module decides (see `orderSkus`), with the detail inside each
  * product's own section.
  *
- * The honesty flags are the same four the check envelope carries, so the shared
+ * The honesty flags are the same ones the check envelope carries, so the shared
  * `isPartialRun` / `honestyNotes` in `core/output` apply unchanged.
  */
 import {
@@ -15,6 +15,7 @@ import {
   type BrandProfile,
   type EngineAnswer,
   type EngineId,
+  type MixedModelEngine,
   type PartialEngine,
   type ProductEntity,
   type RunHonesty,
@@ -77,6 +78,8 @@ export interface ShoppingEnvelope {
   costCapped?: boolean;
   skippedEngines?: { engine: EngineId; reason: string }[];
   partialEngines?: PartialEngine[];
+  /** Engines whose answers came from several models, with per-model counts. */
+  mixedModelEngines?: MixedModelEngine[];
   degraded?: boolean;
 }
 
@@ -181,6 +184,9 @@ export function buildShoppingEnvelope(
   }
   if (honesty?.partialEngines && honesty.partialEngines.length > 0) {
     envelope.partialEngines = honesty.partialEngines;
+  }
+  if (honesty?.mixedModelEngines && honesty.mixedModelEngines.length > 0) {
+    envelope.mixedModelEngines = honesty.mixedModelEngines;
   }
 
   return envelope;

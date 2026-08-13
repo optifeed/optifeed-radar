@@ -345,16 +345,19 @@ export async function runCheck(
   );
   report({ kind: 'scoring-done' });
 
-  // Assemble honesty from ALL FOUR independent signals (M8 review lesson #1):
-  // a cap, a skipped engine, an engine that answered only some prompts, or a
-  // degraded profile each make the run partial. Dropping any one of them
-  // relaunders a partial run as complete.
+  // Assemble honesty from ALL FIVE independent signals (M8 review lesson #1):
+  // a cap, a skipped engine, an engine that answered only some prompts, an
+  // engine whose answers came from several models, or a degraded profile each
+  // make the run partial. Dropping any one of them relaunders a partial run as
+  // complete.
   const honesty: RunHonesty = {
     costCapped: guard.costCapped ? true : undefined,
     skippedEngines:
       asked.skippedEngines.length > 0 ? asked.skippedEngines : undefined,
     partialEngines:
       asked.partialEngines.length > 0 ? asked.partialEngines : undefined,
+    mixedModelEngines:
+      asked.mixedModelEngines.length > 0 ? asked.mixedModelEngines : undefined,
     degraded: profile.degraded ? true : undefined,
   };
 
