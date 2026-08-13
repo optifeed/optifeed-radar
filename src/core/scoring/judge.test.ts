@@ -195,6 +195,59 @@ describe('refineAmbiguous (judge pass 2)', () => {
     expect(out.judged).toBe(0);
   });
 
+  // A 200 with no text is a FAILED call, and this is the one judge site where
+  // reading it as data is worse than losing it: `parseVerdict('')` returns its
+  // conservative `{mentioned: false}` default, which `applyVerdict` then writes
+  // as a CONFIRMED non-mention (brand stripped, `ambiguous: false`, `judged:
+  // true`) that moves the headline AI Visibility Score down. An empty call must
+  // leave the row exactly as pass 1 read it - the same contract the `catch`
+  // path already follows (rule #6).
+  it.each([
+    ['an empty response', ''],
+    ['a whitespace-only response', '  \n\t '],
+  ])('leaves the pass-1 reading when the judge returns %s', async (_, text) => {
+    const judge = countingJudge(text);
+    const guard = new CostGuard();
+
+    const out = await refineAmbiguous(
+      [ambiguousMention()],
+      [answer('I love fresh orange juice in the morning.')],
+      profile,
+      { judge, guard },
+      { judgeRateCap: 1 },
+    );
+
+    expect(judge.calls).toBe(1); // the call happened
+    const r = out.results[0]!;
+    expect(r.ambiguous).toBe(true); // still unresolved, not a verdict
+    expect(r.judged).toBeUndefined();
+    expect(r.mentioned).toBe(true); // pass 1's reading, untouched
+    expect(r.entities).toEqual(['Orange']);
+    expect(out.judged).toBe(0);
+    // The call was made and billed, so its cost is booked and its hold freed.
+    expect(guard.spendBreakdown.mainUsd).toBeCloseTo(0.001, 10);
+  });
+
+  // An empty response is billed like any other, so it must still count against
+  // the rate cap: skipping it there would let a judge that returns nothing be
+  // called for EVERY ambiguous row, spending 100% of a budget capped at 30%.
+  it('stops at the rate cap even when every judge call comes back empty', async () => {
+    const results = Array.from({ length: 10 }, () => ambiguousMention());
+    const answers = Array.from({ length: 10 }, () => answer('orange juice'));
+    const judge = countingJudge('');
+    const guard = new CostGuard();
+
+    const out = await refineAmbiguous(results, answers, profile, {
+      judge,
+      guard,
+    });
+
+    expect(judge.calls).toBe(3); // floor(10 * 0.30), as with usable verdicts
+    expect(out.judged).toBe(0); // nothing was actually resolved
+    expect(out.results.filter((r) => r.judged)).toHaveLength(0);
+    expect(guard.spendBreakdown.mainUsd).toBeCloseTo(0.003, 10);
+  });
+
   // 60 tokens is an ANSWER budget. On a reasoning judge it is also the whole
   // thinking budget, and thinking goes first - the verdict comes back empty and
   // the row silently keeps its pass-1 value (verified live 2026-08-13).

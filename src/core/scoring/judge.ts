@@ -37,6 +37,11 @@ export interface RefineOptions {
 
 export interface RefineResult {
   results: MentionResult[];
+  /**
+   * Rows a verdict was actually applied to. A call that happened but came back
+   * unusable is NOT counted here (it resolved nothing), though it does count
+   * against the rate cap, which bounds what the pass spends.
+   */
   judged: number;
 }
 
@@ -100,6 +105,13 @@ export async function refineAmbiguous(
   const maxJudge = Math.floor(results.length * cap);
   const refined = [...results];
   let judged = 0;
+  // What the rate cap counts: calls that HAPPENED and were billed, whether or
+  // not their output was usable. Counting resolved rows instead would let a
+  // judge returning nothing usable be called for every ambiguous row, spending
+  // the whole answer set's worth of calls under a cap set at 30%. A call that
+  // THREW is deliberately not counted - it settles at zero, so allowing another
+  // attempt in its place costs nothing.
+  let billed = 0;
 
   if (maxJudge === 0) return { results: refined, judged };
 
@@ -107,7 +119,7 @@ export async function refineAmbiguous(
   // judge is not out of budget before it writes that word.
   const answerTokens = 60;
   const maxTokens = judgeMaxTokens(answerTokens);
-  for (let i = 0; i < refined.length && judged < maxJudge; i++) {
+  for (let i = 0; i < refined.length && billed < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
     if (!result?.ambiguous || !answer) continue;
@@ -131,6 +143,16 @@ export async function refineAmbiguous(
       const res = await judge.complete(prompt, { maxTokens });
       // settle, not record: `authorize` reserved `projected` (see CostGuard).
       guard.settle(projected, res.costUsd, 'main');
+      billed += 1;
+      // A 200 with no text is a FAILED call (a reasoning judge that spent the
+      // whole cap on private thinking), not a verdict. It must be treated as
+      // one HERE, before parsing: `parseVerdict('')` returns its conservative
+      // `{mentioned: false}` default, which `applyVerdict` would then write as
+      // a CONFIRMED non-mention - brand stripped, `ambiguous: false`, `judged:
+      // true` - moving the headline score down on the strength of a call that
+      // said nothing. Leaving the row as pass 1 decided it is what every other
+      // failure on this loop does (rule #6).
+      if (res.text.trim() === '') continue;
       verdict = parseVerdict(res.text);
     } catch {
       guard.settle(projected, 0, 'main'); // failed call cost nothing
