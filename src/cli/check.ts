@@ -342,7 +342,10 @@ export function registerCheck(program: Command, rt: Runtime): void {
         }
         return;
       }
-      const env = result.envelope!;
+      // No non-null assertion: `result.aborted` is the union's discriminant, so
+      // returning inside the abort branch above narrows this to the completed
+      // arm, where the envelope is guaranteed by the type.
+      const env = result.envelope;
 
       // Write the report first, independent of --json, and never let a failed
       // write throw away the paid run's results (report is a best-effort side

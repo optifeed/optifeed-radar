@@ -164,10 +164,11 @@ export type AbortReason = 'declined' | 'no-prompts' | 'unconfirmed';
  * Only `declined` is evidence that a human chose to stop; everything else
  * measured nothing. `undefined` therefore reads as a FAILURE, not as a decline:
  * an abort that carries no reason is an abort nobody explained, and calling it
- * a decline would claim a user consented to a stop they never saw. Every
- * `runCheck` abort path tags a reason today, so this case can only arise from a
- * path that forgot to - which is exactly when silence must not read as consent
- * (hard rule #6).
+ * a decline would claim a user consented to a stop they never saw. A
+ * {@link RunCheckAborted} can no longer reach here untagged - `abortReason` is
+ * required on that arm - but the parameter stays widened for callers holding a
+ * reason from somewhere else (a parsed payload, a sibling orchestrator), where
+ * silence must still not read as consent (hard rule #6).
  *
  * Call it for a run whose `aborted` is true; a completed run has no abort to
  * classify.
@@ -176,32 +177,57 @@ export function isAbortFailure(reason: AbortReason | undefined): boolean {
   return reason !== 'declined';
 }
 
-/** Outcome of {@link runCheck}. */
-export interface RunCheckResult {
-  /** The check envelope; absent on every abort, whatever the reason. */
-  envelope?: VisibilityEnvelope;
-  /** True when the run stopped before querying any engine. {@link abortReason} says why. */
-  aborted: boolean;
-  /**
-   * Why the run aborted, when it did. A caller that maps aborts to an exit code
-   * or an error message asks {@link isAbortFailure} rather than comparing the
-   * value itself - a decline is not a failure, everything else is.
-   */
-  abortReason?: AbortReason;
-  /** Snapshot path written, if persisted this run. */
-  snapshotPath?: string;
+/**
+ * Fields both arms of {@link RunCheckResult} carry, whatever the outcome.
+ *
+ * `spend` is here rather than on the success arm alone because discovery and
+ * query generation happen BEFORE the confirmation gate: declining still billed
+ * for the setup phase, and reporting spend only on success would tell a user
+ * who declined precisely to avoid spending that the run was free (rule #6).
+ */
+interface RunCheckCommon {
   /** Human-readable notes (competitor skip, query-gen skip, confirmation abort). */
   notes: string[];
-  /**
-   * What the run spent, from the cost guard.
-   *
-   * Present even on an ABORTED run: discovery and query generation happen
-   * before the confirmation gate, so declining still billed for the setup
-   * phase. Reporting only on success would tell a user who declined in order
-   * to avoid spending that the run was free.
-   */
+  /** What the run spent, from the cost guard. Present even on an abort. */
   spend?: RunSpend;
 }
+
+/** A run that reached the engines and produced an envelope. */
+export interface RunCheckCompleted extends RunCheckCommon {
+  aborted: false;
+  /** The check envelope. Guaranteed by the type once `aborted` is false. */
+  envelope: VisibilityEnvelope;
+  /**
+   * Snapshot path written, if persisted this run. Only a completed run has one:
+   * an abort returns before `saveSnapshot`, so carrying the field on the abort
+   * arm would describe a file that cannot exist.
+   */
+  snapshotPath?: string;
+}
+
+/** A run that stopped before querying any engine. */
+export interface RunCheckAborted extends RunCheckCommon {
+  aborted: true;
+  /**
+   * Why the run aborted. REQUIRED on this arm, so no return site can report an
+   * abort it does not explain. A caller that maps aborts to an exit code or an
+   * error message asks {@link isAbortFailure} rather than comparing the value
+   * itself - a decline is not a failure, everything else is.
+   */
+  abortReason: AbortReason;
+}
+
+/**
+ * Outcome of {@link runCheck} - a discriminated union on `aborted`, not one
+ * bag of optionals.
+ *
+ * Every consumer narrows on the SAME discriminant (`result.aborted`). The two
+ * fields that used to be independent optionals - `envelope` and `abortReason` -
+ * are each required on exactly one arm, so "aborted with no reason" and
+ * "completed with no envelope" are no longer representable, and a completed run
+ * needs no non-null assertion to read its envelope.
+ */
+export type RunCheckResult = RunCheckCompleted | RunCheckAborted;
 
 /**
  * Run the full `check` pipeline for `domain`. Never throws for a partial run -

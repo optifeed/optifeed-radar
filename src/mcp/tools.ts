@@ -307,7 +307,12 @@ export async function callTool(
           yes: true, // non-interactive (hard rule #8)
           count: args.quick === true ? 8 : undefined,
         });
-        if (!result.envelope) {
+        // Narrow on `aborted`, the union's discriminant - the same field the
+        // CLI branches on. Testing `!result.envelope` instead was a second,
+        // hand-rolled predicate that only agreed with the CLI's by convention.
+        // This tool passes `yes: true` (hard rule #8), so `declined` is
+        // unreachable and every abort it can see is a failure to report.
+        if (result.aborted) {
           return err(
             `check_visibility did not produce a result: ${result.notes.join('; ') || 'aborted'}.`,
           );
