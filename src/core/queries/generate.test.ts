@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard, REASONING_RESERVE_TOKENS } from '../costs.js';
+import {
+  CostGuard,
+  REASONING_RESERVE_TOKENS,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -402,6 +408,65 @@ describe('generateQueries', () => {
     await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
 
     expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+  });
+
+  // Regression coverage for the answer-vs-cap pricing bug fixed alongside this
+  // (full rationale in scoring/judge.ts): `authorize` must be priced on the
+  // answer budget, not `judgeMaxTokens(answerTokens)`. A cap that only covers
+  // the former must still authorize the call.
+  it('authorizes against the answer budget, not the reasoning-inflated cap', async () => {
+    const model = 'gpt-5.5'; // wide input/output spread makes the gap unambiguous
+    const makeJudge = (): JudgeClient & { prompts: string[] } => {
+      const prompts: string[] = [];
+      return {
+        model,
+        prompts,
+        async complete(prompt) {
+          prompts.push(prompt);
+          return { text: goodAnswer, costUsd: 0.001, model };
+        },
+      };
+    };
+    // count:4 keeps the answer budget at its 900-token floor
+    // (Math.max(900, requested * 60)) - the tightest case relative to the
+    // fixed reasoning reserve, so the most conservative choice here.
+    const genOpts = { count: 4, generatedAt: AT_ISO };
+    const answerTokens = 900;
+
+    // Capture the real prompt so the projections below are grounded in what
+    // the call actually sends, not a hand-typed approximation.
+    const probe = makeJudge();
+    await generateQueries(
+      profile(),
+      { judge: probe, guard: new CostGuard({ maxSetupCostUsd: 10 }) },
+      genOpts,
+    );
+    const inputTokens = approxTokens(probe.prompts[0]!);
+
+    const answerBudgetUsd = estimateCallUsd(model, inputTokens, answerTokens);
+    const fullCapUsd = estimateCallUsd(
+      model,
+      inputTokens,
+      judgeMaxTokens(answerTokens),
+    );
+    // Self-check: if a future pricing-table edit closes this gap, fail loud
+    // rather than silently letting the cap below stop discriminating. The
+    // margin here is smaller than the other four sites' because the answer
+    // budget itself (900) is already large relative to the fixed reserve.
+    expect(fullCapUsd).toBeGreaterThan(answerBudgetUsd * 3);
+
+    const judge = makeJudge();
+    // Comfortably above the answer-budget projection, comfortably below the
+    // full-cap one.
+    const guard = new CostGuard({
+      maxSetupCostUsd: (answerBudgetUsd + fullCapUsd) / 2,
+    });
+
+    const result = await generateQueries(profile(), { judge, guard }, genOpts);
+
+    expect(judge.prompts).toHaveLength(1);
+    expect(result.skipped).toBeUndefined();
+    expect(guard.costCapped).toBe(false);
   });
 
   it('generates a pack from one guarded judge call, competitor input withheld', async () => {

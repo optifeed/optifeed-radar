@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import type { EngineAnswer, JudgeClient } from '../types.js';
 import { analyzeProductAnswer, type ProductMention } from './detect.js';
 import {
@@ -173,6 +178,59 @@ describe('refineProductMentions', () => {
     expect(guard.spendBreakdown.totalUsd).toBe(0);
     expect(guard.costCapped).toBe(false);
     expect(out.results[0]?.ambiguous).toBe(true);
+  });
+
+  // Regression coverage for the answer-vs-cap pricing bug fixed alongside this
+  // (full rationale in scoring/judge.ts): `authorize` must be priced on the
+  // 200-token answer budget, not `judgeMaxTokens(200)`. A cap that only covers
+  // the former must still authorize the call.
+  it('authorizes against the answer budget, not the reasoning-inflated cap', async () => {
+    const model = 'gpt-5.5'; // wide input/output spread makes the gap unambiguous
+    const makeJudge = (): JudgeClient & { calls: string[] } => {
+      const calls: string[] = [];
+      return {
+        model,
+        calls,
+        async complete(prompt) {
+          calls.push(prompt);
+          return {
+            text: '{"mentioned": true, "position": 1}',
+            costUsd: 0.001,
+            model,
+          };
+        },
+      };
+    };
+
+    const { results, answers } = ambiguousPair();
+
+    // Capture the real prompt so the projections below are grounded in what
+    // the call actually sends, not a hand-typed approximation.
+    const probe = makeJudge();
+    await refineProductMentions(results, answers, {
+      judge: probe,
+      guard: new CostGuard({ maxCostUsd: 10 }),
+    });
+    const inputTokens = approxTokens(probe.calls[0]!);
+
+    const answerBudgetUsd = estimateCallUsd(model, inputTokens, 200);
+    const fullCapUsd = estimateCallUsd(model, inputTokens, judgeMaxTokens(200));
+    // Self-check: if a future pricing-table edit closes this gap, fail loud
+    // rather than silently letting the cap below stop discriminating.
+    expect(fullCapUsd).toBeGreaterThan(answerBudgetUsd * 10);
+
+    const judge = makeJudge();
+    // Comfortably above the answer-budget projection, comfortably below the
+    // full-cap one.
+    const guard = new CostGuard({
+      maxCostUsd: (answerBudgetUsd + fullCapUsd) / 2,
+    });
+
+    const out = await refineProductMentions(results, answers, { judge, guard });
+
+    expect(judge.calls).toHaveLength(1);
+    expect(out.judged).toBe(1);
+    expect(guard.costCapped).toBe(false);
   });
 
   it('never spends on rows pass 1 already resolved', async () => {

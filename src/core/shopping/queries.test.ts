@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -7,6 +12,7 @@ import {
   type ProductEntity,
 } from '../types.js';
 import {
+  REPUTATION_PROMPTS_PER_PRODUCT,
   VISIBILITY_PROMPTS_PER_PRODUCT,
   generateProductQueries,
 } from './queries.js';
@@ -198,6 +204,70 @@ describe('generateProductQueries', () => {
     const reputation = result.prompts.filter((p) => p.layer === 'reputation');
     expect(reputation).toHaveLength(1);
     expect(reputation[0]?.prompt).toContain('Aria 2');
+  });
+
+  // Regression coverage for the answer-vs-cap pricing bug fixed alongside this
+  // (full rationale in scoring/judge.ts): `authorize` must be priced on the
+  // answer budget, not `judgeMaxTokens(answerTokens)`. A cap that only covers
+  // the former must still authorize the call.
+  it('authorizes against the answer budget, not the reasoning-inflated cap', async () => {
+    const model = 'gpt-5.5'; // wide input/output spread makes the gap unambiguous
+    const makeJudge = (): JudgeClient & { calls: string[] } => {
+      const calls: string[] = [];
+      return {
+        model,
+        calls,
+        async complete(prompt) {
+          calls.push(prompt);
+          return { text: GOOD_RESPONSE, costUsd: 0.001, model };
+        },
+      };
+    };
+    const answerTokens = Math.max(
+      600,
+      PRODUCTS.length *
+        (VISIBILITY_PROMPTS_PER_PRODUCT + REPUTATION_PROMPTS_PER_PRODUCT) *
+        45,
+    );
+
+    // Capture the real prompt so the projections below are grounded in what
+    // the call actually sends, not a hand-typed approximation.
+    const probe = makeJudge();
+    await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge: probe, guard: new CostGuard({ maxSetupCostUsd: 10 }) },
+      opts,
+    );
+    const inputTokens = approxTokens(probe.calls[0]!);
+
+    const answerBudgetUsd = estimateCallUsd(model, inputTokens, answerTokens);
+    const fullCapUsd = estimateCallUsd(
+      model,
+      inputTokens,
+      judgeMaxTokens(answerTokens),
+    );
+    // Self-check: if a future pricing-table edit closes this gap, fail loud
+    // rather than silently letting the cap below stop discriminating.
+    expect(fullCapUsd).toBeGreaterThan(answerBudgetUsd * 5);
+
+    const judge = makeJudge();
+    // Comfortably above the answer-budget projection, comfortably below the
+    // full-cap one.
+    const guard = new CostGuard({
+      maxSetupCostUsd: (answerBudgetUsd + fullCapUsd) / 2,
+    });
+
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge, guard },
+      opts,
+    );
+
+    expect(judge.calls).toHaveLength(1);
+    expect(result.notes.join(' ')).not.toContain('cost cap');
+    expect(guard.costCapped).toBe(false);
   });
 
   it('falls back to templates and says so when the setup cap refuses the call', async () => {
