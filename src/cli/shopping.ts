@@ -28,6 +28,7 @@ import {
 } from '../core/shopping/index.js';
 import {
   buildCheckDeps,
+  isAbortFailure,
   runShopping,
   selectEngines,
   type ConfirmContext,
@@ -273,9 +274,17 @@ export function registerShopping(program: Command, rt: Runtime): void {
         // is not necessarily a free one.
         const spent = result.spend;
         if (spent && spent.totalUsd > 0) say(`${spendLine(spent)}\n`);
+        // Declining is the user's choice and exits 0. An abort the user did not
+        // choose measured nothing, and CI and AI agents read the exit code.
+        if (isAbortFailure(result.abortReason)) {
+          process.exitCode = 1;
+        }
         return;
       }
-      const env = result.envelope!;
+      // No non-null assertion: `result.aborted` is the union's discriminant, so
+      // returning inside the abort branch above narrows this to the completed
+      // arm, where the envelope is guaranteed by the type.
+      const env = result.envelope;
 
       let reportWritten: string | undefined;
       if (flags.report) {

@@ -46,7 +46,12 @@ import type {
   RunHonesty,
   RunSpend,
 } from '../types.js';
-import { priceRun, type ConfirmContext, type ProgressEvent } from './check.js';
+import {
+  priceRun,
+  type AbortReason,
+  type ConfirmContext,
+  type ProgressEvent,
+} from './check.js';
 
 /** Injected collaborators. Anything that spends or hits the network lives here. */
 export interface RunShoppingDeps {
@@ -96,19 +101,55 @@ export interface RunShoppingOptions {
   persist?: boolean;
 }
 
-/** Outcome of {@link runShopping}. */
-export interface RunShoppingResult {
-  /** The shopping envelope; absent only when the run aborted at confirmation. */
-  envelope?: ShoppingEnvelope;
-  /** True when the confirmation gate declined the spend (no engines asked). */
-  aborted: boolean;
-  /** Path the run was saved to, if persisted. */
-  savedPath?: string;
+/**
+ * Fields both arms of {@link RunShoppingResult} carry, whatever the outcome.
+ *
+ * `spend` is here rather than on the completed arm alone because discovery and
+ * prompt writing happen BEFORE the confirmation gate: declining still billed
+ * for the setup phase, and reporting spend only on success would tell a user
+ * who declined precisely to avoid spending that the run was free (rule #6).
+ */
+interface RunShoppingCommon {
   /** Human-readable notes (dropped products, template fallbacks, aborts). */
   notes: string[];
   /** What the run spent, from the cost guard. Present even on an abort. */
   spend?: RunSpend;
 }
+
+/** A run that reached the engines and produced an envelope. */
+export interface RunShoppingCompleted extends RunShoppingCommon {
+  aborted: false;
+  /** The shopping envelope. Guaranteed by the type once `aborted` is false. */
+  envelope: ShoppingEnvelope;
+  /**
+   * Path the run was saved to, if persisted this run. Only a completed run has
+   * one: an abort returns before `saveShoppingRun`, so carrying the field on
+   * the abort arm would describe a file that cannot exist.
+   */
+  savedPath?: string;
+}
+
+/** A run that stopped before querying any engine. */
+export interface RunShoppingAborted extends RunShoppingCommon {
+  aborted: true;
+  /**
+   * Why the run stopped. REQUIRED on this arm, so no return site can report an
+   * abort it does not explain. The taxonomy is `check`'s, not a second one:
+   * a caller mapping aborts to an exit code or an error asks the shared
+   * `isAbortFailure` rather than comparing the value itself.
+   */
+  abortReason: AbortReason;
+}
+
+/**
+ * Outcome of {@link runShopping} - a discriminated union on `aborted`, the same
+ * shape `RunCheckResult` has, so both orchestrators narrow identically.
+ *
+ * `envelope` and `abortReason` are each required on exactly one arm, so
+ * "aborted with no reason" and "completed with no envelope" are not
+ * representable, and a completed run needs no non-null assertion.
+ */
+export type RunShoppingResult = RunShoppingCompleted | RunShoppingAborted;
 
 /** Which product/layer pairs asked for a given prompt. */
 interface PromptOwner {
@@ -193,6 +234,14 @@ export async function runShopping(
   const prompts = [...owners.keys()];
   report({ kind: 'queries-done', prompts });
 
+  // No `no-prompts` guard here, unlike `check`, and deliberately so: this
+  // pipeline cannot reach the gate with nothing to ask. `resolveProducts`
+  // throws on an empty list rather than returning one, and every surviving
+  // product gets at least its reputation prompt, which is templated from the
+  // product NAME alone ("is the <name> worth it?") with no judge, descriptor,
+  // or category needed. A guard here would be dead code; the test
+  // "always has at least one prompt to ask" is what keeps that true.
+
   // Gate the main ASK spend (bypassable with `yes`, hard rule #8). Spending is
   // allowed ONLY when explicitly confirmed; a consumer that wires neither must
   // not silently spend.
@@ -202,7 +251,12 @@ export async function runShopping(
       notes.push(
         'Aborted before spending: engine queries need confirmation. Pass yes to run non-interactively, or provide a confirm handler.',
       );
-      return { aborted: true, notes, spend: guard.spendBreakdown };
+      return {
+        aborted: true,
+        abortReason: 'unconfirmed',
+        notes,
+        spend: guard.spendBreakdown,
+      };
     }
     const estimate: CostEstimate | undefined = priceRun(
       prompts.length,
@@ -218,7 +272,12 @@ export async function runShopping(
     });
     if (!ok) {
       notes.push('Run aborted at the cost confirmation.');
-      return { aborted: true, notes, spend: guard.spendBreakdown };
+      return {
+        aborted: true,
+        abortReason: 'declined',
+        notes,
+        spend: guard.spendBreakdown,
+      };
     }
   }
 

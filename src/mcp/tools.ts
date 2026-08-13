@@ -435,7 +435,11 @@ export async function callTool(
           products: products.products,
           yes: true, // non-interactive (hard rule #8)
         });
-        if (!result.envelope) {
+        // Narrow on `aborted`, the union's discriminant - the same field the
+        // CLI branches on, and the same narrowing check_visibility does above.
+        // This tool passes `yes: true` (hard rule #8), so `declined` is
+        // unreachable and every abort it can see is a failure to report.
+        if (result.aborted) {
           return err(
             `shopping_check did not produce a result: ${result.notes.join('; ') || 'aborted'}.`,
           );

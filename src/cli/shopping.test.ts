@@ -92,6 +92,25 @@ function memFs(seed: Record<string, string> = {}): ProfileFs & ShoppingFs {
   };
 }
 
+/**
+ * Injected shopping deps over a fresh in-memory fs, for tests that need to
+ * override one collaborator (the confirm gate) without rebuilding the runtime.
+ */
+function shoppingDepsWith(
+  over: Partial<RunShoppingDeps> = {},
+): RunShoppingDeps {
+  const fs = memFs({ [profilePath(STATE)]: JSON.stringify(PROFILE) });
+  return {
+    fetcher: createFetcher({ fetchImpl: fakeFetch }),
+    adapters: [adapter('openai')],
+    judge,
+    profileFs: fs,
+    shoppingFs: fs,
+    now: NOW,
+    ...over,
+  };
+}
+
 function testRuntime(
   over: Partial<Runtime> = {},
   seed: Record<string, string> = {},
@@ -317,6 +336,28 @@ describe('shopping command', () => {
     expect(said).toContain('Aborted');
     // The note names the fix; swallowing it leaves the user with no next step.
     expect(said).toContain('yes');
+  });
+
+  // An abort NOBODY chose measured nothing, and CI and AI agents read the exit
+  // code, not the prose. This run has no confirm handler and no --yes, so it
+  // stopped because it was misconfigured - exiting 0 would report a total
+  // failure as a pass, which is exactly the bug `check` was fixed for.
+  it("exits non-zero when the abort was not the user's own choice", async () => {
+    const rt = testRuntime();
+    await run(rt, ['shopping', 'acme.example', '--products', 'Aria 2']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  // The mirror: declining IS the user's choice, and a user who says "no" has
+  // not hit an error. Exit 0 so a scripted decline is not a failed build.
+  it('exits 0 when the user declines at the confirmation', async () => {
+    const rt = testRuntime({
+      shoppingDeps: () => shoppingDepsWith({ confirm: async () => false }),
+    });
+    await run(rt, ['shopping', 'acme.example', '--products', 'Aria 2']);
+
+    expect(rt.output.join('') + rt.errors.join('')).toContain('Aborted');
+    expect(process.exitCode).toBeFalsy();
   });
 
   it('puts the run notes in the JSON envelope, not only on stderr', async () => {

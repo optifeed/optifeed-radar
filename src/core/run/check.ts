@@ -154,20 +154,21 @@ export type AbortReason = 'declined' | 'no-prompts' | 'unconfirmed';
  * them hand-rolls its own subset of the taxonomy and drifts when a reason is
  * added (the M8 lesson that `isPartialRun` in `core/output` was extracted for).
  *
- * Today that is exactly one caller: the CLI's exit code (`cli/check.ts`), the
- * only surface a human can decline at. The MCP tool does NOT call this and is
- * right not to - it passes `yes: true` (hard rule #8), so `declined` is
- * unreachable there and every abort it can see is a failure it reports as an
- * error. A second interactive surface, or an MCP tool that ever grows a
+ * Today that is the two CLI exit codes - `cli/check.ts` and `cli/shopping.ts`,
+ * the only surfaces a human can decline at, and the reason this is shared
+ * rather than inlined at one of them. The MCP tools do NOT call this and are
+ * right not to - they pass `yes: true` (hard rule #8), so `declined` is
+ * unreachable there and every abort they can see is a failure they report as an
+ * error. A third interactive surface, or an MCP tool that ever grows a
  * confirmation, asks here rather than re-deriving the rule.
  *
  * Only `declined` is evidence that a human chose to stop; everything else
  * measured nothing. `undefined` therefore reads as a FAILURE, not as a decline:
  * an abort that carries no reason is an abort nobody explained, and calling it
- * a decline would claim a user consented to a stop they never saw. A
- * {@link RunCheckAborted} can no longer reach here untagged - `abortReason` is
- * required on that arm - but the parameter stays widened for callers holding a
- * reason from somewhere else (a parsed payload, a sibling orchestrator), where
+ * a decline would claim a user consented to a stop they never saw. Neither a
+ * {@link RunCheckAborted} nor a `RunShoppingAborted` can reach here untagged -
+ * `abortReason` is required on both arms - but the parameter stays widened for
+ * callers holding a reason from somewhere else (a parsed payload), where
  * silence must still not read as consent (hard rule #6).
  *
  * Call it for a run whose `aborted` is true; a completed run has no abort to

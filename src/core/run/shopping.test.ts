@@ -17,7 +17,13 @@ import {
   type EngineKind,
   type JudgeClient,
 } from '../types.js';
-import { runShopping } from './shopping.js';
+import { isAbortFailure, type AbortReason } from './check.js';
+import {
+  runShopping,
+  type RunShoppingAborted,
+  type RunShoppingCompleted,
+  type RunShoppingResult,
+} from './shopping.js';
 
 const STATE = '/state';
 const NOW = (): string => '2026-07-23T00:00:00.000Z';
@@ -142,6 +148,30 @@ function deps(
   };
 }
 
+/**
+ * Narrow a result to its completed arm, the way `check.test.ts` does. An
+ * `expect(result.aborted).toBe(false)` asserts at runtime but does not narrow
+ * the union for the compiler, so tests that read the envelope come through here
+ * rather than through a `!` - and an unexpected abort fails loudly, naming its
+ * reason, instead of surfacing as "cannot read property of undefined".
+ */
+function completed(result: RunShoppingResult): RunShoppingCompleted {
+  if (result.aborted) {
+    throw new Error(
+      `expected a completed run, got an abort: ${result.abortReason}`,
+    );
+  }
+  return result;
+}
+
+/** The mirror of {@link completed}, for the abort paths. */
+function aborted(result: RunShoppingResult): RunShoppingAborted {
+  if (!result.aborted) {
+    throw new Error('expected an aborted run, got a completed one');
+  }
+  return result;
+}
+
 describe('runShopping', () => {
   it('runs both layers and leads with the product engines ignored', async () => {
     const fs = seededFs();
@@ -153,7 +183,7 @@ describe('runShopping', () => {
       yes: true,
     });
 
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(result.aborted).toBe(false);
     expect(env.schema_version).toBe(SCHEMA_VERSION);
     // Aria 2 is recommended in every answer; Presto X never is. The absent
@@ -181,7 +211,7 @@ describe('runShopping', () => {
     const unique = new Set(openai.asked);
     expect(unique.size).toBe(openai.asked.length);
     expect(openai.asked.length).toBeLessThan(8);
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(env.skus[0]?.answers).toBe(3);
     expect(env.skus[1]?.answers).toBe(3);
     expect(env.sampling.nRows).toBe(env.skus[0]!.answers * 2 + 2);
@@ -197,8 +227,10 @@ describe('runShopping', () => {
 
     // Built with node:path, so compare against the module's own directory
     // helper rather than a hardcoded "/" path (Windows CI).
-    expect(result.savedPath?.startsWith(shoppingDir(STATE))).toBe(true);
-    expect(fs.files.has(result.savedPath!)).toBe(true);
+    expect(completed(result).savedPath?.startsWith(shoppingDir(STATE))).toBe(
+      true,
+    );
+    expect(fs.files.has(completed(result).savedPath!)).toBe(true);
     expect([...fs.files.keys()].some((p) => p.includes('snapshots'))).toBe(
       false,
     );
@@ -211,7 +243,7 @@ describe('runShopping', () => {
       deps(fs, [fakeAdapter('openai', 'parametric')]),
       { stateDir: STATE, products: PRODUCTS, yes: true, persist: false },
     );
-    expect(result.savedPath).toBeUndefined();
+    expect(completed(result).savedPath).toBeUndefined();
     expect([...fs.files.keys()]).toEqual([profilePath(STATE)]);
   });
 
@@ -225,7 +257,7 @@ describe('runShopping', () => {
       deps(fs, [fakeAdapter('openai', 'parametric')]),
       { stateDir: STATE, productsFile: '/products.yml', yes: true },
     );
-    expect(result.envelope?.products).toEqual([
+    expect(completed(result).envelope.products).toEqual([
       { name: 'Aria 2', descriptor: 'espresso machine' },
     ]);
   });
@@ -240,7 +272,10 @@ describe('runShopping', () => {
     });
 
     expect(result.aborted).toBe(true);
-    expect(result.envelope).toBeUndefined();
+    // The envelope is gone from this arm by construction (the union carries it
+    // only on the completed arm), so the assertion is that nothing from a
+    // completed run rides along.
+    expect(result).not.toHaveProperty('envelope');
     expect(openai.asked).toEqual([]);
     expect(result.notes.join(' ')).toContain('confirmation');
   });
@@ -265,6 +300,94 @@ describe('runShopping', () => {
     expect(seen?.nPrompts).toBeGreaterThan(0);
   });
 
+  // The runtime half of the guarantee the union makes at compile time, and the
+  // same table `check.test.ts` keeps: an aborted shopping run ALWAYS says why,
+  // and never carries the fields of a run that reached the engines. Before
+  // this, both abort returns were an untagged `{ aborted: true }`, so the CLI
+  // could not tell a user's decline from a missing confirm handler and exited 0
+  // for both - a run that measured nothing read to CI as a pass.
+  //
+  // Only the two reasons shopping can PRODUCE are keyed here. `no-prompts` is
+  // shared with `check` but unreachable in this pipeline (see the comment on
+  // the gate in shopping.ts), so demanding it would assert a path that does not
+  // exist.
+  it('tags every abort path with a reason and no run fields', async () => {
+    const byReason: Record<
+      Exclude<AbortReason, 'no-prompts'>,
+      { result: RunShoppingResult; failure: boolean }
+    > = {
+      declined: {
+        result: await runShopping(
+          'acme.example',
+          deps(seededFs(), [fakeAdapter('openai', 'parametric')], {
+            confirm: async () => false,
+          }),
+          { stateDir: STATE, products: PRODUCTS },
+        ),
+        failure: false, // the user's own choice
+      },
+      unconfirmed: {
+        result: await runShopping(
+          'acme.example',
+          deps(seededFs(), [fakeAdapter('openai', 'parametric')]), // no confirm, no yes
+          { stateDir: STATE, products: PRODUCTS },
+        ),
+        failure: true,
+      },
+    };
+
+    for (const [reason, { result, failure }] of Object.entries(byReason)) {
+      const stopped = aborted(result);
+      expect(stopped.abortReason, reason).toBe(reason);
+      // The SHARED predicate, not a local copy of the rule: a decline is not a
+      // failure, everything else is.
+      expect(isAbortFailure(stopped.abortReason), reason).toBe(failure);
+      // Nothing from the completed arm rides along: no envelope to relaunder an
+      // unmeasured run as a result, no saved path naming a file never written.
+      expect(result, reason).not.toHaveProperty('envelope');
+      expect(result, reason).not.toHaveProperty('savedPath');
+      // And the human-readable why, which the union cannot enforce.
+      expect(stopped.notes.length, reason).toBeGreaterThan(0);
+    }
+  });
+
+  // The zero-prompt abort `check` needs has no counterpart here, and this test
+  // is why: the reputation layer is templatable from the product NAME alone,
+  // and `resolveProducts` throws rather than returning an empty list, so the
+  // gate can never be reached with nothing to ask. If that ever changes, this
+  // fails and the guard becomes real.
+  it('always has at least one prompt to ask, even with no judge and no descriptors', async () => {
+    // A cached profile with NO category, so a product with no descriptor has no
+    // subject at all and its visibility layer drops out entirely - the
+    // reputation layer is all that is left.
+    const fs = seededFs({
+      [profilePath(STATE)]: JSON.stringify({
+        ...CACHED_PROFILE,
+        category: undefined,
+      }),
+    });
+    let seenPrompts = 0;
+    const result = await runShopping(
+      'acme.example',
+      deps(fs, [fakeAdapter('openai', 'parametric')], {
+        judge: undefined,
+        confirm: async (ctx: { nPrompts: number }) => {
+          seenPrompts = ctx.nPrompts;
+          return false;
+        },
+      }),
+      { stateDir: STATE, products: [{ name: 'Zephyr Q9' }] },
+    );
+
+    const stopped = aborted(result);
+    expect(stopped.abortReason).toBe('declined');
+    // Exactly one - the single templated reputation prompt. Asserting the count
+    // rather than ">= 1" proves the visibility layer really did drop out, so
+    // the test is measuring the worst case it claims to.
+    expect(seenPrompts).toBe(1);
+    expect(stopped.notes.join(' ')).toContain('No category questions');
+  });
+
   it('returns a partial run flagged cost-capped rather than throwing', async () => {
     const fs = seededFs();
     const guard = new CostGuard({ maxCostUsd: 0.0005 });
@@ -276,8 +399,8 @@ describe('runShopping', () => {
       { stateDir: STATE, products: PRODUCTS, yes: true },
     );
 
-    expect(result.envelope).toBeDefined();
-    expect(result.envelope?.costCapped).toBe(true);
+    expect(completed(result).envelope).toBeDefined();
+    expect(completed(result).envelope.costCapped).toBe(true);
     expect(openai.asked.length).toBeLessThan(6);
   });
 
@@ -292,7 +415,7 @@ describe('runShopping', () => {
       { stateDir: STATE, products: PRODUCTS, yes: true },
     );
 
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(env.skippedEngines?.[0]?.engine).toBe('gemini');
     // Keyed by name, not position: the envelope sorts by what engines did.
     const aria = env.skus.find((s) => s.product === 'Aria 2');
@@ -312,8 +435,8 @@ describe('runShopping', () => {
       { stateDir: STATE, products: [PRODUCTS[0]!], yes: true },
     );
 
-    expect(result.envelope?.spend?.setupUsd).toBeCloseTo(0.02, 10);
-    expect(result.envelope?.spend?.mainUsd).toBeGreaterThan(0);
+    expect(completed(result).envelope.spend?.setupUsd).toBeCloseTo(0.02, 10);
+    expect(completed(result).envelope.spend?.mainUsd).toBeGreaterThan(0);
     expect(result.spend?.totalUsd).toBeGreaterThan(0.02);
   });
 
@@ -324,7 +447,7 @@ describe('runShopping', () => {
       deps(fs, [fakeAdapter('openai', 'parametric')]),
       { stateDir: STATE, products: PRODUCTS, yes: true },
     );
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(env.skus[0]?.categoryPrompts).toBe(3);
   });
 
@@ -340,7 +463,7 @@ describe('runShopping', () => {
       }),
       { stateDir: STATE, products: PRODUCTS, yes: true },
     );
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(env.costCapped).toBe(true);
     for (const sku of env.skus) expect(sku.categoryPrompts).toBeGreaterThan(0);
     const unanswered = env.skus.filter((s) => s.answers === 0);
@@ -363,7 +486,7 @@ describe('runShopping', () => {
         yes: true,
       },
     );
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     // The JSON channel must carry what the terminal says: an agent reading 10
     // products cannot otherwise tell that an 11th was dropped.
     expect(env.notes.join(' ')).toContain('1 further product');
@@ -382,6 +505,6 @@ describe('runShopping', () => {
       },
     );
     expect(result.notes.join(' ').toLowerCase()).toContain('duplicate');
-    expect(result.envelope?.products).toHaveLength(1);
+    expect(completed(result).envelope.products).toHaveLength(1);
   });
 });
