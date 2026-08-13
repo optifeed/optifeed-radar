@@ -32,6 +32,69 @@ score is only comparable against snapshots taken with the same method.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-13
+
+A failed judge call is no longer reported as an empty success. Serialized
+formats are unchanged, so `schema_version` stays at `0.3`, but two changes make
+new runs differ from old ones and are called out below: `check` now exits
+non-zero when it measured nothing, and the OpenAI engine asks a different model,
+which moves that engine's score and its cost.
+
+### Fixed
+
+- A failed judge call reported zero buyer prompts as a completed phase. The run
+  printed `✓ Generated 0 buyer prompts`, hid the reason it had already captured,
+  and offered to query engines with nothing to ask. It now stops before the cost
+  gate, prints why, and exits non-zero.
+- Reasoning judges were starved by answer-sized token caps at all five judge
+  call sites. Thinking bills as output and draws from the same cap, so a judge
+  could spend its whole budget before writing an answer and return HTTP 200 with
+  empty text, which every parser read as "found nothing". Caps now carry
+  reasoning headroom.
+- The Gemini adapter sent `thinkingConfig.thinkingBudget: 0` on every capped
+  call, which current Gemini models reject with HTTP 400. Every Gemini judge
+  call was failing.
+- The scoring judge turned an empty judge response into a confirmed non-mention,
+  moving the headline score down on evidence it never received. Such a response
+  now leaves the answer as pass 1 read it.
+- An empty or unusable judge response in query generation and competitor
+  discovery is reported as a reason rather than returned as an empty result.
+- Judge retry loops were bounded by verdicts applied rather than calls made, so
+  a persistently failing judge was asked once per row regardless of the rate cap.
+- Provider error bodies were pasted into user-facing notes verbatim, and API key
+  fragments echoed by a provider could reach a persisted snapshot. Bodies are
+  now parsed by field, capped, and redacted.
+
+### Changed
+
+- **`check` exits non-zero when it measured nothing.** Buyer prompts come from
+  one judge call; if it fails there is nothing to ask, and the run stops before
+  spending on engines. CI that treated any completed run as a pass should expect
+  a failure here where it previously saw exit 0 and an empty result. Declining
+  the cost prompt yourself is still exit 0.
+- **The OpenAI engine asks `gpt-5.6-sol` instead of `gpt-5.3-chat-latest`.**
+  The old id was retired by OpenAI and returned HTTP 404, so that engine was
+  answering nothing. This moves the OpenAI column's score and makes it not
+  directly comparable with snapshots taken before this release. It is a pinned
+  snapshot rather than a floating alias, because an alias can be repointed with
+  nothing in the response to reveal it, which would let a `diff` attribute an
+  engine change to a change in your visibility. The trade is that it is an
+  API-oriented model rather than the one ChatGPT serves consumers.
+- OpenAI answers cost more, because a reasoning model bills its thinking as
+  output. Measured 2026-08-13, a `--quick` check on OpenAI alone cost $0.2297,
+  roughly double that engine's earlier share.
+- Cost authorization is priced on the answer budget rather than the raised cap,
+  so a tight `--max-cost` is no longer exhausted by reservations that a call
+  would not have spent.
+
+### Added
+
+- `abortReason` on the check result, with a shared `isAbortFailure` predicate,
+  so the CLI and the MCP server agree on which aborts are failures and which are
+  the user's own choice.
+- README and METHODOLOGY now name the model each engine asks, and say which are
+  pinned and which float.
+
 ## [0.2.3] - 2026-08-03
 
 Agent Skill distribution and documentation only. Radar's CLI, MCP tools,
