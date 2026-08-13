@@ -48,7 +48,8 @@ export type ProgressEvent =
   | { kind: 'discovery-start' }
   | { kind: 'discovery-done'; brand: string }
   | { kind: 'queries-start' }
-  | { kind: 'queries-done'; prompts: string[] }
+  /** `note` carries why generation produced nothing, when it did. */
+  | { kind: 'queries-done'; prompts: string[]; note?: string }
   | { kind: 'ask-start'; total: number }
   | { kind: 'ask-answered'; done: number; total: number }
   | { kind: 'ask-done'; answered: number; total: number }
@@ -129,6 +130,12 @@ export interface RunCheckResult {
   envelope?: VisibilityEnvelope;
   /** True when the confirmation gate declined the spend (no engines asked). */
   aborted: boolean;
+  /**
+   * Why the run aborted. `declined` is the user's own choice and is not a
+   * failure; the other two are, and a caller that maps aborts to an exit code
+   * must be able to tell them apart.
+   */
+  abortReason?: 'declined' | 'no-prompts' | 'unconfirmed';
   /** Snapshot path written, if persisted this run. */
   snapshotPath?: string;
   /** Human-readable notes (competitor skip, query-gen skip, confirmation abort). */
@@ -204,6 +211,22 @@ export async function runCheck(
     .filter((q) => q.intent === 'trust')
     .map((q) => q.prompt);
 
+  // Nothing to ask means nothing to measure. Stopping HERE, before the gate,
+  // matters twice over: the gate would otherwise quote "0 prompts" against an
+  // unpriceable estimate, and every engine call after it would be spend with no
+  // possible result. The note carries the reason generation failed (rule #6).
+  if (prompts.length === 0) {
+    notes.push(
+      'No buyer prompts were generated, so no engines were queried. Nothing was measured.',
+    );
+    return {
+      aborted: true,
+      abortReason: 'no-prompts',
+      notes,
+      spend: guard.spendBreakdown,
+    };
+  }
+
   // Gate the main ASK spend (bypassable with --yes, hard rule #8). Spending is
   // allowed ONLY when explicitly confirmed: `--yes`, or a `confirm` handler that
   // returns true. A consumer that wires neither (e.g. a misconfigured MCP call)
@@ -214,7 +237,12 @@ export async function runCheck(
       notes.push(
         'Aborted before spending: engine queries need confirmation. Pass yes to run non-interactively, or provide a confirm handler.',
       );
-      return { aborted: true, notes, spend: guard.spendBreakdown };
+      return {
+        aborted: true,
+        abortReason: 'unconfirmed',
+        notes,
+        spend: guard.spendBreakdown,
+      };
     }
     const estimate = priceRun(
       prompts.length,
@@ -229,7 +257,12 @@ export async function runCheck(
     });
     if (!ok) {
       notes.push('Run aborted at the cost confirmation.');
-      return { aborted: true, notes, spend: guard.spendBreakdown };
+      return {
+        aborted: true,
+        abortReason: 'declined',
+        notes,
+        spend: guard.spendBreakdown,
+      };
     }
   }
 

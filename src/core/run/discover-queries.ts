@@ -97,6 +97,7 @@ export async function discoverAndBuildQueries(
   report({
     kind: 'queries-done',
     prompts: queries.pack.queries.map((q) => q.prompt),
+    ...(queries.note ? { note: queries.note } : {}),
   });
 
   return { profile, pack: queries.pack, queryPath: queries.path, notes };
