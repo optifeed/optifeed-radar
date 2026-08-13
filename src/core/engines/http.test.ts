@@ -274,6 +274,109 @@ describe('postJsonWithRetry', () => {
     expect(message).toContain('Invalid API key provided.');
   });
 
+  /** Run one request that is guaranteed to fail, and return the error message. */
+  async function messageFor(status: number, body: string): Promise<string> {
+    const post: HttpPost = vi.fn(async () => response(status, body));
+    try {
+      await postJsonWithRetry(
+        post,
+        'https://x',
+        { headers: {}, body: '{}' },
+        { retries: 0, sleep: noSleep },
+      );
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+    return '';
+  }
+
+  // This function is the single chokepoint every provider error body passes
+  // through, and its output reaches `honesty.skippedEngines[].reason` and the
+  // shopping envelope's `notes[]` - both PERSISTED to disk as JSON. Providers
+  // echo the key they received back into the message (OpenAI's 401 is the known
+  // case), so the key shapes are redacted here rather than at four adapters.
+  // Hard rule #4: never log or persist API keys.
+  //
+  // Bodies mirror the real shapes: OpenAI pretty-prints and masks all but the
+  // last few characters, Google echoes the key whole.
+  const OPENAI_BAD_KEY_BODY = `{
+    "error": {
+        "message": "Incorrect API key provided: sk-proj-a1B2c3************************************wXyZ. You can find your API key at https://platform.openai.com/account/api-keys.",
+        "type": "invalid_request_error",
+        "param": null,
+        "code": "invalid_api_key"
+    }
+}`;
+
+  it('redacts an OpenAI key echoed back in the error message', async () => {
+    const message = await messageFor(401, OPENAI_BAD_KEY_BODY);
+    expect(message).not.toContain('sk-proj-a1B2c3');
+    expect(message).not.toMatch(/sk-[A-Za-z0-9]/);
+    // Redacted, not silenced: the message still says what went wrong and where
+    // to fix it.
+    expect(message).toContain('[redacted API key]');
+    expect(message).toContain('Incorrect API key provided');
+    expect(message).toContain('platform.openai.com');
+  });
+
+  it('redacts an Anthropic key echoed back in the error message', async () => {
+    const body = JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'authentication_error',
+        message: 'invalid x-api-key: sk-ant-api03-A1b2C3d4E5f6_g7-h8',
+      },
+    });
+    const message = await messageFor(401, body);
+    expect(message).not.toContain('sk-ant-api03');
+    expect(message).toContain('[redacted API key]');
+    expect(message).toContain('invalid x-api-key');
+  });
+
+  it('redacts a Google API key echoed back in the error message', async () => {
+    const body = JSON.stringify({
+      error: {
+        code: 400,
+        message:
+          'API key not valid. Please pass a valid API key. Received AIzaSyD1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q',
+        status: 'INVALID_ARGUMENT',
+      },
+    });
+    const message = await messageFor(400, body);
+    expect(message).not.toContain('AIzaSy');
+    expect(message).toContain('[redacted API key]');
+    expect(message).toContain('API key not valid');
+  });
+
+  // The raw-body fallback (non-JSON, or an unrecognized shape) reaches the same
+  // persisted places, so it is redacted on that path too.
+  it('redacts a key in a non-JSON error body', async () => {
+    const message = await messageFor(
+      403,
+      'Forbidden: key sk-live-Zz9YyXx8Ww7 is not authorized for this endpoint',
+    );
+    expect(message).not.toContain('sk-live-Zz9');
+    expect(message).toContain('[redacted API key]');
+    expect(message).toContain('not authorized');
+  });
+
+  // Redaction must not eat ordinary provider vocabulary: model ids, request
+  // ids, and error codes travel in these same messages and are what makes a
+  // failure diagnosable.
+  it('leaves non-key text alone', async () => {
+    const body = JSON.stringify({
+      error: {
+        message:
+          'The model gpt-5.4-mini-2026-01-01 is not available (request req_abc123XYZ456def, org org-Nq8vT2).',
+      },
+    });
+    const message = await messageFor(404, body);
+    expect(message).toContain('gpt-5.4-mini-2026-01-01');
+    expect(message).toContain('req_abc123XYZ456def');
+    expect(message).toContain('org-Nq8vT2');
+    expect(message).not.toContain('[redacted');
+  });
+
   // A gateway/proxy error is not always JSON at all - an nginx or Cloudflare
   // 502 page is HTML. `JSON.parse` throws, so this must fall back to the
   // blind whitespace-collapse-and-slice path, not lose the body entirely.

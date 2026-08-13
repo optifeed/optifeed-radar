@@ -111,6 +111,52 @@ function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+/** What a redacted key is replaced with - a marker, never silence. */
+const REDACTED_KEY = '[redacted API key]';
+
+/**
+ * Recognizable API-key shapes, stripped from every provider error body.
+ *
+ * Providers echo the credential they received back into the message they
+ * return: OpenAI's 401 reads "Incorrect API key provided: sk-proj-a1B2c3***...".
+ * That text does not stop at the terminal - it reaches
+ * `honesty.skippedEngines[].reason` on a check envelope and `notes[]` on a
+ * shopping envelope, both of which are PERSISTED to disk as JSON. Hard rule #4
+ * is "never log or persist API keys", and `summarizeErrorBody` is the single
+ * chokepoint all four providers' error bodies pass through, so the redaction
+ * lives here rather than in four adapters.
+ *
+ * What is echoed is normally a provider-MASKED fragment, not a live key, which
+ * is why this is hardening rather than a leak fix - and also why the match must
+ * tolerate the mask: `*` is in the character class because OpenAI replaces the
+ * middle of the key with asterisks.
+ *
+ * Deliberately NOT a generic "long opaque token" pattern: model ids
+ * (`gpt-5.4-mini-2026-01-01`), request ids (`req_...`) and org ids travel in
+ * these same messages and are what makes a failure diagnosable. Redacting them
+ * would cost real debuggability to guard against a shape no provider uses.
+ */
+const API_KEY_PATTERNS: RegExp[] = [
+  // OpenAI (`sk-...`, `sk-proj-...`), Anthropic (`sk-ant-...`), and
+  // Perplexity, whose keys use the same prefix.
+  /sk-[A-Za-z0-9_*-]+/g,
+  // Google AI Studio / Gemini keys, which a 400 echoes whole.
+  /AIza[A-Za-z0-9_*-]+/g,
+];
+
+/**
+ * Replace any recognizable key material in `s` with {@link REDACTED_KEY}.
+ *
+ * Applied BEFORE the length cap, so a key sitting on the truncation boundary
+ * cannot survive as a half-key fragment.
+ */
+function redactKeys(s: string): string {
+  return API_KEY_PATTERNS.reduce(
+    (out, pattern) => out.replace(pattern, REDACTED_KEY),
+    s,
+  );
+}
+
 /**
  * `String.prototype.slice` cuts by UTF-16 code unit. A cut that lands between
  * a surrogate pair's two halves (e.g. inside an emoji in a provider's message)
@@ -168,12 +214,15 @@ function summarizeErrorBody(body: string): string {
     }
     if (structuredMessage !== undefined) {
       return capWithMarker(
-        collapseWhitespace(structuredMessage),
+        redactKeys(collapseWhitespace(structuredMessage)),
         STRUCTURED_MESSAGE_MAX_CHARS,
       );
     }
   }
-  return capWithMarker(collapseWhitespace(trimmed), RAW_BODY_MAX_CHARS);
+  return capWithMarker(
+    redactKeys(collapseWhitespace(trimmed)),
+    RAW_BODY_MAX_CHARS,
+  );
 }
 
 async function withTimeout<T>(
