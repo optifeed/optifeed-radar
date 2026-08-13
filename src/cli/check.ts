@@ -307,6 +307,20 @@ export function registerCheck(program: Command, rt: Runtime): void {
         // failed generation. They used to print only on the success path, so an
         // aborted run was silent about its own cause.
         for (const note of result.notes) say(`${note}\n`);
+        // The notes say WHAT failed; this says what to do about it, and it is
+        // CLI copy, so it lives here rather than in core. Every cause of
+        // `no-prompts` (a judge HTTP error, a setup cost cap, no judge
+        // configured, a response that parsed to nothing) traces back to the one
+        // judge call the whole pack comes from - which is the non-obvious part,
+        // and why the run then reported nothing about four unrelated engines.
+        // The two remedies are stated without picking one: which applies
+        // depends on the reason printed just above.
+        if (result.abortReason === 'no-prompts') {
+          say(
+            'All buyer prompts come from one judge call, so a single judge failure leaves nothing to ask. ' +
+              'Try a different --judge, or supply your own prompts with --queries <file>.\n',
+          );
+        }
         // Discovery and query generation bill BEFORE the confirmation gate, so
         // an aborted run is not necessarily a free one. Reported only when it
         // actually cost something, so a genuinely free abort stays quiet.

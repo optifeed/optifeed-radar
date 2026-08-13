@@ -350,8 +350,28 @@ describe('check command', () => {
     expect(all).toContain('Aborted');
     expect(all).toContain('No buyer prompts were generated');
     expect(all).toContain('no usable buyer prompts');
+    // Knowing WHAT failed is not knowing what to do. The whole pack comes from
+    // one judge call, which is the non-obvious part.
+    expect(all).toContain('one judge call');
+    expect(all).toContain('--queries');
     // Nothing was measured. CI and AI agents read the exit code.
     expect(process.exitCode).toBe(1);
+  });
+
+  // The double-print regression: on a TTY the progress reporter AND the abort
+  // block both render the query-generation outcome, and both used to carry the
+  // reason - the same sentence twice, seconds apart. No other test in this file
+  // runs with isTTY set, which is exactly why that survived a green suite.
+  it('states the reason once when a TTY run aborts with no prompts', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' }, isTTY: true });
+
+    await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    // The progress line marks the phase failed instead of stamping a checkmark.
+    expect(all).toContain('! No buyer prompts were generated');
+    expect(all).not.toContain('✓ Generated');
+    expect(all.split('no usable buyer prompts')).toHaveLength(2);
   });
 
   // Declining the spend is the gate working as designed. Exiting non-zero for it
@@ -366,7 +386,11 @@ describe('check command', () => {
 
     await run(rt, ['check', 'acme.example']);
 
-    expect(rt.output.join('') + rt.errors.join('')).toContain('Aborted');
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain('Aborted');
+    // The judge hint belongs to the no-prompts abort. Nothing failed here, so
+    // telling this user to swap judges would send them after a phantom fault.
+    expect(all).not.toContain('one judge call');
     expect(process.exitCode).toBe(0);
   });
 

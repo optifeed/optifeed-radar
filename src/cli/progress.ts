@@ -72,10 +72,15 @@ export function createProgressReporter(deps: ProgressDeps): ProgressReporter {
         // judge call as a completed phase, and the run then walked on to the
         // cost gate quoting 0 prompts. `!` is the marker every other honesty
         // note uses (core/output's note block), so this reads the same way.
+        //
+        // The phase is marked failed, but `event.note` is deliberately NOT
+        // interpolated: a zero-prompt pack always aborts the run, and the abort
+        // block prints the same note verbatim moments later on this same TTY.
+        // Rendering it here too would print the reason twice. That block is the
+        // single home for the reason text, and the only channel `--json`, CI,
+        // and AI agents ever see.
         if (event.prompts.length === 0) {
-          commit(
-            `! No buyer prompts were generated${event.note ? `: ${event.note}` : ''}`,
-          );
+          commit('! No buyer prompts were generated');
           return;
         }
         commit(`✓ Generated ${plural(event.prompts.length, 'buyer prompt')}`);

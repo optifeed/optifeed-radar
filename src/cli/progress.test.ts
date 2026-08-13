@@ -66,12 +66,10 @@ describe('createProgressReporter', () => {
 
     expect(out).not.toContain('✓ Generated');
     expect(out).toContain('No buyer prompts were generated');
-    expect(out).toContain('HTTP 429');
-  });
-
-  it('still marks a normal pack with a checkmark', () => {
-    const out = drive(FULL_RUN);
-    expect(out).toContain('✓ Generated 2 buyer prompts');
+    // The reason is the abort block's to print (see `check.ts`), not this
+    // channel's: a zero-prompt pack always aborts, and the abort block prints
+    // the same note on the same TTY seconds later.
+    expect(out).not.toContain('HTTP 429');
   });
 
   it('stop() leaves no spinner running (no throw, idempotent)', () => {
