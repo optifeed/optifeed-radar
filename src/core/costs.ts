@@ -143,6 +143,38 @@ export const MODEL_PRICING: {
   },
 };
 
+/**
+ * Output tokens reserved for a reasoning judge's private thinking, on top of
+ * whatever the answer itself needs.
+ *
+ * Reasoning models bill thinking as output and draw it from the SAME cap as the
+ * answer, so a cap sized for the answer alone starves it. The call still returns
+ * HTTP 200 - with an empty text block - and every parser downstream reads that
+ * as "the judge found nothing", which is how a failed call became an empty
+ * result with no error (rule #6).
+ *
+ * Measured live 2026-08-13 against claude-sonnet-5: the competitor prompt at
+ * max_tokens 300 spent all 300 on thinking and returned zero text; the query
+ * generation prompt did the same at 1440. Both answered cleanly with the reserve
+ * added (2172 thinking + 2397 text on the generation prompt).
+ *
+ * Thinking is ADAPTIVE - the same model answered a short scoring prompt at 60
+ * tokens with no thinking at all - so this is a ceiling a call is allowed to
+ * use, never a cost it always pays. Real spend is settled from reported usage.
+ */
+export const REASONING_RESERVE_TOKENS = 4000;
+
+/**
+ * The output cap for a judge call that needs `answerTokens` for its answer.
+ *
+ * Every judge call site sizes its cap through this and never with a bare number:
+ * a raw answer-sized cap is silently empty on a reasoning judge, and each site
+ * that hard-coded one had to be found by hand after it had already shipped.
+ */
+export function judgeMaxTokens(answerTokens: number): number {
+  return answerTokens + REASONING_RESERVE_TOKENS;
+}
+
 /** Thrown when a model id is not present in {@link MODEL_PRICING}. */
 export class UnknownModelError extends Error {
   constructor(public readonly model: string) {

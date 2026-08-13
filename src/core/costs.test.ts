@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   ESTIMATE_ASSUMPTIONS,
+  REASONING_RESERVE_TOKENS,
   CostGuard,
   MODEL_PRICING,
   UnknownModelError,
   costOfCall,
   estimateRun,
+  judgeMaxTokens,
 } from './costs.js';
 
 describe('costOfCall', () => {
@@ -325,5 +327,21 @@ describe('CostGuard', () => {
     expect(guard.authorize(1)).toBe(true);
     guard.settle(1, 1000);
     expect(guard.costCapped).toBe(false);
+  });
+});
+
+describe('judgeMaxTokens', () => {
+  it('adds the reasoning reserve on top of the answer budget', () => {
+    expect(judgeMaxTokens(60)).toBe(60 + REASONING_RESERVE_TOKENS);
+    expect(judgeMaxTokens(1440)).toBe(1440 + REASONING_RESERVE_TOKENS);
+  });
+
+  // A reserve smaller than the largest thinking spend we have MEASURED puts the
+  // silent-empty-response bug straight back: claude-sonnet-5 spent 2172 thinking
+  // tokens before its first answer token on the M5 generation prompt, and burned
+  // all 300 of the competitor call's budget on thinking (verified live
+  // 2026-08-13). Shrinking this constant must fail here, not in production.
+  it('reserves at least the largest thinking spend measured live', () => {
+    expect(REASONING_RESERVE_TOKENS).toBeGreaterThanOrEqual(2172);
   });
 });
