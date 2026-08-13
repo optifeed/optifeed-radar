@@ -41,20 +41,19 @@ export interface ModelPricing {
  * billing. Update the date when you touch the numbers.
  *
  * OpenAI rows retrieved 2026-07-17 from the official sheet
- * (https://developers.openai.com/api/docs/pricing); the `chat-latest` row
- * re-verified there 2026-08-13 at $5.00/$30.00.
+ * (https://developers.openai.com/api/docs/pricing); `gpt-5.6-sol` (the ask
+ * default) and `chat-latest` both re-verified there 2026-08-13, each at
+ * $5.00/$30.00.
  *
- * That row is now a QUOTE rather than an inherited assumption. It used to be
- * the latter: the ask default was `gpt-5.3-chat-latest`, which the sheet never
- * listed, so it borrowed the generic `chat-latest` number. The versioned alias
- * has since been retired by OpenAI (HTTP 404 "has been deprecated", verified
- * live 2026-08-13) and the default moved to `chat-latest` itself, which the
- * sheet does list - so the id priced here and the id asked are the same string.
- *
- * The remaining caveat is unchanged and is the important one: `chat-latest`
- * FLOATS. OpenAI repoints it at whatever ChatGPT currently serves, so its price
- * can change with no change here. Re-verify against the sheet whenever these
- * numbers are touched.
+ * The ask default is a PINNED snapshot, so the id priced here and the id asked
+ * are the same string AND that string cannot change under us - which is the
+ * whole reason for pinning. It took two breakages to get here: the default was
+ * `gpt-5.3-chat-latest`, which the sheet never listed (it borrowed the generic
+ * `chat-latest` number, an assumption rather than a quote) and which OpenAI then
+ * retired outright with HTTP 404; and then briefly `chat-latest` itself, which
+ * is quoted but floats. A floating row can go stale with no change here and
+ * nothing in the response to reveal it, so a snapshot is the only form of this
+ * row that stays true on its own.
  *
  * Gemini + Perplexity rows verified live 2026-07-20 (M17 engine smoke):
  * - `gemini-flash-latest` $1.50/$9.00 from the official sheet
@@ -95,22 +94,19 @@ export const MODEL_PRICING: {
   models: {
     // Current generation (what ChatGPT serves / what we ask + judge with).
     // avgOutputTokens measured live 2026-07-20: ~2583 on a grounded ask.
-    // The ask default. Quoted directly from the sheet's own `chat-latest` row
-    // (2026-08-13).
+    // Superseded as the ask default on 2026-08-13, hours after it became one:
+    // it is quoted on the sheet but FLOATS, and nothing in a response reveals
+    // when OpenAI repoints it. Kept because snapshots written in that window
+    // record answers from it, and because the measurement below is still the
+    // best evidence anyone has for what it costs to ask.
     //
-    // `avgOutputTokens` is MEASURED, and it is the reason this row needs an
-    // override at all: whatever `chat-latest` resolves to answers far more
+    // `avgOutputTokens` here is MEASURED, and it is the reason the row needed
+    // an override at all: whatever `chat-latest` resolved to answered far more
     // briefly than the model the global default was built from. Real `check`
     // run 2026-08-13, 8 answers (bcombinator.com, es-ES): mean 480, median 450,
-    // range 298-744. The global 2600 was back-solved from gpt-5.3-chat-latest
-    // at ~2583, so inheriting it over-quoted the confirm gate and over-reserved
-    // every OpenAI call by ~5x - the same shape of over-reservation that makes
-    // a tight --max-cost skip work it could have afforded.
-    //
-    // Set above the observed MAX, not the mean: an estimate should not
-    // under-report spend. Thin sample though - one brand, one language, one
-    // day, and the alias floats - so re-measure rather than trust this if a
-    // quote ever looks wrong.
+    // range 298-744, against a global of 2600 back-solved from
+    // gpt-5.3-chat-latest at ~2583. Set above the observed MAX rather than at
+    // the mean, because an estimate should not under-report spend.
     'chat-latest': {
       inputPerMTokens: 5,
       outputPerMTokens: 30,
@@ -124,6 +120,15 @@ export const MODEL_PRICING: {
       outputPerMTokens: 30,
       avgOutputTokens: 2600,
     },
+    // The ask default (pinned). Deliberately carries NO `avgOutputTokens`, so
+    // it inherits the global 2600. Measured on a real check 2026-08-13, 8
+    // answers (bcombinator.com, es-ES): mean 952, median 899, range 367-1867.
+    // The mean is well under the global, but this is a reasoning model and its
+    // output varied 5x across eight prompts, so an override set just above the
+    // observed max would be a number invented from a thin sample rather than a
+    // measurement. The global sits ~1.4x above that max, which is the right
+    // direction to err: under-reserving breaches the cap, over-reserving costs
+    // only a little parallelism. Override it only with a wider sample.
     'gpt-5.6-sol': { inputPerMTokens: 5, outputPerMTokens: 30 },
     'gpt-5.6-terra': { inputPerMTokens: 2.5, outputPerMTokens: 15 },
     'gpt-5.6-luna': { inputPerMTokens: 1, outputPerMTokens: 6 },

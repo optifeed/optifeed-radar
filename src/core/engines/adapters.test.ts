@@ -36,22 +36,23 @@ describe('createAdapter', () => {
   // both the wrong generation (gpt-4o is legacy; ChatGPT serves GPT-5.x) and the
   // wrong tier (nobody chats with mini). `-chat-latest` is OpenAI's alias for
   // whatever ChatGPT currently serves - verified live 2026-07-17.
-  it('asks OpenAI with the model ChatGPT actually serves, and prices it', () => {
+  it('asks OpenAI with a pinned production model, and prices it', () => {
     const { fn } = fakePost({});
     const adapter = createAdapter(openaiSpec, { httpPost: fn, apiKey: 'k' });
-    expect(adapter.model).toBe('chat-latest');
+    expect(adapter.model).toBe('gpt-5.6-sol');
     expect(MODEL_PRICING.models[adapter.model]).toBeDefined();
   });
 
-  // The VERSIONED alias went 404. `gpt-5.3-chat-latest` began returning
-  // "has been deprecated" (verified live 2026-08-13), and so did
-  // `gpt-5.2-chat-latest`; no `gpt-5.4-chat-latest` was ever published. OpenAI
-  // retired the per-generation aliases in favour of a bare `chat-latest`, which
-  // is the id that cannot go stale by generation - the property the versioned
-  // one was chosen for and then lost. Pinning this stops a well-meaning "update
-  // to the current generation" edit from reintroducing a 404.
-  it('uses the unversioned chat alias, which cannot go stale by generation', () => {
-    expect(openaiSpec.defaultModel).not.toMatch(/^gpt-.*-chat-latest$/);
+  // Two floating aliases have already broken this adapter. `gpt-5.3-chat-latest`
+  // began returning HTTP 404 "has been deprecated" (verified live 2026-08-13),
+  // as did `gpt-5.2-chat-latest`; and the bare `chat-latest` that replaced it
+  // repoints without notice, so a run's subject could change with nothing in the
+  // response to reveal it (`model` echoes the alias and `system_fingerprint` is
+  // null - checked live). OpenAI's own guidance is to pin a snapshot for API
+  // use. This asserts the default is not an alias of any kind, so neither
+  // failure can return through a well-meaning "track the latest model" edit.
+  it('pins a snapshot rather than a floating alias', () => {
+    expect(openaiSpec.defaultModel).not.toMatch(/latest/);
   });
 
   // Verified live 2026-07-17 against all four ids: GPT-5 models REJECT

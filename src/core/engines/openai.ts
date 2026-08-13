@@ -37,19 +37,30 @@ interface ResponsesShape {
 export const openaiSpec: ProviderSpec = {
   id: 'openai',
   kind: 'parametric',
-  // The model ChatGPT actually serves. This is the measurement subject: asking
-  // a cheaper/older model answers a question no buyer asked.
+  // A PINNED snapshot, deliberately, after two floating aliases broke this
+  // adapter in a single day.
   //
-  // Use the UNVERSIONED alias. `gpt-5.3-chat-latest` was chosen because an alias
-  // "cannot go 404 out from under us" - and then it did: OpenAI retired the
-  // per-generation aliases, and it began returning "has been deprecated"
-  // (verified live 2026-08-13, as did `gpt-5.2-chat-latest`; no
-  // `gpt-5.4-chat-latest` was ever published). Every OpenAI answer in every run
-  // was failing. `chat-latest` carries no generation in its name, so the class
-  // of breakage that bit the versioned form cannot recur. It still FLOATS -
-  // OpenAI repoints it at whatever ChatGPT currently serves - so its price can
-  // change without any change here (see MODEL_PRICING).
-  defaultModel: 'chat-latest',
+  // The history is the argument. `gpt-5.3-chat-latest` was chosen because an
+  // alias "cannot go 404 out from under us" - then OpenAI retired the
+  // per-generation aliases and it began answering HTTP 404 "has been
+  // deprecated", so every OpenAI answer in every run failed. Its replacement,
+  // the bare `chat-latest`, cannot 404 that way but repoints without notice,
+  // and NOTHING in the response reveals when it moves: `model` echoes the alias
+  // back rather than a dated id, and `system_fingerprint` comes back null (both
+  // checked live 2026-08-13). A measurement whose subject can change silently
+  // cannot support `diff`, which exists to attribute change over time.
+  //
+  // OpenAI's own guidance is to pin: it recommends GPT-5.6 for production API
+  // usage and advises against `chat-latest` there.
+  //
+  // Know the trade this makes. `chat-latest` tracked "the latest Instant model
+  // currently used in ChatGPT"; `gpt-5.6-sol` is documented as an API-oriented
+  // "frontier model for complex professional work". So this column now measures
+  // a model from the family ChatGPT is built on, NOT the exact model a consumer
+  // is served. That is a deliberate exchange of fidelity for reproducibility,
+  // and it is why re-pointing at any `-latest` id is a regression, not an
+  // update (a test asserts the default contains no "latest").
+  defaultModel: 'gpt-5.6-sol',
   supportsGrounded: true,
   endpoint: (mode) =>
     mode === 'grounded'

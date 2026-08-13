@@ -66,30 +66,17 @@ describe('MODEL_PRICING', () => {
     expect(MODEL_PRICING.models['gpt-4o-mini']).toBeDefined();
     // Every model this tool asks or judges with BY DEFAULT must be priced -
     // an unpriced default silently reports $0 spend (the M0-M6 lesson).
-    expect(MODEL_PRICING.models['chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['gpt-5.6-sol']).toBeDefined();
     expect(MODEL_PRICING.models['gpt-5.4']).toBeDefined();
   });
 
-  // The global avgOutputTokens (2600) was back-solved on 2026-07-20 from
-  // gpt-5.3-chat-latest answering at ~2583. `chat-latest` resolves to something
-  // far terser - measured 480 mean over 8 real answers on 2026-08-13 - so
-  // inheriting the global over-quotes the confirm gate and over-reserves every
-  // OpenAI call by ~5x, which is what makes a tight --max-cost trip early. The
-  // per-model override exists for exactly this ("a single global figure cannot
-  // describe both a plain chat model and a thinking model"); this pins that the
-  // plain chat model is not priced as a thinking one.
-  it('prices the plain chat model well below the thinking-model default', () => {
-    const chat = MODEL_PRICING.models['chat-latest']?.avgOutputTokens;
-    expect(chat).toBeDefined();
-    expect(chat!).toBeLessThan(ESTIMATE_ASSUMPTIONS.avgOutputTokens / 2);
-  });
-
-  // Snapshots written before 2026-08-13 record answers from the retired
-  // per-generation aliases. Dropping their rows would price an old snapshot at
-  // $0, which reads as "this run was free" rather than "we no longer quote this
-  // model" - the M0-M6 lesson about a table lookup needing a miss path, in the
-  // one case where the miss is guaranteed.
-  it('keeps retired model rows so historical snapshots still price', () => {
+  // Snapshots record the model each answer came from, and this adapter's default
+  // has moved twice in one day. Dropping a superseded row would price those runs
+  // at $0, which reads as "this run was free" rather than "we no longer quote
+  // this model" - the M0-M6 lesson about a table lookup needing a miss path, in
+  // the one case where the miss is guaranteed.
+  it('keeps superseded model rows so historical snapshots still price', () => {
+    expect(MODEL_PRICING.models['chat-latest']).toBeDefined();
     expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
     expect(MODEL_PRICING.models['gemini-2.5-flash']).toBeDefined();
   });
