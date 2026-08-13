@@ -315,10 +315,17 @@ export function registerCheck(program: Command, rt: Runtime): void {
         // and why the run then reported nothing about four unrelated engines.
         // The two remedies are stated without picking one: which applies
         // depends on the reason printed just above.
+        // Same abort, two different causes, and the remedy differs. An explicit
+        // --queries pack bypasses generation entirely (resolveQueries checks it
+        // before any judge or guard), so blaming the judge would name a call
+        // that never happened and recommend the flag the user just used.
         if (result.abortReason === 'no-prompts') {
           say(
-            'All buyer prompts come from one judge call, so a single judge failure leaves nothing to ask. ' +
-              'Try a different --judge, or supply your own prompts with --queries <file>.\n',
+            flags.queries
+              ? `The prompt pack at ${flags.queries} has no questions in it. ` +
+                  'Add at least one, or drop --queries to have them generated.\n'
+              : 'All buyer prompts come from one judge call, so a single judge failure leaves nothing to ask. ' +
+                  'Try a different --judge, or supply your own prompts with --queries <file>.\n',
           );
         }
         // Discovery and query generation bill BEFORE the confirmation gate, so

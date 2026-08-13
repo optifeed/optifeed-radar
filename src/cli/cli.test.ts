@@ -354,6 +354,32 @@ describe('check command', () => {
     // one judge call, which is the non-obvious part.
     expect(all).toContain('one judge call');
     expect(all).toContain('--queries');
+  });
+
+  // A --queries pack the user supplied with no questions in it also aborts as
+  // `no-prompts`, but nothing generated those prompts, so blaming the judge
+  // names the wrong cause and pointing at --queries recommends the thing they
+  // just did. A failure message that misdirects is the bug this branch exists
+  // to remove, not a smaller version of it.
+  it('blames the supplied pack, not the judge, when --queries is empty', async () => {
+    const emptyPack = '/proj/empty-pack.yml';
+    const rt = testRuntime(
+      { env: { OPENAI_API_KEY: 'sk-test' } },
+      {
+        [emptyPack]: toYaml({
+          schema_version: SCHEMA_VERSION,
+          domain: 'acme.example',
+          queries: [],
+        }),
+      },
+    );
+
+    await run(rt, ['check', 'acme.example', '--yes', '--queries', emptyPack]);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain(emptyPack);
+    expect(all).not.toContain('one judge call');
+    expect(process.exitCode).toBe(1);
     // Nothing was measured. CI and AI agents read the exit code.
     expect(process.exitCode).toBe(1);
   });
