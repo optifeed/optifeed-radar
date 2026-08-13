@@ -11,6 +11,7 @@ import { CostGuard } from '../costs.js';
 import { discover, nodeProfileFs, type ProfileFs } from '../discovery/index.js';
 import { resolveQueries, nodeQueryFs, type QueryFs } from '../queries/index.js';
 import type { Fetcher } from '../fetcher/index.js';
+import { dedupeNotes } from '../output/index.js';
 import type { BrandProfile, JudgeClient, QueryPack } from '../types.js';
 import type { ProgressEvent } from './check.js';
 
@@ -97,7 +98,20 @@ export async function discoverAndBuildQueries(
   report({
     kind: 'queries-done',
     prompts: queries.pack.queries.map((q) => q.prompt),
+    ...(queries.note ? { note: queries.note } : {}),
   });
 
-  return { profile, pack: queries.pack, queryPath: queries.path, notes };
+  // Discovery's competitor call and query generation each make their own
+  // guarded judge call, and a single provider outage can fail both with
+  // byte-identical text (both build their note as `judge error: ${message}`
+  // over the same thrown error). De-duped HERE - the earliest point both
+  // notes exist together - so every consumer (CLI's abort-path note loop,
+  // which prints `notes` directly, and the MCP surface, which joins them with
+  // `'; '`) inherits the fix without each having to remember to call it.
+  return {
+    profile,
+    pack: queries.pack,
+    queryPath: queries.path,
+    notes: dedupeNotes(notes),
+  };
 }

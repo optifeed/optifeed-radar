@@ -6,7 +6,12 @@ import { createFetcher } from '../fetcher/index.js';
 import type { FetchLike } from '../fetcher/index.js';
 import { profilePath, type ProfileFs } from '../discovery/index.js';
 import { queriesPath, toYaml, type QueryFs } from '../queries/index.js';
-import { SCHEMA_VERSION, type BrandProfile, type QueryPack } from '../types.js';
+import {
+  SCHEMA_VERSION,
+  type BrandProfile,
+  type JudgeClient,
+  type QueryPack,
+} from '../types.js';
 
 const STATE = '/state';
 const NOW = (): string => '2026-07-19T00:00:00.000Z';
@@ -82,5 +87,51 @@ describe('discoverAndBuildQueries', () => {
     ]);
     expect(events[0]).toMatchObject({ brand: 'Acme' });
     expect(events[2]).toMatchObject({ prompts: ['best widgets brand?'] });
+  });
+
+  it('reports two independently-failed judge calls as two origin-labeled notes, not one collapsed line', async () => {
+    // No cached profile or pack, so BOTH discovery's competitor call and
+    // query generation make their own judge call. A judge that fails the same
+    // way every time (a real outage - one dead API key, not two) used to make
+    // discover's `competitorNote` and resolveQueries' `note` byte-identical
+    // (both built from the same `judge error: ${message}` template over the
+    // same thrown message), and a plain dedupe collapsed them to one
+    // ambiguous line. Each is now prefixed with its origin at the point it is
+    // built, so two genuinely independent failures stay visible as two lines.
+    const fs = memFs({});
+    // A realistic provider error, matching what http.ts now throws: a
+    // collapsed, capped multi-line body, not a short synthetic string.
+    const outage = new Error(
+      'HTTP 429: { "error": { "message": "You have no credits remaining. ' +
+        'Add credits to continue using the API at https://platform.openai.' +
+        'com/settings/organization/billing/.", "type": "insufficient_quot' +
+        'a", "param": null, "code": "credit_balance_exhausted" } }',
+    );
+    const failingJudge: JudgeClient = {
+      model: 'gpt-5.4',
+      complete: async () => {
+        throw outage;
+      },
+    };
+
+    const result = await discoverAndBuildQueries(
+      'acme.example',
+      {
+        fetcher: createFetcher({ fetchImpl: fakeFetch() }),
+        judge: failingJudge,
+        guard: new CostGuard(),
+        profileFs: fs,
+        queryFs: fs,
+        now: NOW,
+      },
+      { stateDir: STATE, persist: false },
+    );
+
+    expect(result.notes).toHaveLength(2);
+    expect(result.notes[0]).toMatch(/^Competitor discovery: judge error:/);
+    expect(result.notes[1]).toMatch(/^Query generation: judge error:/);
+    for (const note of result.notes) {
+      expect(note).toContain('You have no credits remaining');
+    }
   });
 });

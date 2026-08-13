@@ -10,7 +10,12 @@
  * Hitting either bound (the rate cap or the cost cap) stops the pass without
  * throwing; unjudged rows simply stay as pass 1 read them.
  */
-import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import { extractBalanced } from '../text.js';
 import type { EngineAnswer, JudgeClient, Sentiment } from '../types.js';
 import { shelfEntryIsProduct, type ProductMention } from './detect.js';
@@ -146,11 +151,28 @@ export async function refineProductMentions(
   const maxJudge = Math.floor(results.length * cap);
   const refined = [...results];
   let judged = 0;
+  /**
+   * Judge REQUESTS made - what the rate cap bounds. Separate from `judged`, and
+   * counted once at the point the call is committed to, so that no outcome can
+   * forget to count itself. Same rule, and the same rationale, as the brand
+   * judge's counter in `scoring/judge.ts`: a judge that throws resolves
+   * nothing, so a cap counting only completed calls let a persistently-failing
+   * judge (a rate limit or an exhausted quota, which lasts for the whole pass -
+   * seen live as `perplexity (HTTP 429 rate limit)`) be asked once per row,
+   * uncapped.
+   *
+   * The trade-off, chosen knowingly: a transient failure consumes a slot a
+   * later good call could have used, costing a little refinement on a flaky
+   * provider. That is cheaper than an unbounded loop against a provider already
+   * asking us to slow down. Do not "fix" this back to counting completed calls.
+   */
+  let attempted = 0;
 
   if (maxJudge === 0) return { results: refined, judged };
 
-  const maxTokens = 200;
-  for (let i = 0; i < refined.length && judged < maxJudge; i++) {
+  const answerTokens = 200;
+  const maxTokens = judgeMaxTokens(answerTokens);
+  for (let i = 0; i < refined.length && attempted < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
     if (!result?.ambiguous || !answer) continue;
@@ -158,10 +180,15 @@ export async function refineProductMentions(
     // Priced against the REAL prompt, which embeds the whole answer text, so a
     // long answer cannot slip past the cap on a fixed under-estimate.
     const prompt = buildPrompt(answer, result.product);
+    // Priced on the answer budget, not the reasoning-inflated cap - see
+    // judgeMaxTokens in costs.ts.
     const projected =
       deps.projectedCostUsd ??
-      estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+      estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
     if (!guard.authorize(projected, 'main')) break; // cost-capped: stop cleanly
+    // Counted before the await: the request is committed here, and each outcome
+    // below (verdict, unusable output, throw) is one request against the cap.
+    attempted += 1;
 
     let verdict: ProductVerdict | null;
     try {
@@ -176,7 +203,11 @@ export async function refineProductMentions(
 
     // The call happened and was billed, so it counts as judged even when the
     // output was unusable - `judged` reports what the run PAID for, not how
-    // many rows changed.
+    // many rows changed. Deliberately still counted here, on the completed-call
+    // path only, and NOT merged into `attempted` above: this figure reaches the
+    // user as the envelope's `sampling.judged` ("N judged"), where it describes
+    // the rows the run paid to re-read. A call that never completed cost
+    // nothing and re-read nothing, so it does not belong in that number.
     judged += 1;
     if (verdict) refined[i] = applyVerdict(result, verdict);
   }

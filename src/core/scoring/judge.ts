@@ -5,7 +5,12 @@
  * (main phase). Hitting either bound stops the pass without throwing - the
  * remaining ambiguous results are simply left as pass-1 decided them.
  */
-import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import { extractBalanced } from '../text.js';
 import type {
   BrandProfile,
@@ -32,6 +37,11 @@ export interface RefineOptions {
 
 export interface RefineResult {
   results: MentionResult[];
+  /**
+   * Rows a verdict was actually applied to. A call that came back unusable, or
+   * failed, is NOT counted here - it resolved nothing - though it does count
+   * against the rate cap, which bounds REQUESTS rather than resolutions.
+   */
   judged: number;
 }
 
@@ -95,11 +105,36 @@ export async function refineAmbiguous(
   const maxJudge = Math.floor(results.length * cap);
   const refined = [...results];
   let judged = 0;
+  /**
+   * Judge REQUESTS made - what the rate cap actually bounds. Counted once, at
+   * the point the call is committed to, so no outcome can forget to count
+   * itself.
+   *
+   * Deliberately not "rows resolved": a judge that returns an empty body, or
+   * throws, resolves nothing, so a cap counting resolutions would let a broken
+   * judge be asked once per ambiguous row - the whole answer set, under a cap
+   * set at 30%. Judge failures are rarely per-row: a rate limit or an exhausted
+   * quota persists for the whole pass (seen live on this branch as `perplexity
+   * (HTTP 429 rate limit)`), so "retry until something works" means hammering a
+   * provider that is already asking us to slow down.
+   *
+   * The trade-off, chosen knowingly: a TRANSIENT failure now consumes a slot a
+   * later good call could have used, so a flaky provider yields a little less
+   * refinement. That is the cheaper side. The cap is a bound on requests, and
+   * unjudged rows degrade honestly (they keep their pass-1 reading and stay
+   * `ambiguous`), while an unbounded loop against a failing provider does not
+   * degrade at all - it just keeps asking. Do not "fix" this back to counting
+   * only successful calls.
+   */
+  let attempted = 0;
 
   if (maxJudge === 0) return { results: refined, judged };
 
-  const maxTokens = 60;
-  for (let i = 0; i < refined.length && judged < maxJudge; i++) {
+  // A verdict is a word; judgeMaxTokens adds the reasoning reserve so a thinking
+  // judge is not out of budget before it writes that word.
+  const answerTokens = 60;
+  const maxTokens = judgeMaxTokens(answerTokens);
+  for (let i = 0; i < refined.length && attempted < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
     if (!result?.ambiguous || !answer) continue;
@@ -107,16 +142,36 @@ export async function refineAmbiguous(
     // Project against the real prompt size (it embeds the full answer text),
     // so a long answer cannot slip past the cost cap on a fixed under-estimate.
     const prompt = buildPrompt(answer, profile);
+    // Priced on the ANSWER budget, not `maxTokens`. The cap carries reasoning
+    // headroom the call is ALLOWED to use but almost never does, so reserving
+    // against it over-reserved by ~20x and made a tight --max-cost skip the
+    // whole judge pass. Overshoot is bounded by one call's thinking and
+    // `settle` books the provider's real reported cost, which is the
+    // documented --max-cost contract. See judgeMaxTokens in costs.ts.
     const projected =
       deps.projectedCostUsd ??
-      estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+      estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
     if (!guard.authorize(projected, 'main')) break; // cost-capped: stop cleanly
+    // Counted HERE, before the await: the request is now committed, and every
+    // outcome below (verdict, empty body, throw) is one request against the
+    // cap. Incrementing on the outcome paths instead is how the throw path came
+    // to be uncounted.
+    attempted += 1;
 
     let verdict: Verdict;
     try {
       const res = await judge.complete(prompt, { maxTokens });
       // settle, not record: `authorize` reserved `projected` (see CostGuard).
       guard.settle(projected, res.costUsd, 'main');
+      // A 200 with no text is a FAILED call (a reasoning judge that spent the
+      // whole cap on private thinking), not a verdict. It must be treated as
+      // one HERE, before parsing: `parseVerdict('')` returns its conservative
+      // `{mentioned: false}` default, which `applyVerdict` would then write as
+      // a CONFIRMED non-mention - brand stripped, `ambiguous: false`, `judged:
+      // true` - moving the headline score down on the strength of a call that
+      // said nothing. Leaving the row as pass 1 decided it is what every other
+      // failure on this loop does (rule #6).
+      if (res.text.trim() === '') continue;
       verdict = parseVerdict(res.text);
     } catch {
       guard.settle(projected, 0, 'main'); // failed call cost nothing

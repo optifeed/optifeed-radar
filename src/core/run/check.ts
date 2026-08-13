@@ -48,7 +48,25 @@ export type ProgressEvent =
   | { kind: 'discovery-start' }
   | { kind: 'discovery-done'; brand: string }
   | { kind: 'queries-start' }
-  | { kind: 'queries-done'; prompts: string[] }
+  /**
+   * `note` is whatever the pack's resolution needs to say out loud: why
+   * generation produced nothing (judge error, setup cap, no judge configured),
+   * OR that a reused pack was truncated by `--quick`. The second case ships a
+   * FULL pack and is routine, so a truthy `note` never implies zero prompts -
+   * read `prompts.length` for that, and render the note as information rather
+   * than as an error.
+   *
+   * NO current consumer renders it, and that is deliberate rather than an
+   * oversight: both of today's progress sinks are attached to a surface that
+   * prints the same reason again moments later - the CLI's abort block
+   * (`cli/progress.ts` says so at its `queries-done` case) and the MCP tool's
+   * error text, which carries `result.notes`. Kept on the event because it is
+   * the only channel a progress consumer has for WHY a phase came back empty,
+   * and a future MCP progress renderer (one without an abort block after it)
+   * needs it. Do not delete it as dead weight; it is a published field of a
+   * structured event, not an internal.
+   */
+  | { kind: 'queries-done'; prompts: string[]; note?: string }
   | { kind: 'ask-start'; total: number }
   | { kind: 'ask-answered'; done: number; total: number }
   | { kind: 'ask-done'; answered: number; total: number }
@@ -123,12 +141,53 @@ export interface RunCheckOptions {
   persist?: boolean;
 }
 
+/**
+ * Why a run stopped before asking any engine. `declined` is the user's own
+ * choice; `no-prompts` (generation produced nothing to ask) and `unconfirmed`
+ * (no confirm handler and no `yes`) are failures to measure.
+ */
+export type AbortReason = 'declined' | 'no-prompts' | 'unconfirmed';
+
+/**
+ * Whether an abort was a FAILURE rather than the user's own choice. The single
+ * source of truth for any consumer that has to tell the two apart, so none of
+ * them hand-rolls its own subset of the taxonomy and drifts when a reason is
+ * added (the M8 lesson that `isPartialRun` in `core/output` was extracted for).
+ *
+ * Today that is exactly one caller: the CLI's exit code (`cli/check.ts`), the
+ * only surface a human can decline at. The MCP tool does NOT call this and is
+ * right not to - it passes `yes: true` (hard rule #8), so `declined` is
+ * unreachable there and every abort it can see is a failure it reports as an
+ * error. A second interactive surface, or an MCP tool that ever grows a
+ * confirmation, asks here rather than re-deriving the rule.
+ *
+ * Only `declined` is evidence that a human chose to stop; everything else
+ * measured nothing. `undefined` therefore reads as a FAILURE, not as a decline:
+ * an abort that carries no reason is an abort nobody explained, and calling it
+ * a decline would claim a user consented to a stop they never saw. Every
+ * `runCheck` abort path tags a reason today, so this case can only arise from a
+ * path that forgot to - which is exactly when silence must not read as consent
+ * (hard rule #6).
+ *
+ * Call it for a run whose `aborted` is true; a completed run has no abort to
+ * classify.
+ */
+export function isAbortFailure(reason: AbortReason | undefined): boolean {
+  return reason !== 'declined';
+}
+
 /** Outcome of {@link runCheck}. */
 export interface RunCheckResult {
-  /** The check envelope; absent only when the run was aborted at confirmation. */
+  /** The check envelope; absent on every abort, whatever the reason. */
   envelope?: VisibilityEnvelope;
-  /** True when the confirmation gate declined the spend (no engines asked). */
+  /** True when the run stopped before querying any engine. {@link abortReason} says why. */
   aborted: boolean;
+  /**
+   * Why the run aborted, when it did. A caller that maps aborts to an exit code
+   * or an error message asks {@link isAbortFailure} rather than comparing the
+   * value itself - a decline is not a failure, everything else is.
+   */
+  abortReason?: AbortReason;
   /** Snapshot path written, if persisted this run. */
   snapshotPath?: string;
   /** Human-readable notes (competitor skip, query-gen skip, confirmation abort). */
@@ -204,6 +263,22 @@ export async function runCheck(
     .filter((q) => q.intent === 'trust')
     .map((q) => q.prompt);
 
+  // Nothing to ask means nothing to measure. Stopping HERE, before the gate,
+  // matters twice over: the gate would otherwise quote "0 prompts" against an
+  // unpriceable estimate, and every engine call after it would be spend with no
+  // possible result. The note carries the reason generation failed (rule #6).
+  if (prompts.length === 0) {
+    notes.push(
+      'No buyer prompts were generated, so no engines were queried. Nothing was measured.',
+    );
+    return {
+      aborted: true,
+      abortReason: 'no-prompts',
+      notes,
+      spend: guard.spendBreakdown,
+    };
+  }
+
   // Gate the main ASK spend (bypassable with --yes, hard rule #8). Spending is
   // allowed ONLY when explicitly confirmed: `--yes`, or a `confirm` handler that
   // returns true. A consumer that wires neither (e.g. a misconfigured MCP call)
@@ -214,7 +289,12 @@ export async function runCheck(
       notes.push(
         'Aborted before spending: engine queries need confirmation. Pass yes to run non-interactively, or provide a confirm handler.',
       );
-      return { aborted: true, notes, spend: guard.spendBreakdown };
+      return {
+        aborted: true,
+        abortReason: 'unconfirmed',
+        notes,
+        spend: guard.spendBreakdown,
+      };
     }
     const estimate = priceRun(
       prompts.length,
@@ -229,7 +309,12 @@ export async function runCheck(
     });
     if (!ok) {
       notes.push('Run aborted at the cost confirmation.');
-      return { aborted: true, notes, spend: guard.spendBreakdown };
+      return {
+        aborted: true,
+        abortReason: 'declined',
+        notes,
+        spend: guard.spendBreakdown,
+      };
     }
   }
 

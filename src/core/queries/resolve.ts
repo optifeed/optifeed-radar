@@ -115,7 +115,10 @@ export async function resolveQueries(
         queries: [],
         generatedAt: now(),
       },
-      note: 'no judge configured',
+      // Prefixed for the same reason the generation note below is: discovery's
+      // competitor call reports its own missing judge with the identical
+      // sentence, so two things being unavailable must not read as one line.
+      note: 'Query generation: no judge configured',
     };
   }
 
@@ -132,5 +135,11 @@ export async function resolveQueries(
       ? await saveQueryPack(pack, opts.stateDir, fs)
       : undefined;
 
-  return { pack, path, note: skipped };
+  // Prefixed with its origin (not just deduped downstream) because a
+  // SEPARATE guarded judge call - competitor discovery's, in discover() - can
+  // fail with byte-identical text against the same outage. Without the
+  // prefix, two independently-failed calls read as one ambiguous line.
+  const note = skipped ? `Query generation: ${skipped}` : undefined;
+
+  return { pack, path, note };
 }

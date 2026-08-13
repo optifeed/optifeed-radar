@@ -326,12 +326,98 @@ describe('check command', () => {
     await run(rt, ['check', 'acme.example', '--json']);
 
     const out = rt.output.join('');
+    // Nothing at all, not merely "none of these phrases": the abort now also
+    // prints its notes, and an agent parsing stdout must get either an envelope
+    // or silence - never a line of prose it has to guess at.
+    expect(out).toBe('');
     expect(out).not.toContain('Aborted');
     expect(out).not.toContain('Run cost');
     // The abort and its cost must still be reported - on stderr.
     const err = rt.errors.join('');
     expect(err).toContain('Aborted');
     expect(err).toContain('$0.0200');
+  });
+
+  // An aborted run already carried its reason in result.notes; the CLI printed
+  // notes only on the success path, so the one user who most needed them - the
+  // one whose run produced nothing - was the only one who never saw them.
+  it('prints why a check aborted with no prompts, and exits non-zero', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+
+    await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain('Aborted');
+    expect(all).toContain('No buyer prompts were generated');
+    expect(all).toContain('no usable buyer prompts');
+    // Knowing WHAT failed is not knowing what to do. The whole pack comes from
+    // one judge call, which is the non-obvious part.
+    expect(all).toContain('one judge call');
+    expect(all).toContain('--queries');
+  });
+
+  // A --queries pack the user supplied with no questions in it also aborts as
+  // `no-prompts`, but nothing generated those prompts, so blaming the judge
+  // names the wrong cause and pointing at --queries recommends the thing they
+  // just did. A failure message that misdirects is the bug this branch exists
+  // to remove, not a smaller version of it.
+  it('blames the supplied pack, not the judge, when --queries is empty', async () => {
+    const emptyPack = '/proj/empty-pack.yml';
+    const rt = testRuntime(
+      { env: { OPENAI_API_KEY: 'sk-test' } },
+      {
+        [emptyPack]: toYaml({
+          schema_version: SCHEMA_VERSION,
+          domain: 'acme.example',
+          queries: [],
+        }),
+      },
+    );
+
+    await run(rt, ['check', 'acme.example', '--yes', '--queries', emptyPack]);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain(emptyPack);
+    expect(all).not.toContain('one judge call');
+    expect(process.exitCode).toBe(1);
+    // Nothing was measured. CI and AI agents read the exit code.
+    expect(process.exitCode).toBe(1);
+  });
+
+  // The double-print regression: on a TTY the progress reporter AND the abort
+  // block both render the query-generation outcome, and both used to carry the
+  // reason - the same sentence twice, seconds apart. No other test in this file
+  // runs with isTTY set, which is exactly why that survived a green suite.
+  it('states the reason once when a TTY run aborts with no prompts', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' }, isTTY: true });
+
+    await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    // The progress line marks the phase failed instead of stamping a checkmark.
+    expect(all).toContain('! No buyer prompts were generated');
+    expect(all).not.toContain('✓ Generated');
+    expect(all.split('no usable buyer prompts')).toHaveLength(2);
+  });
+
+  // Declining the spend is the gate working as designed. Exiting non-zero for it
+  // would tell CI that a deliberate choice was a failure.
+  it('exits zero when the user declines the spend', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    const base = rt.checkDeps!;
+    rt.checkDeps = (...args: Parameters<typeof base>) => ({
+      ...base(...args),
+      confirm: async () => false,
+    });
+
+    await run(rt, ['check', 'acme.example']);
+
+    const all = rt.output.join('') + rt.errors.join('');
+    expect(all).toContain('Aborted');
+    // The judge hint belongs to the no-prompts abort. Nothing failed here, so
+    // telling this user to swap judges would send them after a phantom fault.
+    expect(all).not.toContain('one judge call');
+    expect(process.exitCode).toBe(0);
   });
 
   it('emits a clean JSON envelope under --json (no ANSI)', async () => {

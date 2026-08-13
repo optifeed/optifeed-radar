@@ -6,6 +6,7 @@
  * `--fail-under` gate. M9 (seed): plain-text/JSON renderers over that contract.
  */
 export * from './envelope.js';
+export * from './notes.js';
 export * from './snapshot.js';
 export * from './diff.js';
 export * from './failunder.js';

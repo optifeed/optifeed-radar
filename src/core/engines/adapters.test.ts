@@ -36,11 +36,23 @@ describe('createAdapter', () => {
   // both the wrong generation (gpt-4o is legacy; ChatGPT serves GPT-5.x) and the
   // wrong tier (nobody chats with mini). `-chat-latest` is OpenAI's alias for
   // whatever ChatGPT currently serves - verified live 2026-07-17.
-  it('asks OpenAI with the model ChatGPT actually serves, and prices it', () => {
+  it('asks OpenAI with a pinned production model, and prices it', () => {
     const { fn } = fakePost({});
     const adapter = createAdapter(openaiSpec, { httpPost: fn, apiKey: 'k' });
-    expect(adapter.model).toBe('gpt-5.3-chat-latest');
+    expect(adapter.model).toBe('gpt-5.6-sol');
     expect(MODEL_PRICING.models[adapter.model]).toBeDefined();
+  });
+
+  // Two floating aliases have already broken this adapter. `gpt-5.3-chat-latest`
+  // began returning HTTP 404 "has been deprecated" (verified live 2026-08-13),
+  // as did `gpt-5.2-chat-latest`; and the bare `chat-latest` that replaced it
+  // repoints without notice, so a run's subject could change with nothing in the
+  // response to reveal it (`model` echoes the alias and `system_fingerprint` is
+  // null - checked live). OpenAI's own guidance is to pin a snapshot for API
+  // use. This asserts the default is not an alias of any kind, so neither
+  // failure can return through a well-meaning "track the latest model" edit.
+  it('pins a snapshot rather than a floating alias', () => {
+    expect(openaiSpec.defaultModel).not.toMatch(/latest/);
   });
 
   // Verified live 2026-07-17 against all four ids: GPT-5 models REJECT
@@ -346,27 +358,30 @@ describe('createAdapter', () => {
     expect(answer.text).not.toContain('I should mention');
   });
 
-  // Verified live 2026-07-20: with maxOutputTokens 60 (the scoring judge's
-  // budget), thinking consumed 55 of the 60 and the answer came back as a single
-  // stray character - finishReason MAX_TOKENS. `thinkingBudget: 0` returned a
-  // clean "Yes" on the same call. Gemini budgets thinking and answer TOGETHER, so
-  // any caller-supplied cap must exclude thinking or the answer is starved. The
-  // ask path sends no cap and keeps thinking on (that is what a real user gets).
-  it('disables Gemini thinking when the caller caps tokens', async () => {
+  // `thinkingConfig.thinkingBudget: 0` was added on 2026-07-20, when a 60-token
+  // scoring cap left Gemini's answer as one stray character. It has since become
+  // a hard failure: gemini-flash-latest now resolves to a Gemini 3.x model that
+  // rejects the field outright. Verified live 2026-08-13 with two otherwise
+  // identical bodies - with the field, HTTP 400 INVALID_ARGUMENT; without it,
+  // HTTP 200 and a normal answer. Every judge cap now carries
+  // REASONING_RESERVE_TOKENS of headroom, so thinking has room and does not need
+  // disabling.
+  it('caps Gemini output without sending a thinking budget', async () => {
     const { fn, calls } = fakePost(geminiReal);
     const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
 
-    await adapter.ask('judge this', { maxTokens: 60 });
+    await adapter.ask('judge this', { maxTokens: 4060 });
     const capped = JSON.parse(calls[0]!.body) as {
-      generationConfig?: { thinkingConfig?: { thinkingBudget?: number } };
+      generationConfig?: { maxOutputTokens?: number; thinkingConfig?: unknown };
     };
-    expect(capped.generationConfig?.thinkingConfig?.thinkingBudget).toBe(0);
+    expect(capped.generationConfig?.maxOutputTokens).toBe(4060);
+    expect(capped.generationConfig?.thinkingConfig).toBeUndefined();
 
     await adapter.ask('answer this');
     const uncapped = JSON.parse(calls[1]!.body) as {
-      generationConfig?: { thinkingConfig?: unknown };
+      generationConfig?: unknown;
     };
-    expect(uncapped.generationConfig?.thinkingConfig).toBeUndefined();
+    expect(uncapped.generationConfig).toBeUndefined();
   });
 
   const geminiGroundedReal = realFixture('gemini-grounded-real.json');

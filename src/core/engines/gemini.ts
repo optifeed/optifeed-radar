@@ -107,20 +107,24 @@ export const geminiSpec: ProviderSpec = {
     body: {
       contents: [{ parts: [{ text: prompt }] }],
       ...(mode === 'grounded' ? { tools: [{ google_search: {} }] } : {}),
-      // Gemini budgets thinking and answer from the SAME maxOutputTokens pool.
-      // Verified live 2026-07-20: at the scoring judge's 60-token cap, thinking
-      // ate 55 and the answer came back as one stray character (finishReason
-      // MAX_TOKENS); with thinkingBudget 0 the same call answered cleanly. So a
-      // caller-supplied cap must exclude thinking, or the answer is starved.
-      // The ask path passes no cap and keeps thinking ON - that is what a real
-      // Gemini user gets, and it is the answer we are measuring.
+      // Gemini budgets thinking and answer from the SAME maxOutputTokens pool,
+      // so a caller-supplied cap must leave room for both. That is now handled
+      // upstream: every judge cap is sized by judgeMaxTokens, which adds
+      // REASONING_RESERVE_TOKENS, so nothing here needs to constrain thinking.
+      //
+      // Do NOT send `thinkingBudget: 0`. The Gemini 3.x models this alias
+      // resolves to refuse to have thinking DISABLED and answer HTTP 400
+      // INVALID_ARGUMENT, which broke every capped Gemini judge call until
+      // 2026-08-13. It is the zero specifically, not the field: measured live
+      // that day on gemini-flash-latest, `thinkingBudget: 128` and
+      // `thinkingLevel: "low"` both returned 200. So a future maintainer who
+      // wants to bound thinking cost rather than disable it has options - they
+      // are simply untested here, and headroom made them unnecessary.
+      //
+      // The ask path passes no cap at all and keeps thinking on: that is what a
+      // real Gemini user gets, and it is the answer we are measuring.
       ...(maxTokens
-        ? {
-            generationConfig: {
-              maxOutputTokens: maxTokens,
-              thinkingConfig: { thinkingBudget: 0 },
-            },
-          }
+        ? { generationConfig: { maxOutputTokens: maxTokens } }
         : {}),
     },
   }),

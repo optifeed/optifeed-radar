@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   ESTIMATE_ASSUMPTIONS,
+  REASONING_RESERVE_TOKENS,
   CostGuard,
   MODEL_PRICING,
   UnknownModelError,
   costOfCall,
   estimateRun,
+  judgeMaxTokens,
 } from './costs.js';
 
 describe('costOfCall', () => {
@@ -64,8 +66,19 @@ describe('MODEL_PRICING', () => {
     expect(MODEL_PRICING.models['gpt-4o-mini']).toBeDefined();
     // Every model this tool asks or judges with BY DEFAULT must be priced -
     // an unpriced default silently reports $0 spend (the M0-M6 lesson).
-    expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['gpt-5.6-sol']).toBeDefined();
     expect(MODEL_PRICING.models['gpt-5.4']).toBeDefined();
+  });
+
+  // Snapshots record the model each answer came from, and this adapter's default
+  // has moved twice in one day. Dropping a superseded row would price those runs
+  // at $0, which reads as "this run was free" rather than "we no longer quote
+  // this model" - the M0-M6 lesson about a table lookup needing a miss path, in
+  // the one case where the miss is guaranteed.
+  it('keeps superseded model rows so historical snapshots still price', () => {
+    expect(MODEL_PRICING.models['chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['gemini-2.5-flash']).toBeDefined();
   });
 });
 
@@ -325,5 +338,21 @@ describe('CostGuard', () => {
     expect(guard.authorize(1)).toBe(true);
     guard.settle(1, 1000);
     expect(guard.costCapped).toBe(false);
+  });
+});
+
+describe('judgeMaxTokens', () => {
+  it('adds the reasoning reserve on top of the answer budget', () => {
+    expect(judgeMaxTokens(60)).toBe(60 + REASONING_RESERVE_TOKENS);
+    expect(judgeMaxTokens(1440)).toBe(1440 + REASONING_RESERVE_TOKENS);
+  });
+
+  // A reserve smaller than the largest thinking spend we have MEASURED puts the
+  // silent-empty-response bug straight back: claude-sonnet-5 spent 2172 thinking
+  // tokens before its first answer token on the M5 generation prompt, and burned
+  // all 300 of the competitor call's budget on thinking (verified live
+  // 2026-08-13). Shrinking this constant must fail here, not in production.
+  it('reserves at least the largest thinking spend measured live', () => {
+    expect(REASONING_RESERVE_TOKENS).toBeGreaterThanOrEqual(2172);
   });
 });

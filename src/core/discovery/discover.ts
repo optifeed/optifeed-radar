@@ -59,7 +59,22 @@ export interface DiscoverResult {
   path?: string;
   /** True when an existing profile was returned without re-discovery. */
   fromCache?: boolean;
-  /** Reason competitor discovery was skipped, if any. */
+  /**
+   * Why this discovery could not deliver everything it normally does - a failed
+   * fetch, or a skipped/failed competitor call. Absent when nothing needs
+   * saying.
+   *
+   * EVERY note here carries an origin prefix, because a SEPARATE guarded judge
+   * call - query generation's, in `resolveQueries` - produces notes from the
+   * same templates (`judge error: ${message}`, `no judge configured`) and can
+   * fail identically against the same outage. Unprefixed, two independent
+   * failures read as one ambiguous line, and `dedupeNotes` collapses the
+   * byte-identical ones into a single line outright.
+   *
+   * The prefix names the phase that actually failed: `Competitor discovery: `
+   * for the judge call, `Discovery: ` for a fetch failure, which happens before
+   * (and instead of) that call and is not competitor-specific.
+   */
   competitorNote?: string;
 }
 
@@ -148,7 +163,7 @@ export async function discover(
       return {
         profile: existing,
         fromCache: true,
-        competitorNote: 'fetch failed; kept the existing profile',
+        competitorNote: 'Discovery: fetch failed; kept the existing profile',
       };
     }
     const degradedStem: BrandProfile = {
@@ -163,7 +178,8 @@ export async function discover(
     return {
       profile: degradedStem,
       path: await write(degradedStem),
-      competitorNote: 'fetch failed; degraded to a domain-only profile',
+      competitorNote:
+        'Discovery: fetch failed; degraded to a domain-only profile',
     };
   }
 
@@ -185,9 +201,15 @@ export async function discover(
     );
     competitors = res.competitors;
     businessType = res.businessType;
-    competitorNote = res.skipped;
+    competitorNote = res.skipped
+      ? `Competitor discovery: ${res.skipped}`
+      : undefined;
   } else {
-    competitorNote = 'no judge configured';
+    // `Competitor discovery: ` here too, and not just on the judge-outcome note
+    // above: `resolveQueries` reports its own missing judge with the identical
+    // sentence, so an unprefixed note would read as one line rather than two
+    // (and `dedupeNotes` would collapse the pair outright).
+    competitorNote = 'Competitor discovery: no judge configured';
   }
 
   const fresh = buildProfile({

@@ -49,6 +49,29 @@ describe('createProgressReporter', () => {
     expect(out).not.toContain('prompts');
   });
 
+  // `✓ Generated 0 buyer prompts` is a success mark on a total failure. It is
+  // what the 2026-08-13 report saw, and it is why the real error (an
+  // out-of-credit judge) never reached the user.
+  it('marks zero prompts as a failure, not a checkmark', () => {
+    const out = drive([
+      { kind: 'discovery-start' },
+      { kind: 'discovery-done', brand: 'Acme' },
+      { kind: 'queries-start' },
+      {
+        kind: 'queries-done',
+        prompts: [],
+        note: 'judge error: HTTP 429: no credits remaining',
+      },
+    ]);
+
+    expect(out).not.toContain('✓ Generated');
+    expect(out).toContain('No buyer prompts were generated');
+    // The reason is the abort block's to print (see `check.ts`), not this
+    // channel's: a zero-prompt pack always aborts, and the abort block prints
+    // the same note on the same TTY seconds later.
+    expect(out).not.toContain('HTTP 429');
+  });
+
   it('stop() leaves no spinner running (no throw, idempotent)', () => {
     const reporter = createProgressReporter({ write: () => {} });
     reporter.onProgress({ kind: 'discovery-start' });

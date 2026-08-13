@@ -41,12 +41,19 @@ export interface ModelPricing {
  * billing. Update the date when you touch the numbers.
  *
  * OpenAI rows retrieved 2026-07-17 from the official sheet
- * (https://developers.openai.com/api/docs/pricing). Two caveats an updater must
- * know: (1) `gpt-5.3-chat-latest` is NOT itself on that sheet - the page lists a
- * generic `chat-latest` row at $5/$30 and this inherits it, so the number is an
- * assumption, not a quote. (2) `-chat-latest` FLOATS: OpenAI repoints it at
- * whatever ChatGPT currently serves, so its price can change without any change
- * here. Re-verify at release (M17).
+ * (https://developers.openai.com/api/docs/pricing); `gpt-5.6-sol` (the ask
+ * default) and `chat-latest` both re-verified there 2026-08-13, each at
+ * $5.00/$30.00.
+ *
+ * The ask default is a PINNED snapshot, so the id priced here and the id asked
+ * are the same string AND that string cannot change under us - which is the
+ * whole reason for pinning. It took two breakages to get here: the default was
+ * `gpt-5.3-chat-latest`, which the sheet never listed (it borrowed the generic
+ * `chat-latest` number, an assumption rather than a quote) and which OpenAI then
+ * retired outright with HTTP 404; and then briefly `chat-latest` itself, which
+ * is quoted but floats. A floating row can go stale with no change here and
+ * nothing in the response to reveal it, so a snapshot is the only form of this
+ * row that stays true on its own.
  *
  * Gemini + Perplexity rows verified live 2026-07-20 (M17 engine smoke):
  * - `gemini-flash-latest` $1.50/$9.00 from the official sheet
@@ -83,15 +90,45 @@ export const MODEL_PRICING: {
   lastUpdated: string;
   models: Record<string, ModelPricing>;
 } = {
-  lastUpdated: '2026-07-20',
+  lastUpdated: '2026-08-13',
   models: {
     // Current generation (what ChatGPT serves / what we ask + judge with).
     // avgOutputTokens measured live 2026-07-20: ~2583 on a grounded ask.
+    // Superseded as the ask default on 2026-08-13, hours after it became one:
+    // it is quoted on the sheet but FLOATS, and nothing in a response reveals
+    // when OpenAI repoints it. Kept because snapshots written in that window
+    // record answers from it, and because the measurement below is still the
+    // best evidence anyone has for what it costs to ask.
+    //
+    // `avgOutputTokens` here is MEASURED, and it is the reason the row needed
+    // an override at all: whatever `chat-latest` resolved to answered far more
+    // briefly than the model the global default was built from. Real `check`
+    // run 2026-08-13, 8 answers (bcombinator.com, es-ES): mean 480, median 450,
+    // range 298-744, against a global of 2600 back-solved from
+    // gpt-5.3-chat-latest at ~2583. Set above the observed MAX rather than at
+    // the mean, because an estimate should not under-report spend.
+    'chat-latest': {
+      inputPerMTokens: 5,
+      outputPerMTokens: 30,
+      avgOutputTokens: 800,
+    },
+    // Retired 2026-08-13: OpenAI deprecated the per-generation chat aliases and
+    // this now 404s. Kept only so snapshots written before the switch still
+    // price - dropping the row would silently value those runs at $0.
     'gpt-5.3-chat-latest': {
       inputPerMTokens: 5,
       outputPerMTokens: 30,
       avgOutputTokens: 2600,
     },
+    // The ask default (pinned). Deliberately carries NO `avgOutputTokens`, so
+    // it inherits the global 2600. Measured on a real check 2026-08-13, 8
+    // answers (bcombinator.com, es-ES): mean 952, median 899, range 367-1867.
+    // The mean is well under the global, but this is a reasoning model and its
+    // output varied 5x across eight prompts, so an override set just above the
+    // observed max would be a number invented from a thin sample rather than a
+    // measurement. The global sits ~1.4x above that max, which is the right
+    // direction to err: under-reserving breaches the cap, over-reserving costs
+    // only a little parallelism. Override it only with a wider sample.
     'gpt-5.6-sol': { inputPerMTokens: 5, outputPerMTokens: 30 },
     'gpt-5.6-terra': { inputPerMTokens: 2.5, outputPerMTokens: 15 },
     'gpt-5.6-luna': { inputPerMTokens: 1, outputPerMTokens: 6 },
@@ -142,6 +179,49 @@ export const MODEL_PRICING: {
     },
   },
 };
+
+/**
+ * Output tokens reserved for a reasoning judge's private thinking, on top of
+ * whatever the answer itself needs.
+ *
+ * Reasoning models bill thinking as output and draw it from the SAME cap as the
+ * answer, so a cap sized for the answer alone starves it. The call still returns
+ * HTTP 200 - with an empty text block - and every parser downstream reads that
+ * as "the judge found nothing", which is how a failed call became an empty
+ * result with no error (rule #6).
+ *
+ * Measured live 2026-08-13 against claude-sonnet-5: the competitor prompt at
+ * max_tokens 300 spent all 300 on thinking and returned zero text; the query
+ * generation prompt did the same at 1440. Both answered cleanly with the reserve
+ * added (2172 thinking + 2397 text on the generation prompt).
+ *
+ * Thinking is ADAPTIVE - the same model answered a short scoring prompt at 60
+ * tokens with no thinking at all - so this is a ceiling a call is allowed to
+ * use, never a cost it always pays. Real spend is settled from reported usage.
+ */
+export const REASONING_RESERVE_TOKENS = 4000;
+
+/**
+ * The output cap for a judge call that needs `answerTokens` for its answer.
+ *
+ * Every judge call site sizes its cap through this and never with a bare number:
+ * a raw answer-sized cap is silently empty on a reasoning judge, and each site
+ * that hard-coded one had to be found by hand after it had already shipped.
+ *
+ * This return value is the cap SENT TO THE PROVIDER, and only that - it must
+ * NOT also be the `outputTokens` passed to {@link estimateCallUsd} for
+ * `CostGuard.authorize`. Price that call against `answerTokens` instead. The
+ * reserve exists so a reasoning judge is never starved of output by its own
+ * private thinking, but it is headroom the call is ALLOWED to use, not a cost
+ * it typically pays - pricing the reservation off this inflated cap
+ * over-reserved by ~20x and made a modest --max-cost skip an entire judge
+ * pass on its first call (see the call sites in `scoring/judge.ts`,
+ * `shopping/judge.ts`, `queries/generate.ts`, `shopping/queries.ts`, and
+ * `discovery/competitors.ts` for the full rationale).
+ */
+export function judgeMaxTokens(answerTokens: number): number {
+  return answerTokens + REASONING_RESERVE_TOKENS;
+}
 
 /** Thrown when a model id is not present in {@link MODEL_PRICING}. */
 export class UnknownModelError extends Error {

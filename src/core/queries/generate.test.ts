@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import {
+  CostGuard,
+  REASONING_RESERVE_TOKENS,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -358,6 +364,109 @@ describe('generateQueries', () => {
     comparison: ['How do rocket kit brands compare?'],
     problem: ['Why does my rocket engine misfire?'],
     trust: ['Is Acme Rockets a reputable brand?'],
+  });
+
+  // The exact production failure of 2026-08-13: claude-sonnet-5 spent the whole
+  // 1440-token budget on thinking and returned HTTP 200 with an empty text
+  // block. An empty pack with no reason reads as "this brand has no buyer
+  // questions" - the run then offered to query 4 engines with 0 prompts.
+  it('reports an empty judge response instead of a silently empty pack', async () => {
+    const judge = recordingJudge('');
+    const guard = new CostGuard();
+
+    const result = await generateQueries(
+      profile(),
+      { judge, guard },
+      { generatedAt: AT_ISO },
+    );
+
+    expect(result.pack.queries).toHaveLength(0);
+    expect(result.skipped).toMatch(/empty response/i);
+  });
+
+  // A response that arrives but parses to nothing (truncated mid-JSON, or a
+  // refusal) is the same failure wearing a different hat, and it also used to
+  // return a clean empty pack.
+  it('reports a response that yielded no usable prompts', async () => {
+    const judge = recordingJudge('I am sorry, I cannot help with that.');
+    const guard = new CostGuard();
+
+    const result = await generateQueries(
+      profile(),
+      { judge, guard },
+      { generatedAt: AT_ISO },
+    );
+
+    expect(result.pack.queries).toHaveLength(0);
+    expect(result.skipped).toMatch(/no usable buyer prompts/i);
+  });
+
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const judge = recordingJudge(goodAnswer);
+    const guard = new CostGuard();
+
+    await generateQueries(profile(), { judge, guard }, { generatedAt: AT_ISO });
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+  });
+
+  // Regression coverage for the answer-vs-cap pricing bug fixed alongside this
+  // (full rationale in scoring/judge.ts): `authorize` must be priced on the
+  // answer budget, not `judgeMaxTokens(answerTokens)`. A cap that only covers
+  // the former must still authorize the call.
+  it('authorizes against the answer budget, not the reasoning-inflated cap', async () => {
+    const model = 'gpt-5.5'; // wide input/output spread makes the gap unambiguous
+    const makeJudge = (): JudgeClient & { prompts: string[] } => {
+      const prompts: string[] = [];
+      return {
+        model,
+        prompts,
+        async complete(prompt) {
+          prompts.push(prompt);
+          return { text: goodAnswer, costUsd: 0.001, model };
+        },
+      };
+    };
+    // count:4 keeps the answer budget at its 900-token floor
+    // (Math.max(900, requested * 60)) - the tightest case relative to the
+    // fixed reasoning reserve, so the most conservative choice here.
+    const genOpts = { count: 4, generatedAt: AT_ISO };
+    const answerTokens = 900;
+
+    // Capture the real prompt so the projections below are grounded in what
+    // the call actually sends, not a hand-typed approximation.
+    const probe = makeJudge();
+    await generateQueries(
+      profile(),
+      { judge: probe, guard: new CostGuard({ maxSetupCostUsd: 10 }) },
+      genOpts,
+    );
+    const inputTokens = approxTokens(probe.prompts[0]!);
+
+    const answerBudgetUsd = estimateCallUsd(model, inputTokens, answerTokens);
+    const fullCapUsd = estimateCallUsd(
+      model,
+      inputTokens,
+      judgeMaxTokens(answerTokens),
+    );
+    // Self-check: if a future pricing-table edit closes this gap, fail loud
+    // rather than silently letting the cap below stop discriminating. The
+    // margin here is smaller than the other four sites' because the answer
+    // budget itself (900) is already large relative to the fixed reserve.
+    expect(fullCapUsd).toBeGreaterThan(answerBudgetUsd * 3);
+
+    const judge = makeJudge();
+    // Comfortably above the answer-budget projection, comfortably below the
+    // full-cap one.
+    const guard = new CostGuard({
+      maxSetupCostUsd: (answerBudgetUsd + fullCapUsd) / 2,
+    });
+
+    const result = await generateQueries(profile(), { judge, guard }, genOpts);
+
+    expect(judge.prompts).toHaveLength(1);
+    expect(result.skipped).toBeUndefined();
+    expect(guard.costCapped).toBe(false);
   });
 
   it('generates a pack from one guarded judge call, competitor input withheld', async () => {

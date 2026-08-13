@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import {
+  CostGuard,
+  REASONING_RESERVE_TOKENS,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import type { EngineAnswer, JudgeClient } from '../types.js';
 import { analyzeProductAnswer, type ProductMention } from './detect.js';
 import {
@@ -25,13 +31,18 @@ function judgeReturning(
   costUsd = 0.0002,
 ): JudgeClient & {
   calls: string[];
+  /** The token budget each call was given, for the headroom assertion. */
+  maxTokens: (number | undefined)[];
 } {
   const calls: string[] = [];
+  const maxTokens: (number | undefined)[] = [];
   return {
     model: 'gpt-5.4-mini',
     calls,
-    async complete(prompt) {
+    maxTokens,
+    async complete(prompt, opts) {
       calls.push(prompt);
+      maxTokens.push(opts?.maxTokens);
       return { text, costUsd, model: 'gpt-5.4-mini-2026-01-01' };
     },
   };
@@ -173,6 +184,109 @@ describe('refineProductMentions', () => {
     expect(guard.spendBreakdown.totalUsd).toBe(0);
     expect(guard.costCapped).toBe(false);
     expect(out.results[0]?.ambiguous).toBe(true);
+  });
+
+  // Same bound as the brand judge's (scoring/judge.ts): a judge that fails
+  // fails for the whole pass - a rate limit or an exhausted quota persists - so
+  // an uncounted throw walks every ambiguous row and sends one doomed request
+  // each. A live run on this branch hit exactly this (perplexity, HTTP 429).
+  it('stops at the rate cap when every judge call throws', async () => {
+    const answers = Array.from({ length: 10 }, () =>
+      answer('People mention the Aria 2 sometimes.'),
+    );
+    const results = answers.map((a) =>
+      analyzeProductAnswer(a, { name: 'Aria 2' }),
+    );
+    let calls = 0;
+    const judge: JudgeClient = {
+      model: 'gpt-5.4-mini',
+      async complete() {
+        calls += 1;
+        throw new Error('HTTP 429: rate limit');
+      },
+    };
+    const guard = new CostGuard();
+
+    const out = await refineProductMentions(results, answers, { judge, guard });
+
+    expect(calls).toBe(5); // floor(10 * 0.50), not one per row
+    // Honesty is unchanged by the bound: rows keep their pass-1 reading and a
+    // failed call still settles at zero.
+    expect(out.judged).toBe(0);
+    expect(out.results.every((r) => r.ambiguous)).toBe(true);
+    expect(guard.spendBreakdown.totalUsd).toBe(0);
+    expect(guard.costCapped).toBe(false);
+  });
+
+  // The other half of the same invariant, and the half the authorize test
+  // cannot see: the budget SENT to the provider must be sized through
+  // `judgeMaxTokens`, because a bare 200-token cap is spent entirely on private
+  // reasoning by a thinking judge, which then returns an empty verdict. Pricing
+  // is identical either way, so only this assertion fails if the call site
+  // reverts to a bare number.
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const { results, answers } = ambiguousPair();
+    const judge = judgeReturning('{"mentioned": true, "position": 2}');
+
+    await refineProductMentions(results, answers, {
+      judge,
+      guard: new CostGuard(),
+    });
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+  });
+
+  // Regression coverage for the answer-vs-cap pricing bug fixed alongside this
+  // (full rationale in scoring/judge.ts): `authorize` must be priced on the
+  // 200-token answer budget, not `judgeMaxTokens(200)`. A cap that only covers
+  // the former must still authorize the call.
+  it('authorizes against the answer budget, not the reasoning-inflated cap', async () => {
+    const model = 'gpt-5.5'; // wide input/output spread makes the gap unambiguous
+    const makeJudge = (): JudgeClient & { calls: string[] } => {
+      const calls: string[] = [];
+      return {
+        model,
+        calls,
+        async complete(prompt) {
+          calls.push(prompt);
+          return {
+            text: '{"mentioned": true, "position": 1}',
+            costUsd: 0.001,
+            model,
+          };
+        },
+      };
+    };
+
+    const { results, answers } = ambiguousPair();
+
+    // Capture the real prompt so the projections below are grounded in what
+    // the call actually sends, not a hand-typed approximation.
+    const probe = makeJudge();
+    await refineProductMentions(results, answers, {
+      judge: probe,
+      guard: new CostGuard({ maxCostUsd: 10 }),
+    });
+    const inputTokens = approxTokens(probe.calls[0]!);
+
+    const answerBudgetUsd = estimateCallUsd(model, inputTokens, 200);
+    const fullCapUsd = estimateCallUsd(model, inputTokens, judgeMaxTokens(200));
+    // Self-check: if a future pricing-table edit closes this gap, fail loud
+    // rather than silently letting the cap below stop discriminating.
+    expect(fullCapUsd).toBeGreaterThan(answerBudgetUsd * 10);
+
+    const judge = makeJudge();
+    // Comfortably above the answer-budget projection, comfortably below the
+    // full-cap one.
+    const guard = new CostGuard({
+      maxCostUsd: (answerBudgetUsd + fullCapUsd) / 2,
+    });
+
+    const out = await refineProductMentions(results, answers, { judge, guard });
+
+    expect(judge.calls).toHaveLength(1);
+    expect(out.judged).toBe(1);
+    expect(guard.costCapped).toBe(false);
   });
 
   it('never spends on rows pass 1 already resolved', async () => {

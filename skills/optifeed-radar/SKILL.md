@@ -1,6 +1,6 @@
 ---
 name: optifeed-radar
-description: Measure whether ChatGPT, Perplexity, Gemini, or Claude recommends a brand or specific named products, audit a site's AI-readiness, generate buyer questions, inspect cited sources, or compare saved AI-visibility runs. Use for AI visibility, GEO, AEO, AI-SEO, brand recommendation, product recommendation, competitor share-of-voice, and readiness-audit requests. Run Optifeed Radar locally through its CLI or MCP server. The readiness audit uses no API keys or AI calls; visibility and product checks use the user's own provider keys and spend their API credit.
+description: Measure whether the models behind ChatGPT, Perplexity, Gemini, or Claude recommend a brand or specific named products, audit a site's AI-readiness, generate buyer questions, inspect cited sources, or compare saved AI-visibility runs. Use for AI visibility, GEO, AEO, AI-SEO, brand recommendation, product recommendation, competitor share-of-voice, and readiness-audit requests. Run Optifeed Radar locally through its CLI or MCP server. The readiness audit uses no API keys or AI calls; visibility and product checks use the user's own provider keys and spend their API credit.
 ---
 
 # Optifeed Radar
@@ -117,11 +117,21 @@ report, snapshot, or source file.
 - Do not claim continuous monitoring; Radar performs point-in-time checks.
 - Do not claim catalog discovery or product-feed linting. Those capabilities are
   on the roadmap and waitlist at optifeed.com.
+- A non-zero exit from `check` means the run measured nothing, not that the
+  brand scored badly. All buyer prompts come from one judge call, so a failure
+  there - no API credit, a rate limit, an unusable response - leaves nothing to
+  ask and the run stops before querying engines. The reason is printed; report
+  it and stop. Never present an unmeasured run as a low or zero visibility
+  result. Declining the cost prompt also aborts, but exits zero.
 
 Measured July 2026, a quick brand check cost about $0.09 on one engine,
 $0.41-$0.46 across four parametric engines, and $0.85-$1.09 across four with
 grounding. A measured two-product, four-engine grounded shopping run cost
-$0.70. Provider prices and model behavior change, so use these only as dated
-planning ranges and rely on Radar's current estimate and actual-spend report.
+$0.70. Those figures predate the August 2026 switch of the OpenAI engine to a
+pinned reasoning model, whose reasoning tokens bill as output: measured
+2026-08-13, a quick check on OpenAI alone cost $0.2297, roughly double that
+engine's earlier share. Provider prices and model behavior change, so use all
+of these only as dated planning ranges and rely on Radar's current estimate and
+actual-spend report.
 
 More at optifeed.com

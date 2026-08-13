@@ -5,7 +5,12 @@
  * cap hit or a judge error degrades to an empty competitor list with a reason,
  * so discovery always returns a usable profile.
  */
-import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import { extractBalanced, fold, mentionsTerm } from '../text.js';
 import type { BusinessType, JudgeClient } from '../types.js';
 
@@ -232,10 +237,16 @@ export async function discoverCompetitors(
 ): Promise<CompetitorResult> {
   const { judge, guard } = deps;
   const prompt = buildPrompt(input);
-  const maxTokens = 300;
+  // The answer is a short JSON object; judgeMaxTokens adds the reasoning
+  // reserve, without which a thinking judge spent this entire budget on private
+  // reasoning and returned nothing (verified live 2026-08-13).
+  const answerTokens = 300;
+  const maxTokens = judgeMaxTokens(answerTokens);
+  // Priced on the answer budget, not the reasoning-inflated cap - see
+  // judgeMaxTokens in costs.ts.
   const projected =
     deps.projectedCostUsd ??
-    estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+    estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
 
   if (!guard.authorize(projected, 'setup')) {
     return { competitors: [], skipped: 'setup cost cap reached' };
@@ -246,6 +257,21 @@ export async function discoverCompetitors(
     // settle, not record: `authorize` reserved `projected`, and only settling
     // releases that hold (a leaked reservation shrinks the remaining budget).
     guard.settle(projected, res.costUsd, 'setup');
+    // A 200 with no text is a failed call. Parsing it yields [], which the
+    // profile would then carry as a measured "no competitors".
+    //
+    // Only the EMPTY body is guarded here, unlike generateQueries, which also
+    // reports a response that parsed to nothing. The asymmetry is deliberate: a
+    // brand always has buyer questions, so zero parsed queries can only be a
+    // failure, whereas zero parsed competitors is a legitimate answer - a judge
+    // that classifies the business and names no rival has measured something,
+    // and parseDiscovery returns that case on purpose.
+    if (res.text.trim() === '') {
+      return {
+        competitors: [],
+        skipped: 'the judge returned an empty response',
+      };
+    }
     const selfTerms = [input.brand, ...(input.aliases ?? [])];
     return parseDiscovery(res.text, selfTerms);
   } catch (err) {

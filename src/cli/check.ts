@@ -19,6 +19,7 @@ import {
 } from '../core/output/index.js';
 import {
   buildCheckDeps,
+  isAbortFailure,
   runCheck,
   selectEngines,
   type ConfirmContext,
@@ -302,12 +303,42 @@ export function registerCheck(program: Command, rt: Runtime): void {
           else rt.out(s);
         };
         say('Aborted - no engines were queried.\n');
+        // The notes carry WHY - an out-of-credit judge, a setup cost cap, a
+        // failed generation. They used to print only on the success path, so an
+        // aborted run was silent about its own cause.
+        for (const note of result.notes) say(`${note}\n`);
+        // The notes say WHAT failed; this says what to do about it, and it is
+        // CLI copy, so it lives here rather than in core. Every cause of
+        // `no-prompts` (a judge HTTP error, a setup cost cap, no judge
+        // configured, a response that parsed to nothing) traces back to the one
+        // judge call the whole pack comes from - which is the non-obvious part,
+        // and why the run then reported nothing about four unrelated engines.
+        // The two remedies are stated without picking one: which applies
+        // depends on the reason printed just above.
+        // Same abort, two different causes, and the remedy differs. An explicit
+        // --queries pack bypasses generation entirely (resolveQueries checks it
+        // before any judge or guard), so blaming the judge would name a call
+        // that never happened and recommend the flag the user just used.
+        if (result.abortReason === 'no-prompts') {
+          say(
+            flags.queries
+              ? `The prompt pack at ${flags.queries} has no questions in it. ` +
+                  'Add at least one, or drop --queries to have them generated.\n'
+              : 'All buyer prompts come from one judge call, so a single judge failure leaves nothing to ask. ' +
+                  'Try a different --judge, or supply your own prompts with --queries <file>.\n',
+          );
+        }
         // Discovery and query generation bill BEFORE the confirmation gate, so
         // an aborted run is not necessarily a free one. Reported only when it
         // actually cost something, so a genuinely free abort stays quiet.
         const spent = result.spend;
         if (spent && spent.totalUsd > 0) {
           say(`${spendLine(spent)}\n`);
+        }
+        // Declining is the user's choice and exits 0. An abort the user did not
+        // choose measured nothing, and CI and AI agents read the exit code.
+        if (isAbortFailure(result.abortReason)) {
+          process.exitCode = 1;
         }
         return;
       }

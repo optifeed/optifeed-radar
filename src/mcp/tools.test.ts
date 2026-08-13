@@ -117,6 +117,29 @@ function fakeJudge(): JudgeClient {
 }
 
 /**
+ * A judge shaped for query GENERATION specifically: `{}` (what {@link
+ * fakeJudge} returns) parses to zero prompts per intent, which is the exact
+ * "empty/unusable judge response" this suite's generation tests need to NOT
+ * hit - they exercise the successful-pack path, not the honesty path that
+ * `generate.test.ts` already covers directly.
+ */
+function fakeQueryJudge(): JudgeClient {
+  return {
+    model: 'judge-model',
+    complete: async () => ({
+      text: JSON.stringify({
+        'best-of': ['Best widgets brand?'],
+        comparison: ['How do widget brands compare?'],
+        problem: ['Why did my widget stop working?'],
+        trust: ['Is Acme a reputable widget brand?'],
+      }),
+      costUsd: 0,
+      model: 'judge-model',
+    }),
+  };
+}
+
+/**
  * Fake filesystems below are keyed with "/" paths, but core builds paths with
  * node:path, which yields "\\" on Windows - and seeds are built by calling the
  * same helpers, so BOTH keys and lookups need normalizing. The CI matrix caught
@@ -188,7 +211,7 @@ function workingContext(overrides: Partial<ToolContext> = {}): {
     checkDeps,
     queryDeps: async () => ({
       fetcher: createFetcher({ fetchImpl: fakeFetch() }),
-      judge: fakeJudge(),
+      judge: fakeQueryJudge(),
       profileFs: fs,
       queryFs: fs,
       now: NOW,

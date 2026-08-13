@@ -20,7 +20,7 @@ import {
   type JudgeClient,
   type QueryPack,
 } from '../types.js';
-import { runCheck, type ProgressEvent } from './check.js';
+import { isAbortFailure, runCheck, type ProgressEvent } from './check.js';
 
 const STATE = '/state';
 const NOW = () => '2026-07-15T00:00:00.000Z';
@@ -106,6 +106,16 @@ function fakeJudge(): JudgeClient {
   return {
     model: 'judge-model',
     complete: async () => ({ text: '{}', costUsd: 0, model: 'judge-model' }),
+  };
+}
+
+/** A judge whose call fails, the way an out-of-credit provider does. */
+function throwingJudge(message: string): JudgeClient {
+  return {
+    model: 'judge-model',
+    complete: async () => {
+      throw new Error(message);
+    },
   };
 }
 
@@ -272,6 +282,27 @@ describe('runCheck spend reporting', () => {
     );
     expect(result.envelope!.spend).toBeDefined();
     expect(result.envelope!.costCapped).toBe(true);
+  });
+});
+
+// One shared predicate for "was this abort a failure?", for the same reason
+// `isPartialRun` exists (M8 lesson #1): the CLI's exit code and the MCP error
+// message must not each hand-roll `reason !== 'declined'` and drift.
+describe('isAbortFailure', () => {
+  it('does not call the user declining a failure', () => {
+    expect(isAbortFailure('declined')).toBe(false);
+  });
+
+  it('calls every abort that measured nothing a failure', () => {
+    expect(isAbortFailure('no-prompts')).toBe(true);
+    expect(isAbortFailure('unconfirmed')).toBe(true);
+  });
+
+  // An untagged abort is the one case a subset predicate would get WRONG in the
+  // dangerous direction: only `declined` is evidence the user chose to stop, so
+  // an abort carrying no reason must read as a failure, never as a decline.
+  it('treats an untagged abort as a failure, not as a decline', () => {
+    expect(isAbortFailure(undefined)).toBe(true);
   });
 });
 
@@ -480,6 +511,68 @@ describe('runCheck end to end (all mocked)', () => {
     expect(result.aborted).toBe(true);
     expect(askSpy).not.toHaveBeenCalled();
     expect(result.envelope).toBeUndefined();
+  });
+
+  // The 2026-08-13 report: a judge failure left 0 prompts, and the run went on
+  // to offer "query 4 engines with 0 prompts (estimated cost: an unknown
+  // amount)". A run with nothing to ask cannot measure anything, so it must stop
+  // before the gate and say why.
+  it('aborts before the confirmation gate when no prompts were generated', async () => {
+    const fs = memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
+    let confirmCalls = 0;
+
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        judge: throwingJudge('HTTP 429: no credits remaining'),
+        confirm: async () => {
+          confirmCalls += 1;
+          return true;
+        },
+      },
+      { stateDir: STATE },
+    );
+
+    expect(confirmCalls).toBe(0);
+    expect(result.aborted).toBe(true);
+    expect(result.abortReason).toBe('no-prompts');
+    expect(result.envelope).toBeUndefined();
+    expect(result.notes.join(' ')).toMatch(/no buyer prompts/i);
+  });
+
+  // The reason the judge failed must survive to the caller: it is the only thing
+  // that tells a user whether to add credits, switch judge, or file a bug.
+  it('keeps the query-generation failure reason in the notes', async () => {
+    const fs = memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
+
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        judge: throwingJudge('HTTP 429: no credits remaining'),
+      },
+      { stateDir: STATE, yes: true },
+    );
+
+    expect(result.notes.join(' ')).toMatch(/429/);
+  });
+
+  // A user who declines is not a failure, and must not be reported as one.
+  it('tags a declined run separately from a failed one', async () => {
+    const fs = seededFs();
+
+    const result = await runCheck(
+      'acme.example',
+      {
+        ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
+        confirm: async () => false,
+      },
+      { stateDir: STATE },
+    );
+
+    expect(result.aborted).toBe(true);
+    expect(result.abortReason).toBe('declined');
   });
 
   it('caps mid-run under --max-cost: partial envelope, costCapped, never throws', async () => {
