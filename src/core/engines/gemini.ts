@@ -90,12 +90,30 @@ interface GenerateShape {
 export const geminiSpec: ProviderSpec = {
   id: 'gemini',
   kind: 'parametric',
-  // `gemini-2.5-flash` began returning HTTP 404 ("no longer available to new
-  // users") - verified live 2026-07-20, so every Gemini run was failing. This
-  // alias tracks the current Flash generation the Gemini app serves (resolved
-  // live to gemini-3.5-flash), for the same reason OpenAI uses `-chat-latest`:
-  // it cannot go 404 out from under us. It FLOATS, so re-verify price at M17.
-  defaultModel: 'gemini-flash-latest',
+  // A PINNED snapshot, for the same reason the OpenAI default is one - and here
+  // the cost of NOT pinning was measured rather than argued.
+  //
+  // The history: `gemini-2.5-flash` began returning HTTP 404 ("no longer
+  // available to new users", verified live 2026-07-20), so every Gemini run
+  // failed, and `gemini-flash-latest` replaced it because an alias cannot 404
+  // that way. But it floats, and unlike OpenAI, Gemini ECHOES the resolved id
+  // (`modelVersion`) - which is how the drift was caught. On one real `check`
+  // run 2026-08-13, that alias resolved to `gemini-3.6-flash` for 7 of 8
+  // answers and `gemini-3.7-flash` for the 8th, mid-rollout, inside a single
+  // run: one engine's score blended two models. A measurement whose subject can
+  // change between two concurrent requests cannot support `diff`, which exists
+  // to attribute change over time.
+  //
+  // Both ids were verified live 2026-08-13: HTTP 200 on `generateContent`, with
+  // and without a `maxOutputTokens` cap, and both list `generateContent` in
+  // `supportedGenerationMethods`. 3.7 is the newer of the two, so it is the pin.
+  //
+  // Know the trade, exactly as the OpenAI default states it: a pinned API model
+  // is not necessarily the model the consumer Gemini app serves. This column now
+  // measures a specific, reproducible model from the family behind that app -
+  // fidelity exchanged for reproducibility. Re-pointing at any `-latest` id is a
+  // regression, not an update (a test asserts the default contains no "latest").
+  defaultModel: 'gemini-3.7-flash',
   supportsGrounded: true,
   endpoint: (_mode, model) =>
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -112,8 +130,8 @@ export const geminiSpec: ProviderSpec = {
       // upstream: every judge cap is sized by judgeMaxTokens, which adds
       // REASONING_RESERVE_TOKENS, so nothing here needs to constrain thinking.
       //
-      // Do NOT send `thinkingBudget: 0`. The Gemini 3.x models this alias
-      // resolves to refuse to have thinking DISABLED and answer HTTP 400
+      // Do NOT send `thinkingBudget: 0`. The Gemini 3.x models this adapter
+      // asks refuse to have thinking DISABLED and answer HTTP 400
       // INVALID_ARGUMENT, which broke every capped Gemini judge call until
       // 2026-08-13. It is the zero specifically, not the field: measured live
       // that day on gemini-flash-latest, `thinkingBudget: 128` and

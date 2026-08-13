@@ -297,16 +297,24 @@ describe('createAdapter', () => {
   });
 
   // `gemini-2.5-flash` returned HTTP 404 "no longer available to new users" on
-  // 2026-07-20 - the default was not merely stale (as gpt-4o-mini was), it was
-  // DEAD, so every Gemini run failed. `gemini-flash-latest` is Google's alias for
-  // the current Flash generation (resolved live to gemini-3.5-flash), chosen for
-  // the same reason as OpenAI's `-chat-latest`: it tracks what the Gemini app
-  // actually serves and cannot 404 out from under us.
+  // 2026-07-20, so every Gemini run failed; `gemini-flash-latest` replaced it.
+  // That alias then did what a floating alias does: on one real run 2026-08-13
+  // it resolved to gemini-3.6-flash for 7 answers and gemini-3.7-flash for the
+  // 8th, so one engine's score blended two models. The default is now a pinned
+  // snapshot, verified live that day.
   it('asks Gemini with a model that still exists, and prices it', () => {
     const { fn } = fakePost({});
     const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
-    expect(adapter.model).toBe('gemini-flash-latest');
+    expect(adapter.model).toBe('gemini-3.7-flash');
     expect(MODEL_PRICING.models[adapter.model]).toBeDefined();
+  });
+
+  // The same rule the OpenAI default is held to, applied to the provider that
+  // proved it necessary: Gemini echoes the resolved id, and the echo showed a
+  // single run splitting across two models mid-rollout. An alias cannot support
+  // `diff`, which exists to attribute change over time.
+  it('pins Gemini to a snapshot rather than a floating alias', () => {
+    expect(geminiSpec.defaultModel).not.toMatch(/latest/);
   });
 
   // Gemini bills thinking tokens at the OUTPUT rate ("Output: $9.00 per 1M
@@ -561,12 +569,13 @@ describe('createAdapter', () => {
       now: () => FIXED,
     }).ask('best product feed tools?', { mode: 'grounded' });
 
-    // input 545 @ $1.50/M = 0.00081750
-    // output (2161 + 1509 thinking) @ $9.00/M = 0.03303
+    // input 545 @ $0.75/M = 0.00040875
+    // output (2161 + 1509 thinking) @ $3.75/M = 0.01376250
     // 3 search queries @ $0.014 = 0.042
-    expect(answer.costUsd).toBeCloseTo(0.0758475, 6);
-    // The fee must dominate here; a regression that drops it is not subtle.
-    expect(answer.costUsd).toBeGreaterThan(0.07);
+    expect(answer.costUsd).toBeCloseTo(0.05617125, 6);
+    // The fee must dominate here; a regression that drops it is not subtle -
+    // the tokens alone come to ~$0.0142, well under the fee's $0.042.
+    expect(answer.costUsd).toBeGreaterThan(0.042);
   });
 
   // The fee follows the SEARCHES, not the engine: a parametric Gemini call
@@ -579,8 +588,8 @@ describe('createAdapter', () => {
       now: () => FIXED,
     }).ask('best product feed tools?');
 
-    // input 21 @ $1.50/M + output (1797 + 1274 thinking) @ $9.00/M, no fee.
-    expect(answer.costUsd).toBeCloseTo(0.0276705, 6);
+    // input 21 @ $0.75/M + output (1797 + 1274 thinking) @ $3.75/M, no fee.
+    expect(answer.costUsd).toBeCloseTo(0.011532, 6);
   });
 
   // Never fabricate evidence that is not there (rule #6).

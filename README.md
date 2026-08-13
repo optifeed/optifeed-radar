@@ -395,12 +395,12 @@ prompts and responses are handled under that provider's data policies.
 coverage.
 
 **Which model does each engine ask?** `gpt-5.6-sol`, `claude-sonnet-5`,
-`gemini-flash-latest` and `sonar`, through each provider's API rather than the
+`gemini-3.7-flash` and `sonar`, through each provider's API rather than the
 consumer chat product. Every answer records the model that produced it, so a
-saved run always says what it measured. The OpenAI model is a pinned snapshot:
-a floating `-latest` alias can be repointed without notice, which would let a
-`diff` show movement that came from the engine changing rather than from your
-visibility changing.
+saved run always says what it measured. The OpenAI and Gemini models are pinned
+snapshots: a floating `-latest` alias can be repointed without notice, which
+would let a `diff` show movement that came from the engine changing rather than
+from your visibility changing.
 
 **How is the score computed?** From sampling real engine answers to unbranded
 buyer questions, scoring recommendation, position, and share of voice. Scores

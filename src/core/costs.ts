@@ -55,12 +55,14 @@ export interface ModelPricing {
  * nothing in the response to reveal it, so a snapshot is the only form of this
  * row that stays true on its own.
  *
- * Gemini + Perplexity rows verified live 2026-07-20 (M17 engine smoke):
- * - `gemini-flash-latest` $1.50/$9.00 from the official sheet
- *   (https://ai.google.dev/gemini-api/docs/pricing, quoting `gemini-3.5-flash`,
- *   which the alias resolved to live). That output rate EXPLICITLY includes
- *   thinking tokens, which is why the adapter counts `thoughtsTokenCount` as
- *   output. Same floating caveat as `-chat-latest`. The `gemini-2.5-flash` row
+ * Gemini + Perplexity rows verified live 2026-07-20 (M17 engine smoke), Gemini
+ * re-quoted 2026-08-13 from https://ai.google.dev/gemini-api/docs/pricing:
+ * - `gemini-3.7-flash` (the pinned ask default) and `gemini-3.6-flash` bill
+ *   $0.75/$3.75 through 2026-12-31, then $1.50/$7.50. The alias they replaced
+ *   was priced by quoting a DIFFERENT model's row (`gemini-3.5-flash` at
+ *   $1.50/$9.00), so Gemini spend was reported at roughly 2.4x what Google
+ *   billed. Output rates EXPLICITLY include thinking tokens, which is why the
+ *   adapter counts `thoughtsTokenCount` as output. The `gemini-2.5-flash` row
  *   is kept for historical snapshots only - that model now 404s.
  * - `sonar` token rates confirmed against Perplexity's own `usage.cost` on a
  *   real call ($1/$1), plus a flat `perRequestUsd` search fee of $0.005 that
@@ -154,6 +156,47 @@ export const MODEL_PRICING: {
     // observation is used: over-reserving only costs a little parallelism
     // (settle returns the excess immediately), while under-reserving breaches
     // the cap.
+    // The Gemini ask default (pinned 2026-08-13) and the sibling the retired
+    // alias also resolved to. Both are quoted at $0.75 input / $3.75 output on
+    // the official sheet (retrieved 2026-08-13), each marked "through December
+    // 31, 2026".
+    //
+    // FROM 2027-01-01 BOTH BECOME $1.50 / $7.50 - the input price doubles and
+    // nothing in the code will notice. The sheet states the change; only this
+    // comment and `lastUpdated` carry it. Update these two rows on that date.
+    //
+    // Every row on that sheet labels its output price "including thinking
+    // tokens", which is why the adapter counts `thoughtsTokenCount` as output.
+    //
+    // avgOutputTokens is MEASURED and deliberately above every observation:
+    // thinking bills as output and runs high and VARIES. Live asks recorded
+    // 2584 and 3356 on the alias these ids served, and a real `check` 2026-08-13
+    // (optifeed.com, es-ES, 8 answers) came in at mean 2517, median 2494, range
+    // 2166-2957. Over-reserving costs a little parallelism (settle returns the
+    // excess immediately); under-reserving breaches the cap.
+    'gemini-3.7-flash': {
+      inputPerMTokens: 0.75,
+      outputPerMTokens: 3.75,
+      perSearchUsd: 0.014,
+      avgOutputTokens: 3400,
+    },
+    'gemini-3.6-flash': {
+      inputPerMTokens: 0.75,
+      outputPerMTokens: 3.75,
+      perSearchUsd: 0.014,
+      avgOutputTokens: 3400,
+    },
+    // Superseded as the ask default 2026-08-13 (it floats; see the adapter).
+    // Kept because snapshots on disk record answers from it, and because it is
+    // still the Gemini JUDGE default in `config.ts`, so this row is live rather
+    // than purely historical.
+    //
+    // Left at gemini-3.5-flash's $1.50/$9.00 ON PURPOSE, even though the alias
+    // resolved to the cheaper 3.6/3.7-flash on 2026-08-13. A floating id has no
+    // quoted price of its own and can repoint to a dearer model between two
+    // calls, so it is priced at the dearest model it has been seen to serve -
+    // the same direction of error as the claude-sonnet-5 row. An estimate must
+    // not under-report spend.
     'gemini-flash-latest': {
       inputPerMTokens: 1.5,
       outputPerMTokens: 9,
