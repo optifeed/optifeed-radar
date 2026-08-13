@@ -346,27 +346,30 @@ describe('createAdapter', () => {
     expect(answer.text).not.toContain('I should mention');
   });
 
-  // Verified live 2026-07-20: with maxOutputTokens 60 (the scoring judge's
-  // budget), thinking consumed 55 of the 60 and the answer came back as a single
-  // stray character - finishReason MAX_TOKENS. `thinkingBudget: 0` returned a
-  // clean "Yes" on the same call. Gemini budgets thinking and answer TOGETHER, so
-  // any caller-supplied cap must exclude thinking or the answer is starved. The
-  // ask path sends no cap and keeps thinking on (that is what a real user gets).
-  it('disables Gemini thinking when the caller caps tokens', async () => {
+  // `thinkingConfig.thinkingBudget: 0` was added on 2026-07-20, when a 60-token
+  // scoring cap left Gemini's answer as one stray character. It has since become
+  // a hard failure: gemini-flash-latest now resolves to a Gemini 3.x model that
+  // rejects the field outright. Verified live 2026-08-13 with two otherwise
+  // identical bodies - with the field, HTTP 400 INVALID_ARGUMENT; without it,
+  // HTTP 200 and a normal answer. Every judge cap now carries
+  // REASONING_RESERVE_TOKENS of headroom, so thinking has room and does not need
+  // disabling.
+  it('caps Gemini output without sending a thinking budget', async () => {
     const { fn, calls } = fakePost(geminiReal);
     const adapter = createAdapter(geminiSpec, { httpPost: fn, apiKey: 'k' });
 
-    await adapter.ask('judge this', { maxTokens: 60 });
+    await adapter.ask('judge this', { maxTokens: 4060 });
     const capped = JSON.parse(calls[0]!.body) as {
-      generationConfig?: { thinkingConfig?: { thinkingBudget?: number } };
+      generationConfig?: { maxOutputTokens?: number; thinkingConfig?: unknown };
     };
-    expect(capped.generationConfig?.thinkingConfig?.thinkingBudget).toBe(0);
+    expect(capped.generationConfig?.maxOutputTokens).toBe(4060);
+    expect(capped.generationConfig?.thinkingConfig).toBeUndefined();
 
     await adapter.ask('answer this');
     const uncapped = JSON.parse(calls[1]!.body) as {
-      generationConfig?: { thinkingConfig?: unknown };
+      generationConfig?: unknown;
     };
-    expect(uncapped.generationConfig?.thinkingConfig).toBeUndefined();
+    expect(uncapped.generationConfig).toBeUndefined();
   });
 
   const geminiGroundedReal = realFixture('gemini-grounded-real.json');
