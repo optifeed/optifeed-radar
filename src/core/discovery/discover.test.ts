@@ -352,7 +352,13 @@ describe('discover', () => {
     );
 
     expect(result.profile).toEqual(existing); // kept intact
-    expect(result.competitorNote).toMatch(/fetch/i);
+    // Prefixed like every other note this file emits, so a run's notes array
+    // says WHICH phase produced each line. `Discovery: ` rather than
+    // `Competitor discovery: ` because the fetch is discovery-wide - the
+    // competitor judge call never even happened on this path.
+    expect(result.competitorNote).toBe(
+      'Discovery: fetch failed; kept the existing profile',
+    );
   });
 
   it('returns a degraded stem profile when the fetch fails and no profile exists', async () => {
@@ -368,6 +374,30 @@ describe('discover', () => {
 
     expect(result.profile.brand).toBe('Acme'); // domain stem
     expect(result.profile.degraded).toBe(true);
+    expect(result.competitorNote).toBe(
+      'Discovery: fetch failed; degraded to a domain-only profile',
+    );
+  });
+
+  // The worst of the unprefixed notes: `resolveQueries` emits the same sentence
+  // for ITS judge, so without an origin the two read as one line - and
+  // `dedupeNotes` collapses byte-identical notes, hiding that two separate
+  // things had no judge.
+  it('prefixes the no-judge note with its origin', async () => {
+    const { fetcher } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const { fs } = memFs();
+
+    const result = await discover(
+      'acme.example',
+      { fetcher, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.competitorNote).toBe(
+      'Competitor discovery: no judge configured',
+    );
   });
 
   // Two independent judge calls (this one, and query generation's) can fail

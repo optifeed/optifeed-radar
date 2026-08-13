@@ -55,6 +55,16 @@ export type ProgressEvent =
    * FULL pack and is routine, so a truthy `note` never implies zero prompts -
    * read `prompts.length` for that, and render the note as information rather
    * than as an error.
+   *
+   * NO current consumer renders it, and that is deliberate rather than an
+   * oversight: both of today's progress sinks are attached to a surface that
+   * prints the same reason again moments later - the CLI's abort block
+   * (`cli/progress.ts` says so at its `queries-done` case) and the MCP tool's
+   * error text, which carries `result.notes`. Kept on the event because it is
+   * the only channel a progress consumer has for WHY a phase came back empty,
+   * and a future MCP progress renderer (one without an abort block after it)
+   * needs it. Do not delete it as dead weight; it is a published field of a
+   * structured event, not an internal.
    */
   | { kind: 'queries-done'; prompts: string[]; note?: string }
   | { kind: 'ask-start'; total: number }
@@ -140,10 +150,16 @@ export type AbortReason = 'declined' | 'no-prompts' | 'unconfirmed';
 
 /**
  * Whether an abort was a FAILURE rather than the user's own choice. The single
- * source of truth for every consumer that reacts to an abort - the CLI's exit
- * code and the MCP error message - so none of them hand-rolls its own subset of
- * the taxonomy and drifts when a reason is added (the M8 lesson that
- * `isPartialRun` in `core/output` was extracted for).
+ * source of truth for any consumer that has to tell the two apart, so none of
+ * them hand-rolls its own subset of the taxonomy and drifts when a reason is
+ * added (the M8 lesson that `isPartialRun` in `core/output` was extracted for).
+ *
+ * Today that is exactly one caller: the CLI's exit code (`cli/check.ts`), the
+ * only surface a human can decline at. The MCP tool does NOT call this and is
+ * right not to - it passes `yes: true` (hard rule #8), so `declined` is
+ * unreachable there and every abort it can see is a failure it reports as an
+ * error. A second interactive surface, or an MCP tool that ever grows a
+ * confirmation, asks here rather than re-deriving the rule.
  *
  * Only `declined` is evidence that a human chose to stop; everything else
  * measured nothing. `undefined` therefore reads as a FAILURE, not as a decline:

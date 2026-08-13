@@ -115,7 +115,10 @@ export async function resolveQueries(
         queries: [],
         generatedAt: now(),
       },
-      note: 'no judge configured',
+      // Prefixed for the same reason the generation note below is: discovery's
+      // competitor call reports its own missing judge with the identical
+      // sentence, so two things being unavailable must not read as one line.
+      note: 'Query generation: no judge configured',
     };
   }
 

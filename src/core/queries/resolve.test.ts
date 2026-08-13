@@ -308,4 +308,20 @@ describe('resolveQueries', () => {
       'Query generation: judge error: HTTP 429: no credits remaining',
     );
   });
+
+  // Same reason, and the case where an unprefixed note is worst: discovery can
+  // emit the very same sentence for its own judge call, so two different things
+  // being unavailable would otherwise read as one line (and `dedupeNotes` would
+  // collapse them into one).
+  it('prefixes the no-judge note with its origin', async () => {
+    const { fs } = memFs();
+
+    const result = await resolveQueries(
+      profile(),
+      { guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.note).toBe('Query generation: no judge configured');
+  });
 });
