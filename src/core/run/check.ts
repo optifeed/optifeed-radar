@@ -178,9 +178,9 @@ export function isAbortFailure(reason: AbortReason | undefined): boolean {
 
 /** Outcome of {@link runCheck}. */
 export interface RunCheckResult {
-  /** The check envelope; absent only when the run was aborted at confirmation. */
+  /** The check envelope; absent on every abort, whatever the reason. */
   envelope?: VisibilityEnvelope;
-  /** True when the confirmation gate declined the spend (no engines asked). */
+  /** True when the run stopped before querying any engine. {@link abortReason} says why. */
   aborted: boolean;
   /**
    * Why the run aborted, when it did. A caller that maps aborts to an exit code
