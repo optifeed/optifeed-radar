@@ -96,14 +96,25 @@ export const MODEL_PRICING: {
     // Current generation (what ChatGPT serves / what we ask + judge with).
     // avgOutputTokens measured live 2026-07-20: ~2583 on a grounded ask.
     // The ask default. Quoted directly from the sheet's own `chat-latest` row
-    // (2026-08-13). `avgOutputTokens` is carried over from the measurement made
-    // against `gpt-5.3-chat-latest`, NOT re-measured: this alias floats, so what
-    // it resolves to may answer at a different length. Re-measure when a run can
-    // be made against a funded account.
+    // (2026-08-13).
+    //
+    // `avgOutputTokens` is MEASURED, and it is the reason this row needs an
+    // override at all: whatever `chat-latest` resolves to answers far more
+    // briefly than the model the global default was built from. Real `check`
+    // run 2026-08-13, 8 answers (bcombinator.com, es-ES): mean 480, median 450,
+    // range 298-744. The global 2600 was back-solved from gpt-5.3-chat-latest
+    // at ~2583, so inheriting it over-quoted the confirm gate and over-reserved
+    // every OpenAI call by ~5x - the same shape of over-reservation that makes
+    // a tight --max-cost skip work it could have afforded.
+    //
+    // Set above the observed MAX, not the mean: an estimate should not
+    // under-report spend. Thin sample though - one brand, one language, one
+    // day, and the alias floats - so re-measure rather than trust this if a
+    // quote ever looks wrong.
     'chat-latest': {
       inputPerMTokens: 5,
       outputPerMTokens: 30,
-      avgOutputTokens: 2600,
+      avgOutputTokens: 800,
     },
     // Retired 2026-08-13: OpenAI deprecated the per-generation chat aliases and
     // this now 404s. Kept only so snapshots written before the switch still
