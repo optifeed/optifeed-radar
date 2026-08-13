@@ -256,6 +256,13 @@ export async function discoverCompetitors(
     guard.settle(projected, res.costUsd, 'setup');
     // A 200 with no text is a failed call. Parsing it yields [], which the
     // profile would then carry as a measured "no competitors".
+    //
+    // Only the EMPTY body is guarded here, unlike generateQueries, which also
+    // reports a response that parsed to nothing. The asymmetry is deliberate: a
+    // brand always has buyer questions, so zero parsed queries can only be a
+    // failure, whereas zero parsed competitors is a legitimate answer - a judge
+    // that classifies the business and names no rival has measured something,
+    // and parseDiscovery returns that case on purpose.
     if (res.text.trim() === '') {
       return {
         competitors: [],
