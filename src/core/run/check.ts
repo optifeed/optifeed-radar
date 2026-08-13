@@ -48,7 +48,14 @@ export type ProgressEvent =
   | { kind: 'discovery-start' }
   | { kind: 'discovery-done'; brand: string }
   | { kind: 'queries-start' }
-  /** `note` carries why generation produced nothing, when it did. */
+  /**
+   * `note` is whatever the pack's resolution needs to say out loud: why
+   * generation produced nothing (judge error, setup cap, no judge configured),
+   * OR that a reused pack was truncated by `--quick`. The second case ships a
+   * FULL pack and is routine, so a truthy `note` never implies zero prompts -
+   * read `prompts.length` for that, and render the note as information rather
+   * than as an error.
+   */
   | { kind: 'queries-done'; prompts: string[]; note?: string }
   | { kind: 'ask-start'; total: number }
   | { kind: 'ask-answered'; done: number; total: number }
@@ -124,6 +131,35 @@ export interface RunCheckOptions {
   persist?: boolean;
 }
 
+/**
+ * Why a run stopped before asking any engine. `declined` is the user's own
+ * choice; `no-prompts` (generation produced nothing to ask) and `unconfirmed`
+ * (no confirm handler and no `yes`) are failures to measure.
+ */
+export type AbortReason = 'declined' | 'no-prompts' | 'unconfirmed';
+
+/**
+ * Whether an abort was a FAILURE rather than the user's own choice. The single
+ * source of truth for every consumer that reacts to an abort - the CLI's exit
+ * code and the MCP error message - so none of them hand-rolls its own subset of
+ * the taxonomy and drifts when a reason is added (the M8 lesson that
+ * `isPartialRun` in `core/output` was extracted for).
+ *
+ * Only `declined` is evidence that a human chose to stop; everything else
+ * measured nothing. `undefined` therefore reads as a FAILURE, not as a decline:
+ * an abort that carries no reason is an abort nobody explained, and calling it
+ * a decline would claim a user consented to a stop they never saw. Every
+ * `runCheck` abort path tags a reason today, so this case can only arise from a
+ * path that forgot to - which is exactly when silence must not read as consent
+ * (hard rule #6).
+ *
+ * Call it for a run whose `aborted` is true; a completed run has no abort to
+ * classify.
+ */
+export function isAbortFailure(reason: AbortReason | undefined): boolean {
+  return reason !== 'declined';
+}
+
 /** Outcome of {@link runCheck}. */
 export interface RunCheckResult {
   /** The check envelope; absent only when the run was aborted at confirmation. */
@@ -131,11 +167,11 @@ export interface RunCheckResult {
   /** True when the confirmation gate declined the spend (no engines asked). */
   aborted: boolean;
   /**
-   * Why the run aborted. `declined` is the user's own choice and is not a
-   * failure; the other two are, and a caller that maps aborts to an exit code
-   * must be able to tell them apart.
+   * Why the run aborted, when it did. A caller that maps aborts to an exit code
+   * or an error message asks {@link isAbortFailure} rather than comparing the
+   * value itself - a decline is not a failure, everything else is.
    */
-  abortReason?: 'declined' | 'no-prompts' | 'unconfirmed';
+  abortReason?: AbortReason;
   /** Snapshot path written, if persisted this run. */
   snapshotPath?: string;
   /** Human-readable notes (competitor skip, query-gen skip, confirmation abort). */

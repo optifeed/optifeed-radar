@@ -20,7 +20,7 @@ import {
   type JudgeClient,
   type QueryPack,
 } from '../types.js';
-import { runCheck, type ProgressEvent } from './check.js';
+import { isAbortFailure, runCheck, type ProgressEvent } from './check.js';
 
 const STATE = '/state';
 const NOW = () => '2026-07-15T00:00:00.000Z';
@@ -282,6 +282,27 @@ describe('runCheck spend reporting', () => {
     );
     expect(result.envelope!.spend).toBeDefined();
     expect(result.envelope!.costCapped).toBe(true);
+  });
+});
+
+// One shared predicate for "was this abort a failure?", for the same reason
+// `isPartialRun` exists (M8 lesson #1): the CLI's exit code and the MCP error
+// message must not each hand-roll `reason !== 'declined'` and drift.
+describe('isAbortFailure', () => {
+  it('does not call the user declining a failure', () => {
+    expect(isAbortFailure('declined')).toBe(false);
+  });
+
+  it('calls every abort that measured nothing a failure', () => {
+    expect(isAbortFailure('no-prompts')).toBe(true);
+    expect(isAbortFailure('unconfirmed')).toBe(true);
+  });
+
+  // An untagged abort is the one case a subset predicate would get WRONG in the
+  // dangerous direction: only `declined` is evidence the user chose to stop, so
+  // an abort carrying no reason must read as a failure, never as a decline.
+  it('treats an untagged abort as a failure, not as a decline', () => {
+    expect(isAbortFailure(undefined)).toBe(true);
   });
 });
 
