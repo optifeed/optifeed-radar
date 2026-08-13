@@ -377,6 +377,24 @@ describe('postJsonWithRetry', () => {
     expect(message).not.toContain('[redacted');
   });
 
+  // The key prefixes are short enough to appear MID-WORD in ordinary English -
+  // "risk-free", "task-id", "disk-quota" all contain "sk-". Matching those
+  // would eat the middle of a sentence and leave the message less readable
+  // than the raw body it replaced, so a key must start at a word boundary.
+  it('does not redact ordinary words that merely contain a key prefix', async () => {
+    const body = JSON.stringify({
+      error: {
+        message:
+          'This risk-free tier has no disk-quota left; retry with task-id 42.',
+      },
+    });
+    const message = await messageFor(400, body);
+    expect(message).toContain('risk-free');
+    expect(message).toContain('disk-quota');
+    expect(message).toContain('task-id 42');
+    expect(message).not.toContain('[redacted');
+  });
+
   // A gateway/proxy error is not always JSON at all - an nginx or Cloudflare
   // 502 page is HTML. `JSON.parse` throws, so this must fall back to the
   // blind whitespace-collapse-and-slice path, not lose the body entirely.

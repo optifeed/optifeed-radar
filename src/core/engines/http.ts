@@ -131,6 +131,11 @@ const REDACTED_KEY = '[redacted API key]';
  * tolerate the mask: `*` is in the character class because OpenAI replaces the
  * middle of the key with asterisks.
  *
+ * Each prefix must start at a WORD BOUNDARY. `sk-` is short enough to occur
+ * mid-word in ordinary English - "risk-free", "task-id", "disk-quota" - and an
+ * unanchored match ate the middle of those sentences, leaving a message less
+ * readable than the raw body it replaced.
+ *
  * Deliberately NOT a generic "long opaque token" pattern: model ids
  * (`gpt-5.4-mini-2026-01-01`), request ids (`req_...`) and org ids travel in
  * these same messages and are what makes a failure diagnosable. Redacting them
@@ -139,9 +144,9 @@ const REDACTED_KEY = '[redacted API key]';
 const API_KEY_PATTERNS: RegExp[] = [
   // OpenAI (`sk-...`, `sk-proj-...`), Anthropic (`sk-ant-...`), and
   // Perplexity, whose keys use the same prefix.
-  /sk-[A-Za-z0-9_*-]+/g,
+  /\bsk-[A-Za-z0-9_*-]+/g,
   // Google AI Studio / Gemini keys, which a 400 echoes whole.
-  /AIza[A-Za-z0-9_*-]+/g,
+  /\bAIza[A-Za-z0-9_*-]+/g,
 ];
 
 /**
