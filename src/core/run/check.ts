@@ -154,20 +154,22 @@ export type AbortReason = 'declined' | 'no-prompts' | 'unconfirmed';
  * them hand-rolls its own subset of the taxonomy and drifts when a reason is
  * added (the M8 lesson that `isPartialRun` in `core/output` was extracted for).
  *
- * Today that is exactly one caller: the CLI's exit code (`cli/check.ts`), the
- * only surface a human can decline at. The MCP tool does NOT call this and is
- * right not to - it passes `yes: true` (hard rule #8), so `declined` is
- * unreachable there and every abort it can see is a failure it reports as an
- * error. A second interactive surface, or an MCP tool that ever grows a
+ * Today that is the two CLI exit codes - `cli/check.ts` and `cli/shopping.ts`,
+ * the only surfaces a human can decline at, and the reason this is shared
+ * rather than inlined at one of them. The MCP tools do NOT call this and are
+ * right not to - they pass `yes: true` (hard rule #8), so `declined` is
+ * unreachable there and every abort they can see is a failure they report as an
+ * error. A third interactive surface, or an MCP tool that ever grows a
  * confirmation, asks here rather than re-deriving the rule.
  *
  * Only `declined` is evidence that a human chose to stop; everything else
  * measured nothing. `undefined` therefore reads as a FAILURE, not as a decline:
  * an abort that carries no reason is an abort nobody explained, and calling it
- * a decline would claim a user consented to a stop they never saw. Every
- * `runCheck` abort path tags a reason today, so this case can only arise from a
- * path that forgot to - which is exactly when silence must not read as consent
- * (hard rule #6).
+ * a decline would claim a user consented to a stop they never saw. Neither a
+ * {@link RunCheckAborted} nor a `RunShoppingAborted` can reach here untagged -
+ * `abortReason` is required on both arms - but the parameter stays widened for
+ * callers holding a reason from somewhere else (a parsed payload), where
+ * silence must still not read as consent (hard rule #6).
  *
  * Call it for a run whose `aborted` is true; a completed run has no abort to
  * classify.
@@ -176,32 +178,57 @@ export function isAbortFailure(reason: AbortReason | undefined): boolean {
   return reason !== 'declined';
 }
 
-/** Outcome of {@link runCheck}. */
-export interface RunCheckResult {
-  /** The check envelope; absent on every abort, whatever the reason. */
-  envelope?: VisibilityEnvelope;
-  /** True when the run stopped before querying any engine. {@link abortReason} says why. */
-  aborted: boolean;
-  /**
-   * Why the run aborted, when it did. A caller that maps aborts to an exit code
-   * or an error message asks {@link isAbortFailure} rather than comparing the
-   * value itself - a decline is not a failure, everything else is.
-   */
-  abortReason?: AbortReason;
-  /** Snapshot path written, if persisted this run. */
-  snapshotPath?: string;
+/**
+ * Fields both arms of {@link RunCheckResult} carry, whatever the outcome.
+ *
+ * `spend` is here rather than on the success arm alone because discovery and
+ * query generation happen BEFORE the confirmation gate: declining still billed
+ * for the setup phase, and reporting spend only on success would tell a user
+ * who declined precisely to avoid spending that the run was free (rule #6).
+ */
+interface RunCheckCommon {
   /** Human-readable notes (competitor skip, query-gen skip, confirmation abort). */
   notes: string[];
-  /**
-   * What the run spent, from the cost guard.
-   *
-   * Present even on an ABORTED run: discovery and query generation happen
-   * before the confirmation gate, so declining still billed for the setup
-   * phase. Reporting only on success would tell a user who declined in order
-   * to avoid spending that the run was free.
-   */
+  /** What the run spent, from the cost guard. Present even on an abort. */
   spend?: RunSpend;
 }
+
+/** A run that reached the engines and produced an envelope. */
+export interface RunCheckCompleted extends RunCheckCommon {
+  aborted: false;
+  /** The check envelope. Guaranteed by the type once `aborted` is false. */
+  envelope: VisibilityEnvelope;
+  /**
+   * Snapshot path written, if persisted this run. Only a completed run has one:
+   * an abort returns before `saveSnapshot`, so carrying the field on the abort
+   * arm would describe a file that cannot exist.
+   */
+  snapshotPath?: string;
+}
+
+/** A run that stopped before querying any engine. */
+export interface RunCheckAborted extends RunCheckCommon {
+  aborted: true;
+  /**
+   * Why the run aborted. REQUIRED on this arm, so no return site can report an
+   * abort it does not explain. A caller that maps aborts to an exit code or an
+   * error message asks {@link isAbortFailure} rather than comparing the value
+   * itself - a decline is not a failure, everything else is.
+   */
+  abortReason: AbortReason;
+}
+
+/**
+ * Outcome of {@link runCheck} - a discriminated union on `aborted`, not one
+ * bag of optionals.
+ *
+ * Every consumer narrows on the SAME discriminant (`result.aborted`). The two
+ * fields that used to be independent optionals - `envelope` and `abortReason` -
+ * are each required on exactly one arm, so "aborted with no reason" and
+ * "completed with no envelope" are no longer representable, and a completed run
+ * needs no non-null assertion to read its envelope.
+ */
+export type RunCheckResult = RunCheckCompleted | RunCheckAborted;
 
 /**
  * Run the full `check` pipeline for `domain`. Never throws for a partial run -
@@ -345,16 +372,19 @@ export async function runCheck(
   );
   report({ kind: 'scoring-done' });
 
-  // Assemble honesty from ALL FOUR independent signals (M8 review lesson #1):
-  // a cap, a skipped engine, an engine that answered only some prompts, or a
-  // degraded profile each make the run partial. Dropping any one of them
-  // relaunders a partial run as complete.
+  // Assemble honesty from ALL FIVE independent signals (M8 review lesson #1):
+  // a cap, a skipped engine, an engine that answered only some prompts, an
+  // engine whose answers came from several models, or a degraded profile each
+  // make the run partial. Dropping any one of them relaunders a partial run as
+  // complete.
   const honesty: RunHonesty = {
     costCapped: guard.costCapped ? true : undefined,
     skippedEngines:
       asked.skippedEngines.length > 0 ? asked.skippedEngines : undefined,
     partialEngines:
       asked.partialEngines.length > 0 ? asked.partialEngines : undefined,
+    mixedModelEngines:
+      asked.mixedModelEngines.length > 0 ? asked.mixedModelEngines : undefined,
     degraded: profile.degraded ? true : undefined,
   };
 

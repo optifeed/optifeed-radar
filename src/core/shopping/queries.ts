@@ -11,7 +11,9 @@
  * Every failure path still produces prompts: the named layer is templatable
  * without a judge, and the category layer falls back to the product descriptor
  * or the brand category. A product with neither loses its visibility layer and
- * the run SAYS so (rule #6) rather than scoring it against nothing.
+ * the run SAYS so (rule #6) rather than scoring it against nothing - as it does
+ * whenever a template stood in for a judge-written question, naming the
+ * products that happened to.
  */
 import {
   CostGuard,
@@ -130,6 +132,20 @@ export function parseProductQueries(
   return out;
 }
 
+/**
+ * Did the judge call yield anything at all? False means EVERY product falls
+ * back to templates, which is a failed call rather than a store whose products
+ * have no buyer questions - and the one condition under which the per-product
+ * fallback note stays quiet (a whole-call note already carries the cause).
+ */
+function hasAnyQuestions(
+  generated: Map<number, { visibility: string[]; reputation: string[] }>,
+): boolean {
+  return [...generated.values()].some(
+    (row) => row.visibility.length > 0 || row.reputation.length > 0,
+  );
+}
+
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -195,18 +211,37 @@ function buildGenPrompt(
   ].join('\n');
 }
 
-/** Take the first `n` unique prompts from `preferred`, then from `fallback`. */
-function fill(n: number, preferred: string[], fallback: string[]): string[] {
+/**
+ * Take the first `n` unique prompts from `preferred`, then from `fallback`.
+ *
+ * Reports whether a fallback prompt was actually KEPT, so the caller names the
+ * products whose questions are generic without re-deriving "was this usable?"
+ * from the inputs: usable here means non-blank once folded and not a duplicate
+ * of one already taken, and a second copy of that rule would drift from this
+ * one. A fallback that was skipped as a duplicate does not count - the prompt
+ * that survived came from the judge.
+ */
+function fill(
+  n: number,
+  preferred: string[],
+  fallback: string[],
+): { prompts: string[]; usedFallback: boolean } {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const prompt of [...preferred, ...fallback]) {
+  let usedFallback = false;
+  const candidates: [string, boolean][] = [
+    ...preferred.map((p): [string, boolean] => [p, false]),
+    ...fallback.map((p): [string, boolean] => [p, true]),
+  ];
+  for (const [prompt, isFallback] of candidates) {
     const key = fold(prompt).trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(prompt);
+    if (isFallback) usedFallback = true;
     if (out.length >= n) break;
   }
-  return out;
+  return { prompts: out, usedFallback };
 }
 
 /**
@@ -281,10 +316,7 @@ export async function generateProductQueries(
           );
         } else {
           generated = parseProductQueries(res.text, products.length);
-          const usable = [...generated.values()].some(
-            (row) => row.visibility.length > 0 || row.reputation.length > 0,
-          );
-          if (!usable) {
+          if (!hasAnyQuestions(generated)) {
             notes.push(
               'Could not write product questions (the judge response contained no usable questions); generic template questions were used instead.',
             );
@@ -305,6 +337,7 @@ export async function generateProductQueries(
   const prompts: ProductPrompt[] = [];
   const missingSubject: string[] = [];
   const borrowedCategory: string[] = [];
+  const templated: string[] = [];
 
   products.forEach((product, productIndex) => {
     const terms = productTerms(product);
@@ -319,9 +352,10 @@ export async function generateProductQueries(
     // boundary-aware exclusion so "Aria 2" is caught but "aria" inside another
     // word is not.
     const cleanVisibility = excludeCompetitors(row?.visibility ?? [], terms);
-    const visibility = subject
+    const visibilityFill = subject
       ? fill(visibilityCount, cleanVisibility, templateVisibility(subject))
-      : [];
+      : { prompts: [], usedFallback: false };
+    const visibility = visibilityFill.prompts;
     if (!subject) {
       missingSubject.push(product.name);
     }
@@ -330,11 +364,20 @@ export async function generateProductQueries(
     const named = (row?.reputation ?? []).filter((p) =>
       terms.some((term) => mentionsTerm(fold(p), term)),
     );
-    const reputation = fill(
+    const reputationFill = fill(
       REPUTATION_PROMPTS_PER_PRODUCT,
       named,
       templateReputation(product.name),
     );
+    const reputation = reputationFill.prompts;
+
+    // PARTLY templated counts, not only wholly: two judge questions plus one
+    // template still scores this product partly against generic phrasing, and
+    // requiring "no judge questions at all" would report the 0-of-3 product
+    // while staying silent on the 2-of-3 one.
+    if (visibilityFill.usedFallback || reputationFill.usedFallback) {
+      templated.push(product.name);
+    }
 
     for (const prompt of visibility) {
       prompts.push({ productIndex, layer: 'visibility', prompt });
@@ -343,6 +386,18 @@ export async function generateProductQueries(
       prompts.push({ productIndex, layer: 'reputation', prompt });
     }
   });
+
+  // A gap in ONE product is invisible to the all-or-nothing check above: a
+  // response that covers product 0 and skips product 1 is "usable", so product
+  // 1 used to get generic templates and the run said nothing. Name the products
+  // - "some products" is not actionable. Silent when the call produced nothing
+  // at all: the whole-call note already gave the cause, and repeating it once
+  // per product would bury it under a list.
+  if (templated.length > 0 && hasAnyQuestions(generated)) {
+    notes.push(
+      `Not all questions for ${templated.join(', ')} came from the judge; generic template questions were used for the rest.`,
+    );
+  }
 
   // A product with no descriptor was measured against the STORE's category,
   // which is a real answer to a different question than the merchant may think

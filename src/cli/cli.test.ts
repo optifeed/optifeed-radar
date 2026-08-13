@@ -356,6 +356,57 @@ describe('check command', () => {
     expect(all).toContain('--queries');
   });
 
+  // Notes are diagnostics about a result, not the result, so they belong on
+  // stderr on EVERY path. They already did on the success path; the abort path
+  // put them (and the rest of its prose) on stdout unless --json, so a human
+  // running `check domain > out.txt` got the whole explanation of a failure in
+  // the file and none of a success's caveats. These two tests pin both halves
+  // so the paths cannot drift apart again.
+  it('sends an abort and its notes to stderr, not stdout', async () => {
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+
+    await run(rt, ['check', 'acme.example', '--yes', '--regenerate']);
+
+    // The whole abort block moves together - splitting the prose across two
+    // streams would be a third inconsistency, not a fix.
+    expect(rt.output.join('')).toBe('');
+    // The note block is colored when the terminal supports it, so assert on
+    // the plain text underneath.
+    // eslint-disable-next-line no-control-regex
+    const err = rt.errors.join('').replace(/\u001b\[\d+m/g, '');
+    expect(err).toContain('Aborted');
+    // Rendered through the shared note block (heading + `!` marker), not a
+    // hand-rolled loop: the same visual language the progress lines use.
+    expect(err).toContain('Run notes:');
+    expect(err).toContain('! No buyer prompts were generated');
+    expect(err).toContain('--queries');
+  });
+
+  it('sends success-path notes to stderr, not stdout', async () => {
+    // A run that SUCCEEDS and still carries a note: --refresh re-runs
+    // discovery, and its competitor call fails against a judge that throws.
+    // The cached pack still supplies the prompts, so engines are queried.
+    const rt = testRuntime({ env: { OPENAI_API_KEY: 'sk-test' } });
+    const base = rt.checkDeps!;
+    rt.checkDeps = (...args: Parameters<typeof base>) => ({
+      ...base(...args),
+      judge: {
+        model: 'judge-model',
+        complete: async () => {
+          throw new Error('upstream 500');
+        },
+      },
+    });
+
+    await run(rt, ['check', 'acme.example', '--yes', '--refresh']);
+
+    const out = rt.output.join('');
+    const err = rt.errors.join('');
+    expect(out).toContain('AI Visibility Score');
+    expect(err).toContain('Competitor discovery');
+    expect(out).not.toContain('Competitor discovery');
+  });
+
   // A --queries pack the user supplied with no questions in it also aborts as
   // `no-prompts`, but nothing generated those prompts, so blaming the judge
   // names the wrong cause and pointing at --queries recommends the thing they

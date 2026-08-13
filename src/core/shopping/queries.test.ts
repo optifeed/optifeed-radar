@@ -357,6 +357,70 @@ describe('generateProductQueries', () => {
     expect(result.notes.join(' ')).toContain('no usable');
   });
 
+  // The all-or-nothing check above passes as soon as ONE product got usable
+  // questions, so a response covering product 0 and skipping product 1 was
+  // reported as a clean success while product 1 was scored on generic
+  // templates. Which products fell back is the actionable part - "some
+  // products did" is not.
+  it('names the products the judge did not cover', async () => {
+    const coversFirstOnly = JSON.stringify({
+      '0': {
+        visibility: [
+          'best quiet espresso machine for a small kitchen',
+          'quiet espresso machine under $500',
+          'which espresso machine is quietest',
+        ],
+        reputation: ['is the Aria 2 worth buying?'],
+      },
+    });
+
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge: judgeReturning(coversFirstOnly), guard: new CostGuard() },
+      opts,
+    );
+
+    const note = result.notes.find((n) => n.includes('template'));
+    expect(note).toBeDefined();
+    expect(note).toContain('Presto X');
+    // Aria 2 was covered; naming it would send the user after a fault that is
+    // not there.
+    expect(note).not.toContain('Aria 2');
+    // The whole-call notes stay quiet: the call itself worked.
+    expect(result.notes.join(' ')).not.toContain('no usable');
+    expect(result.notes.join(' ')).not.toContain('empty response');
+  });
+
+  // A product can get SOME questions from the judge and the rest from
+  // templates - here two of three visibility prompts survive and a template
+  // backfills the one that named the product. That product's category score
+  // is then part generic, which is the same hazard at a smaller size, so it
+  // is reported too.
+  it('reports a product whose questions were only partly judge-written', async () => {
+    const namesProduct = JSON.stringify({
+      '0': {
+        visibility: [
+          'is the Aria 2 the best quiet espresso machine',
+          'best quiet espresso machine for a small kitchen',
+          'quiet espresso machine under $500',
+        ],
+        reputation: ['is the Aria 2 worth buying?'],
+      },
+    });
+
+    const result = await generateProductQueries(
+      PROFILE,
+      [PRODUCTS[0]!],
+      { judge: judgeReturning(namesProduct), guard: new CostGuard() },
+      opts,
+    );
+
+    expect(result.notes.find((n) => n.includes('template'))).toContain(
+      'Aria 2',
+    );
+  });
+
   it('says nothing about templates when the judge answered usably', async () => {
     const judge = judgeReturning(GOOD_RESPONSE);
 
@@ -369,6 +433,22 @@ describe('generateProductQueries', () => {
 
     expect(result.notes.join(' ')).not.toContain('empty response');
     expect(result.notes.join(' ')).not.toContain('no usable');
+    // No false positive: every prompt for both products came from the judge,
+    // so nothing may claim a template was used.
+    expect(result.notes.join(' ')).not.toContain('template');
+  });
+
+  // Every product falls back here, and the whole-call note already says why.
+  // Repeating it once per product would bury the cause under a list.
+  it('does not add a per-product note when the whole call failed', async () => {
+    const result = await generateProductQueries(
+      PROFILE,
+      PRODUCTS,
+      { judge: judgeReturning(''), guard: new CostGuard() },
+      opts,
+    );
+
+    expect(result.notes.filter((n) => n.includes('template'))).toHaveLength(1);
   });
 
   it('falls back to templates and says so when the setup cap refuses the call', async () => {

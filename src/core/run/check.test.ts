@@ -20,7 +20,15 @@ import {
   type JudgeClient,
   type QueryPack,
 } from '../types.js';
-import { isAbortFailure, runCheck, type ProgressEvent } from './check.js';
+import {
+  isAbortFailure,
+  runCheck,
+  type AbortReason,
+  type ProgressEvent,
+  type RunCheckAborted,
+  type RunCheckCompleted,
+  type RunCheckResult,
+} from './check.js';
 
 const STATE = '/state';
 const NOW = () => '2026-07-15T00:00:00.000Z';
@@ -173,6 +181,30 @@ function baseDeps(fs: ReturnType<typeof memFs>, fetcher: Fetcher) {
   };
 }
 
+/**
+ * Narrow a result to its completed arm. `expect(result.aborted).toBe(false)`
+ * asserts at RUNTIME but does not narrow the union for the compiler, so tests
+ * that read the envelope come through here rather than through a `!` - and an
+ * unexpected abort fails loudly, naming its reason, instead of surfacing as
+ * "cannot read property of undefined" ten lines later.
+ */
+function completed(result: RunCheckResult): RunCheckCompleted {
+  if (result.aborted) {
+    throw new Error(
+      `expected a completed run, got an abort: ${result.abortReason}`,
+    );
+  }
+  return result;
+}
+
+/** The mirror of {@link completed}, for the abort paths. */
+function aborted(result: RunCheckResult): RunCheckAborted {
+  if (!result.aborted) {
+    throw new Error('expected an aborted run, got a completed one');
+  }
+  return result;
+}
+
 describe('runCheck spend reporting', () => {
   // Before this, a run billed real money and reported it NOWHERE: the figure
   // was only recoverable by summing costUsd across answers in the snapshot
@@ -195,7 +227,7 @@ describe('runCheck spend reporting', () => {
       { stateDir: STATE, yes: true },
     );
 
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(env.spend).toBeDefined();
     const answersTotal = env.answers.reduce((s, a) => s + a.costUsd, 0);
     expect(env.spend!.mainUsd).toBeCloseTo(answersTotal, 10);
@@ -225,10 +257,11 @@ describe('runCheck spend reporting', () => {
       { stateDir: STATE },
     );
 
-    expect(result.aborted).toBe(true);
-    expect(result.envelope).toBeUndefined();
-    expect(result.spend?.setupUsd).toBeCloseTo(0.02, 10);
-    expect(result.spend?.totalUsd).toBeCloseTo(0.02, 10);
+    // The envelope is gone from this arm by construction (the union carries it
+    // only on the completed arm), so there is nothing left to assert about it.
+    const stopped = aborted(result);
+    expect(stopped.spend?.setupUsd).toBeCloseTo(0.02, 10);
+    expect(stopped.spend?.totalUsd).toBeCloseTo(0.02, 10);
   });
 
   it('reports setup spend when aborting for a missing confirm handler', async () => {
@@ -261,9 +294,8 @@ describe('runCheck spend reporting', () => {
       { stateDir: STATE, yes: true },
     );
 
-    expect(result.aborted).toBe(false);
     expect(result.spend).toBeDefined();
-    expect(result.spend).toEqual(result.envelope!.spend);
+    expect(result.spend).toEqual(completed(result).envelope.spend);
   });
 
   it('still reports spend on a cost-capped partial run', async () => {
@@ -280,8 +312,8 @@ describe('runCheck spend reporting', () => {
       },
       { stateDir: STATE, yes: true },
     );
-    expect(result.envelope!.spend).toBeDefined();
-    expect(result.envelope!.costCapped).toBe(true);
+    expect(completed(result).envelope.spend).toBeDefined();
+    expect(completed(result).envelope.costCapped).toBe(true);
   });
 });
 
@@ -315,23 +347,22 @@ describe('runCheck end to end (all mocked)', () => {
       yes: true,
     });
 
-    expect(result.aborted).toBe(false);
-    const env = result.envelope;
-    expect(env).toBeDefined();
-    expect(env?.domain).toBe('acme.example');
-    expect(env?.profile.brand).toBe('Acme');
-    expect(typeof env?.score).toBe('number');
-    expect(env?.engines.length).toBe(2);
+    const run = completed(result);
+    const env = run.envelope;
+    expect(env.domain).toBe('acme.example');
+    expect(env.profile.brand).toBe('Acme');
+    expect(typeof env.score).toBe('number');
+    expect(env.engines.length).toBe(2);
     // Audit findings (M3) flow in; llms.txt was 404 so there is at least one.
-    expect(env?.findings.length).toBeGreaterThan(0);
-    expect(env?.answers.length).toBe(4); // 2 prompts x 2 engines
+    expect(env.findings.length).toBeGreaterThan(0);
+    expect(env.answers.length).toBe(4); // 2 prompts x 2 engines
     // Clean run: no honesty flags.
-    expect(env?.costCapped).toBeUndefined();
-    expect(env?.skippedEngines).toBeUndefined();
-    expect(env?.degraded).toBeUndefined();
+    expect(env.costCapped).toBeUndefined();
+    expect(env.skippedEngines).toBeUndefined();
+    expect(env.degraded).toBeUndefined();
     // Snapshot written under the state dir.
-    expect(result.snapshotPath).toContain('snapshots');
-    expect(fs.files.has(result.snapshotPath!)).toBe(true);
+    expect(run.snapshotPath).toContain('snapshots');
+    expect(fs.files.has(run.snapshotPath!)).toBe(true);
   });
 
   it('emits ordered progress events across every phase (rule #1: data, not render)', async () => {
@@ -383,7 +414,7 @@ describe('runCheck end to end (all mocked)', () => {
       { stateDir: STATE, yes: true },
     );
     expect(confirm).not.toHaveBeenCalled();
-    expect(result.envelope).toBeDefined();
+    expect(completed(result).envelope).toBeDefined();
   });
 
   it('keeps branded (trust) prompts out of the score and reports reputation', async () => {
@@ -415,7 +446,7 @@ describe('runCheck end to end (all mocked)', () => {
       { stateDir: STATE, yes: true },
     );
 
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     // Score sees only the 1 unbranded prompt (1 engine x 1 discovery prompt).
     expect(env.engines[0]!.answers).toBe(1);
     expect(env.sampling.nPrompts).toBe(1);
@@ -489,11 +520,11 @@ describe('runCheck end to end (all mocked)', () => {
       },
       { stateDir: STATE },
     );
-    expect(result.aborted).toBe(true);
-    expect(result.envelope).toBeUndefined();
+    expect(aborted(result).abortReason).toBe('declined');
     expect(askSpy).not.toHaveBeenCalled();
-    // Nothing spent, nothing persisted.
-    expect(result.snapshotPath).toBeUndefined();
+    // Nothing persisted: the abort arm carries no snapshotPath at all, because
+    // a run that returns before saveSnapshot has no file to name.
+    expect(result).not.toHaveProperty('snapshotPath');
   });
 
   it('refuses to spend when there is no confirm handler and not --yes (rule #8)', async () => {
@@ -508,9 +539,8 @@ describe('runCheck end to end (all mocked)', () => {
       { stateDir: STATE }, // no yes, no confirm in deps override below
     );
     // baseDeps has no confirm; the override above keeps it absent.
-    expect(result.aborted).toBe(true);
+    expect(aborted(result).abortReason).toBe('unconfirmed');
     expect(askSpy).not.toHaveBeenCalled();
-    expect(result.envelope).toBeUndefined();
   });
 
   // The 2026-08-13 report: a judge failure left 0 prompts, and the run went on
@@ -535,9 +565,7 @@ describe('runCheck end to end (all mocked)', () => {
     );
 
     expect(confirmCalls).toBe(0);
-    expect(result.aborted).toBe(true);
-    expect(result.abortReason).toBe('no-prompts');
-    expect(result.envelope).toBeUndefined();
+    expect(aborted(result).abortReason).toBe('no-prompts');
     expect(result.notes.join(' ')).toMatch(/no buyer prompts/i);
   });
 
@@ -571,8 +599,68 @@ describe('runCheck end to end (all mocked)', () => {
       { stateDir: STATE },
     );
 
-    expect(result.aborted).toBe(true);
-    expect(result.abortReason).toBe('declined');
+    expect(aborted(result).abortReason).toBe('declined');
+  });
+
+  // The runtime half of the guarantee the union makes at compile time: an
+  // aborted run ALWAYS says why, and never carries the fields of a run that
+  // reached the engines. `abortReason` used to be an optional sitting beside an
+  // optional `envelope`, so a return site could report an abort it did not
+  // explain - and the CLI's exit code, which asks isAbortFailure, would have
+  // read that silence as a user's decline (exit 0) for a run that failed.
+  //
+  // Keying the table by `AbortReason` makes it exhaustive: adding a reason to
+  // the taxonomy fails to compile here until a path that produces it is
+  // exercised, so a new abort site cannot slip in untested.
+  it('tags every abort path with a reason and no run fields', async () => {
+    const fetcher = (): Fetcher => createFetcher({ fetchImpl: fakeFetch() });
+    const noJudgeFs = (): ReturnType<typeof memFs> =>
+      memFs({ [profilePath(STATE)]: JSON.stringify(CACHED_PROFILE) });
+
+    const byReason: Record<
+      AbortReason,
+      { result: RunCheckResult; failure: boolean }
+    > = {
+      declined: {
+        result: await runCheck(
+          'acme.example',
+          { ...baseDeps(seededFs(), fetcher()), confirm: async () => false },
+          { stateDir: STATE },
+        ),
+        failure: false, // the user's own choice
+      },
+      unconfirmed: {
+        result: await runCheck(
+          'acme.example',
+          baseDeps(seededFs(), fetcher()), // no confirm handler, no yes
+          { stateDir: STATE },
+        ),
+        failure: true,
+      },
+      'no-prompts': {
+        result: await runCheck(
+          'acme.example',
+          {
+            ...baseDeps(noJudgeFs(), fetcher()),
+            judge: throwingJudge('HTTP 429: no credits remaining'),
+          },
+          { stateDir: STATE, yes: true },
+        ),
+        failure: true,
+      },
+    };
+
+    for (const [reason, { result, failure }] of Object.entries(byReason)) {
+      const stopped = aborted(result);
+      expect(stopped.abortReason, reason).toBe(reason);
+      expect(isAbortFailure(stopped.abortReason), reason).toBe(failure);
+      // Nothing from the completed arm rides along: no envelope to relaunder an
+      // unmeasured run as a result, no snapshot path naming a file never written.
+      expect(result, reason).not.toHaveProperty('envelope');
+      expect(result, reason).not.toHaveProperty('snapshotPath');
+      // And the human-readable why, which the union cannot enforce.
+      expect(stopped.notes.length, reason).toBeGreaterThan(0);
+    }
   });
 
   it('caps mid-run under --max-cost: partial envelope, costCapped, never throws', async () => {
@@ -598,10 +686,10 @@ describe('runCheck end to end (all mocked)', () => {
       },
       { stateDir: STATE, yes: true, concurrency: 1 },
     );
-    expect(result.envelope).toBeDefined();
-    expect(result.envelope?.costCapped).toBe(true);
+    const env = completed(result).envelope;
+    expect(env.costCapped).toBe(true);
     // The 2 prompts could not all get through under the cap.
-    expect(result.envelope!.answers.length).toBeLessThan(2);
+    expect(env.answers.length).toBeLessThan(2);
   });
 
   it('surfaces skippedEngines and degraded honesty upward (rule #6)', async () => {
@@ -616,7 +704,7 @@ describe('runCheck end to end (all mocked)', () => {
       { ...baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })), adapters },
       { stateDir: STATE, brand: 'Acme', category: 'widgets', yes: true },
     );
-    const env = result.envelope!;
+    const env = completed(result).envelope;
     expect(env.degraded).toBe(true);
     expect(env.skippedEngines).toEqual([
       { engine: 'perplexity', reason: 'no API key' },
@@ -631,8 +719,7 @@ describe('runCheck end to end (all mocked)', () => {
       baseDeps(fs, createFetcher({ fetchImpl: fakeFetch() })),
       { stateDir: STATE, yes: true, persist: false },
     );
-    expect(result.envelope).toBeDefined();
-    expect(result.snapshotPath).toBeUndefined();
+    expect(completed(result).snapshotPath).toBeUndefined();
     expect(fs.files.size).toBe(before); // nothing written
   });
 });

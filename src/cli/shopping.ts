@@ -15,6 +15,7 @@ import {
 } from '../core/config.js';
 import { CostGuard } from '../core/costs.js';
 import {
+  renderRunNotes,
   renderShoppingHtml,
   renderShoppingJson,
   renderShoppingText,
@@ -28,6 +29,7 @@ import {
 } from '../core/shopping/index.js';
 import {
   buildCheckDeps,
+  isAbortFailure,
   runShopping,
   selectEngines,
   type ConfirmContext,
@@ -261,21 +263,33 @@ export function registerShopping(program: Command, rt: Runtime): void {
       }
 
       if (result.aborted) {
-        const say = (s: string): void => {
-          if (flags.json) rt.err(s);
-          else rt.out(s);
-        };
-        say('Aborted - no engines were queried.\n');
+        // Same rule as `check`: the WHOLE abort block goes to stderr, --json or
+        // not. Stdout is this command's result channel and an abort has no
+        // result to put there. The two commands MUST agree here - a user who
+        // redirects stdout should not have one of them explain itself to the
+        // terminal and the other into the file.
+        rt.err('Aborted - no engines were queried.\n');
         // The notes carry WHY (the missing confirmation, and the flag that
-        // bypasses it). Returning without them leaves no next step.
-        for (const note of result.notes) say(`${note}\n`);
+        // bypasses it). Returning without them leaves no next step. Rendered
+        // through core/output's shared block so neither entrypoint hand-rolls
+        // the formatting; empty notes render as "" and print no stray heading.
+        const runNotes = renderRunNotes(result.notes);
+        if (runNotes) rt.err(`${runNotes}\n`);
         // Discovery and prompt writing bill BEFORE the gate, so an aborted run
         // is not necessarily a free one.
         const spent = result.spend;
-        if (spent && spent.totalUsd > 0) say(`${spendLine(spent)}\n`);
+        if (spent && spent.totalUsd > 0) rt.err(`${spendLine(spent)}\n`);
+        // Declining is the user's choice and exits 0. An abort the user did not
+        // choose measured nothing, and CI and AI agents read the exit code.
+        if (isAbortFailure(result.abortReason)) {
+          process.exitCode = 1;
+        }
         return;
       }
-      const env = result.envelope!;
+      // No non-null assertion: `result.aborted` is the union's discriminant, so
+      // returning inside the abort branch above narrows this to the completed
+      // arm, where the envelope is guaranteed by the type.
+      const env = result.envelope;
 
       let reportWritten: string | undefined;
       if (flags.report) {

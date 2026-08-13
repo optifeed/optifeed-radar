@@ -172,7 +172,11 @@ function validate(raw: unknown, path: string): ShoppingEnvelope {
       );
     }
   }
-  for (const list of ['skippedEngines', 'partialEngines']) {
+  for (const list of [
+    'skippedEngines',
+    'partialEngines',
+    'mixedModelEngines',
+  ]) {
     if (list in obj && obj[list] !== undefined) v.array(obj, list);
   }
 

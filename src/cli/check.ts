@@ -15,6 +15,7 @@ import {
   renderCheckHtml,
   renderCheckJson,
   renderCheckText,
+  renderRunNotes,
   spendLine,
 } from '../core/output/index.js';
 import {
@@ -294,19 +295,26 @@ export function registerCheck(program: Command, rt: Runtime): void {
       }
 
       if (result.aborted) {
-        // Under --json, stdout is the envelope channel and nothing else may
-        // touch it: an agent that gets prose here cannot tell an abort from a
-        // crash. Every other branch already routes prose to stderr; this one
-        // did not, and the spend line made it a second offender.
-        const say = (s: string): void => {
-          if (flags.json) rt.err(s);
-          else rt.out(s);
-        };
-        say('Aborted - no engines were queried.\n');
+        // The WHOLE abort block goes to stderr, --json or not. Stdout is this
+        // command's result channel (the envelope, or the rendered report), and
+        // an abort has no result to put there; everything else this command
+        // says ABOUT a run - the judge notice, progress, the fail-under reason,
+        // and the success path's own notes - is already on stderr, so an abort
+        // printing to stdout was the one exception. It also keeps stdout
+        // exactly empty under --json, where an agent that gets prose there
+        // cannot tell an abort from a crash, without making the stream depend
+        // on a flag. Every line below moves together: splitting the prose
+        // across two streams would be a third inconsistency, not a fix.
+        rt.err('Aborted - no engines were queried.\n');
         // The notes carry WHY - an out-of-credit judge, a setup cost cap, a
         // failed generation. They used to print only on the success path, so an
-        // aborted run was silent about its own cause.
-        for (const note of result.notes) say(`${note}\n`);
+        // aborted run was silent about its own cause. Rendered through
+        // core/output's shared note block (heading + `!` marker, the same
+        // marker progress uses), so this entrypoint neither hand-rolls the
+        // formatting nor reaches for a palette of its own. Empty notes render
+        // as "", so a note-less abort prints no stray heading.
+        const runNotes = renderRunNotes(result.notes);
+        if (runNotes) rt.err(`${runNotes}\n`);
         // The notes say WHAT failed; this says what to do about it, and it is
         // CLI copy, so it lives here rather than in core. Every cause of
         // `no-prompts` (a judge HTTP error, a setup cost cap, no judge
@@ -320,7 +328,7 @@ export function registerCheck(program: Command, rt: Runtime): void {
         // before any judge or guard), so blaming the judge would name a call
         // that never happened and recommend the flag the user just used.
         if (result.abortReason === 'no-prompts') {
-          say(
+          rt.err(
             flags.queries
               ? `The prompt pack at ${flags.queries} has no questions in it. ` +
                   'Add at least one, or drop --queries to have them generated.\n'
@@ -333,7 +341,7 @@ export function registerCheck(program: Command, rt: Runtime): void {
         // actually cost something, so a genuinely free abort stays quiet.
         const spent = result.spend;
         if (spent && spent.totalUsd > 0) {
-          say(`${spendLine(spent)}\n`);
+          rt.err(`${spendLine(spent)}\n`);
         }
         // Declining is the user's choice and exits 0. An abort the user did not
         // choose measured nothing, and CI and AI agents read the exit code.
@@ -342,7 +350,10 @@ export function registerCheck(program: Command, rt: Runtime): void {
         }
         return;
       }
-      const env = result.envelope!;
+      // No non-null assertion: `result.aborted` is the union's discriminant, so
+      // returning inside the abort branch above narrows this to the completed
+      // arm, where the envelope is guaranteed by the type.
+      const env = result.envelope;
 
       // Write the report first, independent of --json, and never let a failed
       // write throw away the paid run's results (report is a best-effort side

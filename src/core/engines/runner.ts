@@ -5,6 +5,8 @@
  * `skippedEngines` with a reason. An adapter that answers only SOME prompts is
  * reported separately in `partialEngines` with its real counts, so a score
  * resting on a thinner sample is never presented as full confidence (rule #6).
+ * An engine whose answers came from several models is a third such signal
+ * (`mixedModelEngines`) - nothing failed there, but the score blends subjects.
  * Per-provider concurrency is bounded; per-call cost is recorded into an
  * optional CostGuard.
  */
@@ -16,7 +18,12 @@ import {
   costOfCall,
   priciestPricing,
 } from '../costs.js';
-import type { EngineAnswer, EngineId, PartialEngine } from '../types.js';
+import type {
+  EngineAnswer,
+  EngineId,
+  MixedModelEngine,
+  PartialEngine,
+} from '../types.js';
 import type { AskMode, EngineAdapter } from './adapter.js';
 
 export interface SkippedEngine {
@@ -32,6 +39,50 @@ export interface AskAllResult {
    * {@link AskAllResult.skippedEngines} instead - the two are separate signals.
    */
   partialEngines: PartialEngine[];
+  /**
+   * Engines whose answers came from several models. Empty on a clean run; see
+   * {@link mixedModelEngines}.
+   */
+  mixedModelEngines: MixedModelEngine[];
+}
+
+/**
+ * Engines whose answers in this run came from more than one model.
+ *
+ * Derived from the answers themselves (each one records the model the provider
+ * echoed), so it is DATA - assembled here beside the other per-engine honesty
+ * signals rather than re-derived by a renderer, which would leave every other
+ * consumer (JSON, MCP, snapshots, diff) blind to it.
+ *
+ * Only engines with 2+ distinct models are returned, so a normal run yields an
+ * empty list and no note fires.
+ */
+export function mixedModelEngines(answers: EngineAnswer[]): MixedModelEngine[] {
+  const byEngine = new Map<EngineId, Map<string, number>>();
+  for (const answer of answers) {
+    let counts = byEngine.get(answer.engine);
+    if (!counts) {
+      counts = new Map<string, number>();
+      byEngine.set(answer.engine, counts);
+    }
+    counts.set(answer.model, (counts.get(answer.model) ?? 0) + 1);
+  }
+
+  const mixed: MixedModelEngine[] = [];
+  for (const [engine, counts] of byEngine) {
+    if (counts.size < 2) continue;
+    mixed.push({
+      engine,
+      // Busiest model first, ties broken by id, so the note and the JSON read
+      // the same way on every run rather than in Map insertion order.
+      models: [...counts]
+        .map(([model, answered]) => ({ model, answers: answered }))
+        .sort(
+          (a, b) => b.answers - a.answers || a.model.localeCompare(b.model),
+        ),
+    });
+  }
+  return mixed;
 }
 
 export interface AskAllOptions {
@@ -344,5 +395,10 @@ export async function askAll(
     answers.push(...result.answers);
   }
 
-  return { answers, skippedEngines, partialEngines };
+  return {
+    answers,
+    skippedEngines,
+    partialEngines,
+    mixedModelEngines: mixedModelEngines(answers),
+  };
 }

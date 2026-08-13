@@ -150,6 +150,38 @@ describe('renderCheckText', () => {
     expect(out.toLowerCase()).toContain('quota exceeded');
   });
 
+  // The run that produced this shape answered every prompt, so no other honesty
+  // flag fired - which is exactly why it has to be its own signal. Naming the
+  // engine without naming the models would leave the reader unable to tell
+  // which measurement moved, so the note carries both ids and their counts.
+  it('surfaces an engine that answered from more than one model, naming both', () => {
+    const out = renderCheckText(
+      envelope({
+        mixedModelEngines: [
+          {
+            engine: 'gemini',
+            models: [
+              { model: 'gemini-3.6-flash', answers: 7 },
+              { model: 'gemini-3.7-flash', answers: 1 },
+            ],
+          },
+        ],
+      }),
+      { color: false },
+    );
+    expect(out).toContain('gemini-3.6-flash 7 answers');
+    expect(out).toContain('gemini-3.7-flash 1 answer');
+    expect(out.toLowerCase()).toContain('more than one model');
+  });
+
+  // The false-positive guard: a run where every engine used a single model must
+  // say nothing at all. A note that fires on a clean run trains users to ignore
+  // the notes block, which costs the real warnings their meaning.
+  it('says nothing about models when every engine used one', () => {
+    const out = renderCheckText(envelope({}), { color: false });
+    expect(out.toLowerCase()).not.toContain('more than one model');
+  });
+
   it('reports reputation (branded prompts) apart from the score, honestly', () => {
     const out = renderCheckText(
       envelope({

@@ -79,6 +79,24 @@ describe('MODEL_PRICING', () => {
     expect(MODEL_PRICING.models['chat-latest']).toBeDefined();
     expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
     expect(MODEL_PRICING.models['gemini-2.5-flash']).toBeDefined();
+    expect(MODEL_PRICING.models['gemini-flash-latest']).toBeDefined();
+  });
+
+  // The Gemini ask default was priced by quoting a DIFFERENT model's row:
+  // `gemini-flash-latest` took gemini-3.5-flash's $1.50/$9.00 while the alias
+  // actually resolved to 3.6/3.7-flash, which bill $0.75/$3.75 through
+  // 2026-12-31 (official sheet, retrieved 2026-08-13). Radar therefore reported
+  // roughly 2.4x the Gemini spend Google billed - an invented number in the
+  // direction that makes the tool look more expensive than it is (rule #6).
+  it('prices the pinned Gemini models at their own quoted rate', () => {
+    for (const model of ['gemini-3.7-flash', 'gemini-3.6-flash']) {
+      const pricing = MODEL_PRICING.models[model];
+      expect(pricing?.inputPerMTokens).toBe(0.75);
+      expect(pricing?.outputPerMTokens).toBe(3.75);
+      // Grounding is billed per search query on top of tokens, and that fee can
+      // exceed the tokens on a grounded ask - a row without it under-quotes.
+      expect(pricing?.perSearchUsd).toBe(0.014);
+    }
   });
 });
 

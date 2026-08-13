@@ -321,6 +321,19 @@ export function honestyNotes(env: PartialRunLike): string[] {
         `(${p.reason}). Its score rests on a smaller sample than the others.`,
     );
   }
+  // Name the models and their counts. The engine name alone would say a score
+  // is unreliable without saying what it measured, and the ids are the only
+  // thing that lets a reader check the run against a previous one.
+  for (const m of env.mixedModelEngines ?? []) {
+    const split = m.models
+      .map((x) => `${x.model} ${x.answers} answer${x.answers === 1 ? '' : 's'}`)
+      .join(', ');
+    notes.push(
+      `Engine answered from more than one model: ${m.engine} (${split}). ` +
+        `Its score blends them, so a change between runs may come from the ` +
+        `engine rather than from your visibility.`,
+    );
+  }
   if (env.degraded) {
     notes.push('Profile was degraded (supplied via flags, not discovered).');
   }
