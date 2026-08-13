@@ -59,6 +59,18 @@ function countingJudge(text: string): JudgeClient & { calls: number } {
   };
 }
 
+/** A judge that always fails, counting how many times it was asked. */
+function throwingJudge(): JudgeClient & { calls: number } {
+  return {
+    calls: 0,
+    model: 'gpt-4o-mini',
+    async complete() {
+      this.calls += 1;
+      throw new Error('HTTP 429: rate limit');
+    },
+  };
+}
+
 /** A judge that records the token budget it was given. */
 function budgetJudge(
   text: string,
@@ -246,6 +258,32 @@ describe('refineAmbiguous (judge pass 2)', () => {
     expect(out.judged).toBe(0); // nothing was actually resolved
     expect(out.results.filter((r) => r.judged)).toHaveLength(0);
     expect(guard.spendBreakdown.mainUsd).toBeCloseTo(0.003, 10);
+  });
+
+  // A failing judge fails for the WHOLE pass, not for one row: a rate limit or
+  // an exhausted quota persists. Left uncounted, a throw costs nothing but a
+  // slot it never took, so the loop walks every ambiguous row and sends one
+  // doomed request each - the same unbounded-call exposure as the empty
+  // response above. A live run on this branch hit exactly this (perplexity,
+  // HTTP 429, 5 of 8 prompts answered).
+  it('stops at the rate cap when every judge call throws', async () => {
+    const results = Array.from({ length: 10 }, () => ambiguousMention());
+    const answers = Array.from({ length: 10 }, () => answer('orange juice'));
+    const judge = throwingJudge();
+    const guard = new CostGuard();
+
+    const out = await refineAmbiguous(results, answers, profile, {
+      judge,
+      guard,
+    });
+
+    expect(judge.calls).toBe(3); // floor(10 * 0.30), not one per row
+    // Honesty is unchanged by the bound: every row keeps its pass-1 reading,
+    // and a failed call is still settled at zero.
+    expect(out.judged).toBe(0);
+    expect(out.results.every((r) => r.ambiguous && !r.judged)).toBe(true);
+    expect(guard.spendBreakdown.totalUsd).toBe(0);
+    expect(guard.costCapped).toBe(false);
   });
 
   // 60 tokens is an ANSWER budget. On a reasoning judge it is also the whole

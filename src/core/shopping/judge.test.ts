@@ -186,6 +186,38 @@ describe('refineProductMentions', () => {
     expect(out.results[0]?.ambiguous).toBe(true);
   });
 
+  // Same bound as the brand judge's (scoring/judge.ts): a judge that fails
+  // fails for the whole pass - a rate limit or an exhausted quota persists - so
+  // an uncounted throw walks every ambiguous row and sends one doomed request
+  // each. A live run on this branch hit exactly this (perplexity, HTTP 429).
+  it('stops at the rate cap when every judge call throws', async () => {
+    const answers = Array.from({ length: 10 }, () =>
+      answer('People mention the Aria 2 sometimes.'),
+    );
+    const results = answers.map((a) =>
+      analyzeProductAnswer(a, { name: 'Aria 2' }),
+    );
+    let calls = 0;
+    const judge: JudgeClient = {
+      model: 'gpt-5.4-mini',
+      async complete() {
+        calls += 1;
+        throw new Error('HTTP 429: rate limit');
+      },
+    };
+    const guard = new CostGuard();
+
+    const out = await refineProductMentions(results, answers, { judge, guard });
+
+    expect(calls).toBe(5); // floor(10 * 0.50), not one per row
+    // Honesty is unchanged by the bound: rows keep their pass-1 reading and a
+    // failed call still settles at zero.
+    expect(out.judged).toBe(0);
+    expect(out.results.every((r) => r.ambiguous)).toBe(true);
+    expect(guard.spendBreakdown.totalUsd).toBe(0);
+    expect(guard.costCapped).toBe(false);
+  });
+
   // The other half of the same invariant, and the half the authorize test
   // cannot see: the budget SENT to the provider must be sized through
   // `judgeMaxTokens`, because a bare 200-token cap is spent entirely on private

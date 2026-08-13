@@ -38,9 +38,9 @@ export interface RefineOptions {
 export interface RefineResult {
   results: MentionResult[];
   /**
-   * Rows a verdict was actually applied to. A call that happened but came back
-   * unusable is NOT counted here (it resolved nothing), though it does count
-   * against the rate cap, which bounds what the pass spends.
+   * Rows a verdict was actually applied to. A call that came back unusable, or
+   * failed, is NOT counted here - it resolved nothing - though it does count
+   * against the rate cap, which bounds REQUESTS rather than resolutions.
    */
   judged: number;
 }
@@ -105,13 +105,28 @@ export async function refineAmbiguous(
   const maxJudge = Math.floor(results.length * cap);
   const refined = [...results];
   let judged = 0;
-  // What the rate cap counts: calls that HAPPENED and were billed, whether or
-  // not their output was usable. Counting resolved rows instead would let a
-  // judge returning nothing usable be called for every ambiguous row, spending
-  // the whole answer set's worth of calls under a cap set at 30%. A call that
-  // THREW is deliberately not counted - it settles at zero, so allowing another
-  // attempt in its place costs nothing.
-  let billed = 0;
+  /**
+   * Judge REQUESTS made - what the rate cap actually bounds. Counted once, at
+   * the point the call is committed to, so no outcome can forget to count
+   * itself.
+   *
+   * Deliberately not "rows resolved": a judge that returns an empty body, or
+   * throws, resolves nothing, so a cap counting resolutions would let a broken
+   * judge be asked once per ambiguous row - the whole answer set, under a cap
+   * set at 30%. Judge failures are rarely per-row: a rate limit or an exhausted
+   * quota persists for the whole pass (seen live on this branch as `perplexity
+   * (HTTP 429 rate limit)`), so "retry until something works" means hammering a
+   * provider that is already asking us to slow down.
+   *
+   * The trade-off, chosen knowingly: a TRANSIENT failure now consumes a slot a
+   * later good call could have used, so a flaky provider yields a little less
+   * refinement. That is the cheaper side. The cap is a bound on requests, and
+   * unjudged rows degrade honestly (they keep their pass-1 reading and stay
+   * `ambiguous`), while an unbounded loop against a failing provider does not
+   * degrade at all - it just keeps asking. Do not "fix" this back to counting
+   * only successful calls.
+   */
+  let attempted = 0;
 
   if (maxJudge === 0) return { results: refined, judged };
 
@@ -119,7 +134,7 @@ export async function refineAmbiguous(
   // judge is not out of budget before it writes that word.
   const answerTokens = 60;
   const maxTokens = judgeMaxTokens(answerTokens);
-  for (let i = 0; i < refined.length && billed < maxJudge; i++) {
+  for (let i = 0; i < refined.length && attempted < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
     if (!result?.ambiguous || !answer) continue;
@@ -137,13 +152,17 @@ export async function refineAmbiguous(
       deps.projectedCostUsd ??
       estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
     if (!guard.authorize(projected, 'main')) break; // cost-capped: stop cleanly
+    // Counted HERE, before the await: the request is now committed, and every
+    // outcome below (verdict, empty body, throw) is one request against the
+    // cap. Incrementing on the outcome paths instead is how the throw path came
+    // to be uncounted.
+    attempted += 1;
 
     let verdict: Verdict;
     try {
       const res = await judge.complete(prompt, { maxTokens });
       // settle, not record: `authorize` reserved `projected` (see CostGuard).
       guard.settle(projected, res.costUsd, 'main');
-      billed += 1;
       // A 200 with no text is a FAILED call (a reasoning judge that spent the
       // whole cap on private thinking), not a verdict. It must be treated as
       // one HERE, before parsing: `parseVerdict('')` returns its conservative
