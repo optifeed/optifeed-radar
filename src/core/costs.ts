@@ -41,12 +41,20 @@ export interface ModelPricing {
  * billing. Update the date when you touch the numbers.
  *
  * OpenAI rows retrieved 2026-07-17 from the official sheet
- * (https://developers.openai.com/api/docs/pricing). Two caveats an updater must
- * know: (1) `gpt-5.3-chat-latest` is NOT itself on that sheet - the page lists a
- * generic `chat-latest` row at $5/$30 and this inherits it, so the number is an
- * assumption, not a quote. (2) `-chat-latest` FLOATS: OpenAI repoints it at
- * whatever ChatGPT currently serves, so its price can change without any change
- * here. Re-verify at release (M17).
+ * (https://developers.openai.com/api/docs/pricing); the `chat-latest` row
+ * re-verified there 2026-08-13 at $5.00/$30.00.
+ *
+ * That row is now a QUOTE rather than an inherited assumption. It used to be
+ * the latter: the ask default was `gpt-5.3-chat-latest`, which the sheet never
+ * listed, so it borrowed the generic `chat-latest` number. The versioned alias
+ * has since been retired by OpenAI (HTTP 404 "has been deprecated", verified
+ * live 2026-08-13) and the default moved to `chat-latest` itself, which the
+ * sheet does list - so the id priced here and the id asked are the same string.
+ *
+ * The remaining caveat is unchanged and is the important one: `chat-latest`
+ * FLOATS. OpenAI repoints it at whatever ChatGPT currently serves, so its price
+ * can change with no change here. Re-verify against the sheet whenever these
+ * numbers are touched.
  *
  * Gemini + Perplexity rows verified live 2026-07-20 (M17 engine smoke):
  * - `gemini-flash-latest` $1.50/$9.00 from the official sheet
@@ -83,10 +91,23 @@ export const MODEL_PRICING: {
   lastUpdated: string;
   models: Record<string, ModelPricing>;
 } = {
-  lastUpdated: '2026-07-20',
+  lastUpdated: '2026-08-13',
   models: {
     // Current generation (what ChatGPT serves / what we ask + judge with).
     // avgOutputTokens measured live 2026-07-20: ~2583 on a grounded ask.
+    // The ask default. Quoted directly from the sheet's own `chat-latest` row
+    // (2026-08-13). `avgOutputTokens` is carried over from the measurement made
+    // against `gpt-5.3-chat-latest`, NOT re-measured: this alias floats, so what
+    // it resolves to may answer at a different length. Re-measure when a run can
+    // be made against a funded account.
+    'chat-latest': {
+      inputPerMTokens: 5,
+      outputPerMTokens: 30,
+      avgOutputTokens: 2600,
+    },
+    // Retired 2026-08-13: OpenAI deprecated the per-generation chat aliases and
+    // this now 404s. Kept only so snapshots written before the switch still
+    // price - dropping the row would silently value those runs at $0.
     'gpt-5.3-chat-latest': {
       inputPerMTokens: 5,
       outputPerMTokens: 30,

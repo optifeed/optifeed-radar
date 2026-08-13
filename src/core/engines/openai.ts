@@ -38,10 +38,18 @@ export const openaiSpec: ProviderSpec = {
   id: 'openai',
   kind: 'parametric',
   // The model ChatGPT actually serves. This is the measurement subject: asking
-  // a cheaper/older model answers a question no buyer asked. `-chat-latest` is
-  // OpenAI's alias for ChatGPT's current default, so it tracks automatically -
-  // at the cost of floating (see MODEL_PRICING's note and the M17 follow-up).
-  defaultModel: 'gpt-5.3-chat-latest',
+  // a cheaper/older model answers a question no buyer asked.
+  //
+  // Use the UNVERSIONED alias. `gpt-5.3-chat-latest` was chosen because an alias
+  // "cannot go 404 out from under us" - and then it did: OpenAI retired the
+  // per-generation aliases, and it began returning "has been deprecated"
+  // (verified live 2026-08-13, as did `gpt-5.2-chat-latest`; no
+  // `gpt-5.4-chat-latest` was ever published). Every OpenAI answer in every run
+  // was failing. `chat-latest` carries no generation in its name, so the class
+  // of breakage that bit the versioned form cannot recur. It still FLOATS -
+  // OpenAI repoints it at whatever ChatGPT currently serves - so its price can
+  // change without any change here (see MODEL_PRICING).
+  defaultModel: 'chat-latest',
   supportsGrounded: true,
   endpoint: (mode) =>
     mode === 'grounded'

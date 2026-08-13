@@ -39,8 +39,19 @@ describe('createAdapter', () => {
   it('asks OpenAI with the model ChatGPT actually serves, and prices it', () => {
     const { fn } = fakePost({});
     const adapter = createAdapter(openaiSpec, { httpPost: fn, apiKey: 'k' });
-    expect(adapter.model).toBe('gpt-5.3-chat-latest');
+    expect(adapter.model).toBe('chat-latest');
     expect(MODEL_PRICING.models[adapter.model]).toBeDefined();
+  });
+
+  // The VERSIONED alias went 404. `gpt-5.3-chat-latest` began returning
+  // "has been deprecated" (verified live 2026-08-13), and so did
+  // `gpt-5.2-chat-latest`; no `gpt-5.4-chat-latest` was ever published. OpenAI
+  // retired the per-generation aliases in favour of a bare `chat-latest`, which
+  // is the id that cannot go stale by generation - the property the versioned
+  // one was chosen for and then lost. Pinning this stops a well-meaning "update
+  // to the current generation" edit from reintroducing a 404.
+  it('uses the unversioned chat alias, which cannot go stale by generation', () => {
+    expect(openaiSpec.defaultModel).not.toMatch(/^gpt-.*-chat-latest$/);
   });
 
   // Verified live 2026-07-17 against all four ids: GPT-5 models REJECT

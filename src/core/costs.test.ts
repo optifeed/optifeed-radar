@@ -66,8 +66,18 @@ describe('MODEL_PRICING', () => {
     expect(MODEL_PRICING.models['gpt-4o-mini']).toBeDefined();
     // Every model this tool asks or judges with BY DEFAULT must be priced -
     // an unpriced default silently reports $0 spend (the M0-M6 lesson).
-    expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['chat-latest']).toBeDefined();
     expect(MODEL_PRICING.models['gpt-5.4']).toBeDefined();
+  });
+
+  // Snapshots written before 2026-08-13 record answers from the retired
+  // per-generation aliases. Dropping their rows would price an old snapshot at
+  // $0, which reads as "this run was free" rather than "we no longer quote this
+  // model" - the M0-M6 lesson about a table lookup needing a miss path, in the
+  // one case where the miss is guaranteed.
+  it('keeps retired model rows so historical snapshots still price', () => {
+    expect(MODEL_PRICING.models['gpt-5.3-chat-latest']).toBeDefined();
+    expect(MODEL_PRICING.models['gemini-2.5-flash']).toBeDefined();
   });
 });
 
