@@ -55,6 +55,38 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+/**
+ * Real provider error bodies are pretty-printed multi-line JSON, not the short
+ * synthetic strings unit tests used before this was measured against a live
+ * call. OpenAI's exhausted-credit 429, for example, is:
+ *
+ *   {
+ *       "error": {
+ *           "message": "You have no credits remaining. Add credits to
+ *           continue using the API at https://platform.openai.com/...",
+ *           "type": "insufficient_quota",
+ *           "param": null,
+ *           "code": "credit_balance_exhausted"
+ *       }
+ *   }
+ *
+ * Thrown verbatim, that newline-and-indentation whitespace lands in a user's
+ * terminal, MCP output, and persisted notes, and an unusually verbose
+ * provider could dump kilobytes with no bound at all. 200 characters is
+ * chosen against that real body: collapsed to one line, the actionable
+ * `message` text ("You have no credits remaining...billing/.") ends at
+ * character ~161, so the full sentence survives; only the less useful
+ * trailing `type`/`param`/`code` fields are lost to the cap.
+ */
+const ERROR_BODY_MAX_CHARS = 200;
+
+function summarizeErrorBody(body: string): string {
+  const collapsed = body.replace(/\s+/g, ' ').trim();
+  return collapsed.length > ERROR_BODY_MAX_CHARS
+    ? `${collapsed.slice(0, ERROR_BODY_MAX_CHARS)}... [truncated]`
+    : collapsed;
+}
+
 async function withTimeout<T>(
   run: (signal: AbortSignal | undefined) => Promise<T>,
   timeoutMs: number | undefined,
@@ -113,6 +145,9 @@ export async function postJsonWithRetry(
     }
 
     const body = await res.text().catch(() => '');
-    throw new HttpError(res.status, `HTTP ${res.status}: ${body}`.trim());
+    throw new HttpError(
+      res.status,
+      `HTTP ${res.status}: ${summarizeErrorBody(body)}`.trim(),
+    );
   }
 }
