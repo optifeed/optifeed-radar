@@ -132,5 +132,11 @@ export async function resolveQueries(
       ? await saveQueryPack(pack, opts.stateDir, fs)
       : undefined;
 
-  return { pack, path, note: skipped };
+  // Prefixed with its origin (not just deduped downstream) because a
+  // SEPARATE guarded judge call - competitor discovery's, in discover() - can
+  // fail with byte-identical text against the same outage. Without the
+  // prefix, two independently-failed calls read as one ambiguous line.
+  const note = skipped ? `Query generation: ${skipped}` : undefined;
+
+  return { pack, path, note };
 }

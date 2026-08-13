@@ -283,4 +283,29 @@ describe('resolveQueries', () => {
     );
     expect(j.calls).toBe(1);
   });
+
+  // Two independent judge calls (this one, and competitor discovery's) can
+  // fail against the same outage with byte-identical underlying text - see
+  // core/run/discover-queries.test.ts. Prefixing the note with its origin
+  // HERE, at the point it is built, is what keeps "two things independently
+  // broke" visible once both notes reach a run's notes array.
+  it('prefixes a failed generation judge call with its origin', async () => {
+    const { fs } = memFs();
+    const failingJudge: JudgeClient = {
+      model: 'gpt-4o-mini',
+      complete: async () => {
+        throw new Error('HTTP 429: no credits remaining');
+      },
+    };
+
+    const result = await resolveQueries(
+      profile(),
+      { judge: failingJudge, guard: new CostGuard(), fs, now: () => AT },
+      { stateDir: '/state' },
+    );
+
+    expect(result.note).toBe(
+      'Query generation: judge error: HTTP 429: no credits remaining',
+    );
+  });
 });

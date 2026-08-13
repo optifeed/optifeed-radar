@@ -89,13 +89,15 @@ describe('discoverAndBuildQueries', () => {
     expect(events[2]).toMatchObject({ prompts: ['best widgets brand?'] });
   });
 
-  it('de-duplicates identical notes from the two independent judge calls', async () => {
+  it('reports two independently-failed judge calls as two origin-labeled notes, not one collapsed line', async () => {
     // No cached profile or pack, so BOTH discovery's competitor call and
     // query generation make their own judge call. A judge that fails the same
-    // way every time (a real outage - one dead API key, not two) makes
-    // discover's `competitorNote` and resolveQueries' `note` byte-identical:
-    // both are built from the same `judge error: ${message}` template over
-    // the same thrown message.
+    // way every time (a real outage - one dead API key, not two) used to make
+    // discover's `competitorNote` and resolveQueries' `note` byte-identical
+    // (both built from the same `judge error: ${message}` template over the
+    // same thrown message), and a plain dedupe collapsed them to one
+    // ambiguous line. Each is now prefixed with its origin at the point it is
+    // built, so two genuinely independent failures stay visible as two lines.
     const fs = memFs({});
     // A realistic provider error, matching what http.ts now throws: a
     // collapsed, capped multi-line body, not a short synthetic string.
@@ -125,10 +127,11 @@ describe('discoverAndBuildQueries', () => {
       { stateDir: STATE, persist: false },
     );
 
-    // Both judge calls genuinely failed - that is true and stays true - but
-    // the identical sentence is reported exactly once.
-    expect(result.notes).toHaveLength(1);
-    expect(result.notes[0]).toContain('judge error: HTTP 429:');
-    expect(result.notes[0]).toContain('You have no credits remaining');
+    expect(result.notes).toHaveLength(2);
+    expect(result.notes[0]).toMatch(/^Competitor discovery: judge error:/);
+    expect(result.notes[1]).toMatch(/^Query generation: judge error:/);
+    for (const note of result.notes) {
+      expect(note).toContain('You have no credits remaining');
+    }
   });
 });

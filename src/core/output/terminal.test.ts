@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AuditReport } from '../audit/index.js';
 import { AUDIT_ONLY_NOTE } from './footer.js';
-import { FOOTER_CTA, dedupeNotes, renderAuditText } from './terminal.js';
+import { FOOTER_CTA, renderAuditText } from './terminal.js';
 
 const report: AuditReport = {
   schema_version: '0.1',
@@ -51,30 +51,5 @@ describe('renderAuditText', () => {
     // Guards the caveat directly: the footer split moved it out of FOOTER_CTA,
     // so the audit-only honesty note needs its own assertion.
     expect(renderAuditText(report)).toContain(AUDIT_ONLY_NOTE);
-  });
-});
-
-describe('dedupeNotes', () => {
-  it('drops exact-duplicate notes, keeping the first occurrence', () => {
-    // The real trigger: two independent judge calls (competitor discovery,
-    // query generation) hitting the SAME provider outage produce byte-identical
-    // "judge error: HTTP 429: ..." notes.
-    const note =
-      'judge error: HTTP 429: You have no credits remaining. Add credits to continue.';
-    expect(dedupeNotes([note, note])).toEqual([note]);
-  });
-
-  it('preserves first-seen order across distinct notes', () => {
-    expect(dedupeNotes(['a', 'b', 'a', 'c', 'b'])).toEqual(['a', 'b', 'c']);
-  });
-
-  it('leaves near-duplicates (not byte-identical) alone', () => {
-    const a = 'judge error: HTTP 429: rate limited';
-    const b = 'judge error: HTTP 429: rate limited (retry later)';
-    expect(dedupeNotes([a, b])).toEqual([a, b]);
-  });
-
-  it('handles an empty list', () => {
-    expect(dedupeNotes([])).toEqual([]);
   });
 });

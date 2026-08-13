@@ -370,6 +370,40 @@ describe('discover', () => {
     expect(result.profile.degraded).toBe(true);
   });
 
+  // Two independent judge calls (this one, and query generation's) can fail
+  // against the same outage with byte-identical underlying text - see
+  // core/run/discover-queries.test.ts. Prefixing the note with its origin
+  // HERE, at the point it is built, is what keeps "two things independently
+  // broke" visible once both notes reach a run's notes array.
+  it('prefixes a failed competitor judge call with its origin', async () => {
+    const { fetcher } = fakeFetcher({
+      'https://acme.example/': fixture('schema-rich.html'),
+    });
+    const failingJudge: JudgeClient = {
+      model: 'gpt-4o-mini',
+      complete: async () => {
+        throw new Error('HTTP 429: no credits remaining');
+      },
+    };
+    const { fs } = memFs();
+
+    const result = await discover(
+      'acme.example',
+      {
+        fetcher,
+        judge: failingJudge,
+        guard: new CostGuard(),
+        fs,
+        now: () => AT,
+      },
+      { stateDir: '/state' },
+    );
+
+    expect(result.competitorNote).toBe(
+      'Competitor discovery: judge error: HTTP 429: no credits remaining',
+    );
+  });
+
   it('builds a degraded profile from flags with no fetch', async () => {
     const { fetcher, calls } = fakeFetcher({
       'https://acme.example/': fixture('schema-rich.html'),

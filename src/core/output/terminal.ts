@@ -139,26 +139,6 @@ export function renderRunNotes(
   return renderNoteBlock('Run notes', notes, colors(opts)).join('\n');
 }
 
-/**
- * Drop exact-duplicate notes, keeping first-seen order. Two independent judge
- * calls (competitor discovery, query generation) can fail against the same
- * outage and each push a note built from the same `judge error: ${message}`
- * template - byte-identical text, not merely similar. Showing the same
- * sentence twice tells a user nothing the first showing did not, so this
- * collapses exact repeats only; near-duplicates that differ by even one
- * character are left alone, since they may carry distinct information.
- *
- * Lives beside {@link renderRunNotes} rather than in a CLI renderer so every
- * consumer of a run's notes array - the CLI's own abort-path loop, the MCP
- * surface's `'; '`-joined summary, and any renderer that calls
- * {@link renderNoteBlock} - inherits the fix uniformly. Callers should
- * dedupe once, as early as the notes are assembled, rather than at each
- * render site.
- */
-export function dedupeNotes(notes: string[]): string[] {
-  return [...new Set(notes)];
-}
-
 /** "1 prompt" / "3 prompts" - honest, grammatical count text. */
 export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;

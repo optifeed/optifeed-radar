@@ -185,7 +185,13 @@ export async function discover(
     );
     competitors = res.competitors;
     businessType = res.businessType;
-    competitorNote = res.skipped;
+    // Prefixed with its origin (not just deduped downstream) because a
+    // SEPARATE guarded judge call - query generation's, in resolveQueries -
+    // can fail with byte-identical text against the same outage. Without the
+    // prefix, two independently-failed calls read as one ambiguous line.
+    competitorNote = res.skipped
+      ? `Competitor discovery: ${res.skipped}`
+      : undefined;
   } else {
     competitorNote = 'no judge configured';
   }
