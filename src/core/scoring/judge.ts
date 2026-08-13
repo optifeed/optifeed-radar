@@ -5,7 +5,12 @@
  * (main phase). Hitting either bound stops the pass without throwing - the
  * remaining ambiguous results are simply left as pass-1 decided them.
  */
-import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import { extractBalanced } from '../text.js';
 import type {
   BrandProfile,
@@ -98,7 +103,9 @@ export async function refineAmbiguous(
 
   if (maxJudge === 0) return { results: refined, judged };
 
-  const maxTokens = 60;
+  // A verdict is a word; judgeMaxTokens adds the reasoning reserve so a thinking
+  // judge is not out of budget before it writes that word.
+  const maxTokens = judgeMaxTokens(60);
   for (let i = 0; i < refined.length && judged < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard } from '../costs.js';
+import { CostGuard, REASONING_RESERVE_TOKENS } from '../costs.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -49,6 +49,21 @@ function countingJudge(text: string): JudgeClient & { calls: number } {
     model: 'gpt-4o-mini',
     async complete() {
       this.calls += 1;
+      return { text, costUsd: 0.001, model: 'gpt-4o-mini' };
+    },
+  };
+}
+
+/** A judge that records the token budget it was given. */
+function budgetJudge(
+  text: string,
+): JudgeClient & { maxTokens: (number | undefined)[] } {
+  const maxTokens: (number | undefined)[] = [];
+  return {
+    maxTokens,
+    model: 'gpt-4o-mini',
+    async complete(_prompt, opts) {
+      maxTokens.push(opts?.maxTokens);
       return { text, costUsd: 0.001, model: 'gpt-4o-mini' };
     },
   };
@@ -173,5 +188,23 @@ describe('refineAmbiguous (judge pass 2)', () => {
 
     expect(judge.calls).toBe(0);
     expect(out.judged).toBe(0);
+  });
+
+  // 60 tokens is an ANSWER budget. On a reasoning judge it is also the whole
+  // thinking budget, and thinking goes first - the verdict comes back empty and
+  // the row silently keeps its pass-1 value (verified live 2026-08-13).
+  it('reserves reasoning headroom in the judge token budget', async () => {
+    const judge = budgetJudge('YES');
+    const guard = new CostGuard();
+
+    await refineAmbiguous(
+      [ambiguousMention()],
+      [answer('You could try Acme.')],
+      profile,
+      { judge, guard },
+      { judgeRateCap: 1 },
+    );
+
+    expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
   });
 });

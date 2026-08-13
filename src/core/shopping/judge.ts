@@ -10,7 +10,12 @@
  * Hitting either bound (the rate cap or the cost cap) stops the pass without
  * throwing; unjudged rows simply stay as pass 1 read them.
  */
-import { CostGuard, approxTokens, estimateCallUsd } from '../costs.js';
+import {
+  CostGuard,
+  approxTokens,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import { extractBalanced } from '../text.js';
 import type { EngineAnswer, JudgeClient, Sentiment } from '../types.js';
 import { shelfEntryIsProduct, type ProductMention } from './detect.js';
@@ -149,7 +154,7 @@ export async function refineProductMentions(
 
   if (maxJudge === 0) return { results: refined, judged };
 
-  const maxTokens = 200;
+  const maxTokens = judgeMaxTokens(200);
   for (let i = 0; i < refined.length && judged < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
