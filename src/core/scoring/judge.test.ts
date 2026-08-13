@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CostGuard, REASONING_RESERVE_TOKENS } from '../costs.js';
+import {
+  CostGuard,
+  REASONING_RESERVE_TOKENS,
+  estimateCallUsd,
+  judgeMaxTokens,
+} from '../costs.js';
 import {
   SCHEMA_VERSION,
   type BrandProfile,
@@ -206,5 +211,56 @@ describe('refineAmbiguous (judge pass 2)', () => {
     );
 
     expect(judge.maxTokens[0]).toBeGreaterThanOrEqual(REASONING_RESERVE_TOKENS);
+  });
+
+  // Bug: `authorize` used to be priced on `judgeMaxTokens(60)` (the raised cap
+  // sent to the provider, answer + REASONING_RESERVE_TOKENS), not on the
+  // 60-token answer budget the call almost always actually uses. That
+  // inflated the reservation ~20x and made a modest --max-cost skip the whole
+  // judge pass on its first call. Authorization must be priced on the answer
+  // budget so a cap that comfortably covers the real cost still authorizes,
+  // even though it falls well short of covering the full reasoning-inflated
+  // cap.
+  it('authorizes against the answer budget, not the reasoning-inflated cap', async () => {
+    const model = 'gpt-5.5'; // wide input/output spread makes the gap unambiguous
+    const judge = { ...countingJudge('{"mentioned": false}'), model };
+
+    // Mirror the real prompt shape closely enough to ground the projections
+    // (the exact prompt is internal to buildPrompt, but boilerplate + a short
+    // answer lands in the same ballpark).
+    const promptLike = [
+      'A brand named "Orange" may or may not be genuinely referenced',
+      'in the answer below. Its name is also a common word, so ignore incidental',
+      'uses. Decide whether the brand itself is actually recommended or referred',
+      'to as a company/product.',
+      '',
+      'Answer: """You could try Acme."""',
+      '',
+      'Reply with ONLY JSON: {"mentioned": true|false, "sentiment":',
+      '"positive"|"neutral"|"negative"}.',
+    ].join('\n');
+    const inputTokens = Math.ceil(promptLike.length / 4); // matches approxTokens
+    const answerBudgetUsd = estimateCallUsd(model, inputTokens, 60);
+    const fullCapUsd = estimateCallUsd(model, inputTokens, judgeMaxTokens(60));
+    // Sanity-check the fixture actually exercises the bug: the two projections
+    // must be far enough apart that a cap between them is unambiguous.
+    expect(fullCapUsd).toBeGreaterThan(answerBudgetUsd * 10);
+
+    // Comfortably above the answer-budget projection, comfortably below the
+    // full-cap one.
+    const cap = (answerBudgetUsd + fullCapUsd) / 2;
+    const guard = new CostGuard({ maxCostUsd: cap });
+
+    const out = await refineAmbiguous(
+      [ambiguousMention()],
+      [answer('You could try Acme.')],
+      profile,
+      { judge, guard },
+      { judgeRateCap: 1 },
+    );
+
+    expect(judge.calls).toBe(1);
+    expect(out.judged).toBe(1);
+    expect(guard.costCapped).toBe(false);
   });
 });

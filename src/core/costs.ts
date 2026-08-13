@@ -170,6 +170,17 @@ export const REASONING_RESERVE_TOKENS = 4000;
  * Every judge call site sizes its cap through this and never with a bare number:
  * a raw answer-sized cap is silently empty on a reasoning judge, and each site
  * that hard-coded one had to be found by hand after it had already shipped.
+ *
+ * This return value is the cap SENT TO THE PROVIDER, and only that - it must
+ * NOT also be the `outputTokens` passed to {@link estimateCallUsd} for
+ * `CostGuard.authorize`. Price that call against `answerTokens` instead. The
+ * reserve exists so a reasoning judge is never starved of output by its own
+ * private thinking, but it is headroom the call is ALLOWED to use, not a cost
+ * it typically pays - pricing the reservation off this inflated cap
+ * over-reserved by ~20x and made a modest --max-cost skip an entire judge
+ * pass on its first call (see the call sites in `scoring/judge.ts`,
+ * `shopping/judge.ts`, `queries/generate.ts`, `shopping/queries.ts`, and
+ * `discovery/competitors.ts` for the full rationale).
  */
 export function judgeMaxTokens(answerTokens: number): number {
   return answerTokens + REASONING_RESERVE_TOKENS;

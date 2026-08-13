@@ -411,10 +411,13 @@ export async function generateQueries(
   // draws private reasoning from this same cap and returned zero answer tokens
   // without it (see REASONING_RESERVE_TOKENS).
   const requested = intents.reduce((sum, i) => sum + counts[i], 0);
-  const maxTokens = judgeMaxTokens(Math.max(900, requested * 60));
+  const answerTokens = Math.max(900, requested * 60);
+  const maxTokens = judgeMaxTokens(answerTokens);
+  // Priced on the answer budget, not the reasoning-inflated cap - see
+  // judgeMaxTokens in costs.ts.
   const projected =
     deps.projectedCostUsd ??
-    estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+    estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
   if (!guard.authorize(projected, 'setup')) {
     return { pack: emptyPack, skipped: 'setup cost cap reached' };
   }

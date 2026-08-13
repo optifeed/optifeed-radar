@@ -154,7 +154,8 @@ export async function refineProductMentions(
 
   if (maxJudge === 0) return { results: refined, judged };
 
-  const maxTokens = judgeMaxTokens(200);
+  const answerTokens = 200;
+  const maxTokens = judgeMaxTokens(answerTokens);
   for (let i = 0; i < refined.length && judged < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
@@ -163,9 +164,11 @@ export async function refineProductMentions(
     // Priced against the REAL prompt, which embeds the whole answer text, so a
     // long answer cannot slip past the cap on a fixed under-estimate.
     const prompt = buildPrompt(answer, result.product);
+    // Priced on the answer budget, not the reasoning-inflated cap - see
+    // judgeMaxTokens in costs.ts.
     const projected =
       deps.projectedCostUsd ??
-      estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+      estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
     if (!guard.authorize(projected, 'main')) break; // cost-capped: stop cleanly
 
     let verdict: ProductVerdict | null;

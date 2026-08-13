@@ -246,17 +246,16 @@ export async function generateProductQueries(
     // Scale the budget with the number of questions asked for, plus headroom for
     // JSON structure and verbose (non-English) phrasing: a truncated response
     // parses to nothing, which would silently mean "templates for everyone".
-    const maxTokens = judgeMaxTokens(
-      Math.max(
-        600,
-        products.length *
-          (visibilityCount + REPUTATION_PROMPTS_PER_PRODUCT) *
-          45,
-      ),
+    const answerTokens = Math.max(
+      600,
+      products.length * (visibilityCount + REPUTATION_PROMPTS_PER_PRODUCT) * 45,
     );
+    const maxTokens = judgeMaxTokens(answerTokens);
+    // Priced on the answer budget, not the reasoning-inflated cap - see
+    // judgeMaxTokens in costs.ts.
     const projected =
       deps.projectedCostUsd ??
-      estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+      estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
 
     if (!guard.authorize(projected, 'setup')) {
       notes.push(

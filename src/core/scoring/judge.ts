@@ -105,7 +105,8 @@ export async function refineAmbiguous(
 
   // A verdict is a word; judgeMaxTokens adds the reasoning reserve so a thinking
   // judge is not out of budget before it writes that word.
-  const maxTokens = judgeMaxTokens(60);
+  const answerTokens = 60;
+  const maxTokens = judgeMaxTokens(answerTokens);
   for (let i = 0; i < refined.length && judged < maxJudge; i++) {
     const result = refined[i];
     const answer = answers[i];
@@ -114,9 +115,15 @@ export async function refineAmbiguous(
     // Project against the real prompt size (it embeds the full answer text),
     // so a long answer cannot slip past the cost cap on a fixed under-estimate.
     const prompt = buildPrompt(answer, profile);
+    // Priced on the ANSWER budget, not `maxTokens`. The cap carries reasoning
+    // headroom the call is ALLOWED to use but almost never does, so reserving
+    // against it over-reserved by ~20x and made a tight --max-cost skip the
+    // whole judge pass. Overshoot is bounded by one call's thinking and
+    // `settle` books the provider's real reported cost, which is the
+    // documented --max-cost contract. See judgeMaxTokens in costs.ts.
     const projected =
       deps.projectedCostUsd ??
-      estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+      estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
     if (!guard.authorize(projected, 'main')) break; // cost-capped: stop cleanly
 
     let verdict: Verdict;

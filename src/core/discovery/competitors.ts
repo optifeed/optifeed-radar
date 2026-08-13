@@ -240,10 +240,13 @@ export async function discoverCompetitors(
   // The answer is a short JSON object; judgeMaxTokens adds the reasoning
   // reserve, without which a thinking judge spent this entire budget on private
   // reasoning and returned nothing (verified live 2026-08-13).
-  const maxTokens = judgeMaxTokens(300);
+  const answerTokens = 300;
+  const maxTokens = judgeMaxTokens(answerTokens);
+  // Priced on the answer budget, not the reasoning-inflated cap - see
+  // judgeMaxTokens in costs.ts.
   const projected =
     deps.projectedCostUsd ??
-    estimateCallUsd(judge.model, approxTokens(prompt), maxTokens);
+    estimateCallUsd(judge.model, approxTokens(prompt), answerTokens);
 
   if (!guard.authorize(projected, 'setup')) {
     return { competitors: [], skipped: 'setup cost cap reached' };
